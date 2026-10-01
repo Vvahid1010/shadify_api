@@ -9,6 +9,7 @@ shadify_api will become the server-authoritative backend for Shadify. The reposi
 Before any media/storage work, read:
 
 - docs/MEDIA_STORAGE_ARCHITECTURE.md
+- docs/MEDIA_DELIVERY_CACHE_SECURITY.md
 
 ## Core boundaries
 
@@ -37,6 +38,35 @@ Mandatory rules:
 - Large video uploads should support multipart/resumable upload when implemented.
 - Storage access must remain behind a small provider abstraction so cold media can later move to R2 Infrequent Access or another compatible provider without redesigning the product.
 
+## Media delivery contract
+
+Media delivery must be isolated from the main application host.
+
+The intended public media hostname is:
+
+- media.shadify.org
+
+Do not use the application hostname as the long-term media delivery surface.
+
+Reasons:
+
+- keep application HTML/session/API cache rules separate from media cache rules;
+- allow aggressive media caching without caching the whole application;
+- apply media-specific WAF, rate limiting and abuse controls;
+- keep public/free delivery distinct from protected paid delivery;
+- reduce unnecessary origin/R2 reads through CDN caching;
+- allow future Worker-based authorization for protected media without changing the app routes.
+
+Cache is populated on request, not at upload time.
+
+For public/free delivery, the intended request path is:
+
+Internet -> Cloudflare DDoS/WAF/Rate Limit -> CDN Cache -> R2 only on cache miss.
+
+For paid/private full media, authorization is server-controlled and short-lived. A permanent public media URL must never act as proof of entitlement.
+
+See docs/MEDIA_DELIVERY_CACHE_SECURITY.md for the full contract.
+
 ## Initial simplicity policy
 
 For the first backend/media phase:
@@ -45,7 +75,9 @@ For the first backend/media phase:
 - keep the development bucket private by default;
 - use server-generated IDs in object keys, never trust user filenames as authoritative keys;
 - do not add another provider or storage tier before real usage justifies it;
-- do not hard-code provider pricing/quota numbers into application logic.
+- do not hard-code provider pricing/quota numbers into application logic;
+- do not enable broad "cache everything" behavior on the main Shadify application hostname;
+- keep media security and cache policy scoped to the dedicated media delivery layer.
 
 The first likely future optimization is hot delivery on R2 Standard and cold originals on R2 Infrequent Access or another compatible object store.
 
@@ -59,7 +91,10 @@ When implementation begins:
 - never trust browser-supplied ownership or storage keys;
 - keep originals private;
 - never log signed URLs or secrets;
-- explicitly track upload, processing and publish state.
+- explicitly track upload, processing and publish state;
+- use Cloudflare DDoS protection plus media-specific WAF/rate-limit rules before R2;
+- treat cache and authorization as separate concerns;
+- do not assume every abusive request will be classified as DDoS; design rate limits and cache policy to reduce billable origin/R2 reads.
 
 ## Runtime
 
@@ -71,3 +106,4 @@ Follow the native Shadify runtime policy when implementation begins:
 - durable media remains outside application nodes.
 
 If the media storage contract changes, update docs/MEDIA_STORAGE_ARCHITECTURE.md in the same change.
+If media hostname, cache, access or abuse-protection behavior changes, update docs/MEDIA_DELIVERY_CACHE_SECURITY.md in the same change.

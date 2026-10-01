@@ -1,5 +1,7 @@
 # Shadify Media Storage Architecture
 
+> Media delivery, CDN cache, the dedicated media hostname, protected-media access and DDoS/abuse cost controls are defined in `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`.
+
 ## Decision
 
 Shadify media uses object storage. The initial provider is Cloudflare R2 Standard.
@@ -127,6 +129,8 @@ Future paid flow:
 Chapary will handle future payment execution. Shadify API remains authoritative for resulting entitlement state.
 
 Paid releases should use a separate derived preview asset. Preview access must never be implemented by exposing the unrestricted full paid object.
+
+Detailed delivery/cache/security behavior is defined in docs/MEDIA_DELIVERY_CACHE_SECURITY.md.
 
 ## Provider abstraction
 
