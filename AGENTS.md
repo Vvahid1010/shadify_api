@@ -107,3 +107,16 @@ Follow the native Shadify runtime policy when implementation begins:
 
 If the media storage contract changes, update docs/MEDIA_STORAGE_ARCHITECTURE.md in the same change.
 If media hostname, cache, access or abuse-protection behavior changes, update docs/MEDIA_DELIVERY_CACHE_SECURITY.md in the same change.
+
+
+## Implemented source foundation (2026-10-01)
+
+The operator explicitly authorized initial API/R2 preparation. Source lives at
+`/srv/Coding_space/shadify_api` on Ubuntu ext4; use WSL-native Python >=3.12.
+No managed local API venv, unit, listener or database is installed. Source-only
+status grants no ad hoc runtime activation. See `local_bootstrap.md` and
+`docs/API_FOUNDATION.md` for tests, exact protected configuration and the proposed
+distinct Authentication proxy identity. Default uploads fail closed; no real
+R2, database, media delivery, processing or entitlement proof exists yet.
+Coordinate shared topology/Auth changes with their owner; do not enroll
+Shadify as Mizfood or copy shared crypto/framework code.

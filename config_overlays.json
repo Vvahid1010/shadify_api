@@ -1,0 +1,6 @@
+{
+  "app": {"name": "shadify-api", "api_prefix": "/api"},
+  "storage": {"provider": "r2", "credentials_file": "storage.credentials.json"},
+  "authentication": {"integration": "pending-existing-central-authentication"},
+  "database": {"credentials_file": "database.credentials.json", "integration": "pending-assignment"}
+}
