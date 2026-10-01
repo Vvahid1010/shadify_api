@@ -36,18 +36,39 @@ The existing Authentication service is unchanged by this foundation.
 
 ## Local verification without runtime activation
 
+An isolated source-local `.venv` now exists for explicitly authorized dependency
+and offline SDK validation. It is ignored by Git and is not a managed application
+runtime. No other application's venv was changed. Python 3.14.4 and the exact
+26 API/test dependency versions are recorded in `requirements.lock`.
+
 From this source directory in Ubuntu:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 /var/lib/chapary-local/venvs/mizfood_api/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m pip check
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-This temporarily uses existing installed framework packages only as a test
-interpreter; it imports no Mizfood application or protected configuration,
-changes no managed venv and starts no listener. It is not an activation command.
-For an eventual dedicated Shadify venv, dependencies are declared in
-`pyproject.toml`; provisioning/install remains with the coordinated runtime owner.
-No dependency installation, database migration or real R2 operation was run.
+For a fresh isolated environment, use the exact validated pins from trusted PyPI:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip --isolated install -r requirements.lock
+.venv/bin/python -m pip --isolated install --index-url https://pypi.org/simple --no-deps -e .
+```
+
+Latest validation: 19 tests pass; pip check reports no broken requirements.
+The real installed boto3/botocore signer validates PutObject parameters locally,
+including signed content-length, content-type and if-none-match headers.
+SDK HeadObject/GetObject models are tested with botocore Stubber, not R2.
+Uvicorn imports the real ASGI target and completes startup/shutdown lifespan
+without binding a listener; database connections and outbound HTTP/network are
+blocked in that check. In-process ASGI liveness is 200, readiness/upload routes
+remain 503 even with forged identity headers. Protected config validation uses
+only synthetic unit-test files. Starlette emits a non-failing httpx TestClient
+deprecation warning; the exact tested versions are pinned.
+
+No managed environment, database migration, R2 request or runtime activation
+occurred. Live Authentication/PostgreSQL/R2 and browser upload proof remain pending.
 
 See `docs/API_FOUNDATION.md` for exact protected storage configuration and the
 pending integration verification sequence.

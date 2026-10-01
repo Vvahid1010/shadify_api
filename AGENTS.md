@@ -120,3 +120,9 @@ distinct Authentication proxy identity. Default uploads fail closed; no real
 R2, database, media delivery, processing or entitlement proof exists yet.
 Coordinate shared topology/Auth changes with their owner; do not enroll
 Shadify as Mizfood or copy shared crypto/framework code.
+
+An explicitly authorized isolated source-local `.venv` now exists for offline
+SDK/framework tests only (not a managed runtime). Use its native Python for
+validation; `requirements.lock` pins the tested dependencies. Nineteen offline
+tests and pip check pass, including real SDK local signing and no-listener
+Uvicorn lifespan startup. These checks prove no live R2/database/Auth integration.

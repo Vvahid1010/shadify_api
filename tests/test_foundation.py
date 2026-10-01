@@ -208,10 +208,6 @@ class ConfigTests(unittest.TestCase):
             self.assertNotIn("unit-test-key", str(error.exception))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PostgreSQLBoundaryTests(unittest.TestCase):
     def test_parameters_and_transactional_state_change(self):
         from shadify_api.repository import PostgresMediaRepository
@@ -238,3 +234,7 @@ class PostgreSQLBoundaryTests(unittest.TestCase):
         self.assertIn("AND state=%s", query)
         self.assertEqual(params, ("uploaded", asset.id, "upload_pending"))
         self.assertEqual(connection.__exit__.call_count, 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

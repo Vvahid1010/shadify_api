@@ -98,6 +98,21 @@ User owns DNS, origin binding, WAF/rate limits, cache rules and monitoring.
 No tunnel, credentials, Cloudflare resources or cache rules were changed.
 No main-app Cache Everything rule, Worker or paid-media implementation was added.
 
+## Validated SDK/framework preparation
+
+The ignored repo-local `.venv` contains the real SDK/framework dependencies from
+trusted PyPI. `requirements.lock` pins the 26 validated dependencies; key versions
+are FastAPI 0.142.2, Uvicorn 0.54.0, boto3/botocore 1.43.107 and psycopg 3.3.6,
+tested with native Python 3.14.4. `pip check` passes and all 19 offline tests pass.
+
+Real SigV4 signing proves the SDK accepts IfNoneMatch and ContentLength and
+includes content-length/content-type/if-none-match in the signed headers. It
+proves no R2 acceptance, bucket permissions or CORS. Real SDK read models are
+exercised through Stubber. Uvicorn import/startup/shutdown and in-process ASGI
+requests are validated without listeners, data access or actual configuration.
+No real database schema, durable upload or media delivery has been validated.
+See `local_bootstrap.md` for repeatable commands and exact evidence boundaries.
+
 ## Simplest next verification
 
 1. Coordinate Shadify's distinct Authentication proxy identity, canonical

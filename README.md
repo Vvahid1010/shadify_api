@@ -8,5 +8,5 @@ Existing Authentication owns identity; no local login or live cloud runtime.
 - [Storage architecture](docs/MEDIA_STORAGE_ARCHITECTURE.md)
 - [Delivery/cache/security](docs/MEDIA_DELIVERY_CACHE_SECURITY.md)
 
-Tests: native WSL `python -m unittest discover -s tests -v` with declared
-framework dependencies installed. No cloud credentials or network are required.
+Tests: native WSL `.venv/bin/python -m unittest discover -s tests -v`;
+exact validated dependency pins are in `requirements.lock`. No cloud credentials or network are required.
