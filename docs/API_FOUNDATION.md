@@ -1,4 +1,6 @@
-# Initial authenticated API and private R2 uploads
+# Initial authenticated API, private R2 uploads and signed delivery preparation
+
+Phase 1 playback source of truth: [R2_SIGNED_MEDIA_DELIVERY.md](R2_SIGNED_MEDIA_DELIVERY.md).
 
 The API composes existing canonical shell admission, PostgreSQL metadata and the
 R2 S3 adapter. Native code/package readiness is separate from live Authentication,
@@ -74,7 +76,9 @@ bounded GET reads at most 4096 bytes for the container signature. Wrong size,
 MIME or magic marks failed. Upload metadata insertion also checks current ownership
 atomically in SQL. Uploaded never means processed, published or publicly playable.
 Magic checks are basic container identification, not full decoding/safety proof.
-Originals remain private/draft; no public or signed playback URLs are emitted.
+Originals remain private/draft; current HTTP routes emit no playback URLs. A
+separate internal signed GET provider/read-only authorization boundary is prepared
+as described below; it cannot turn an uploaded original into playable media.
 
 ## Native runtime and protected configuration
 
@@ -93,7 +97,7 @@ the assigned service identity or root if legitimately readable by that identity:
 | shadify_api.config.json | Shadify config_overlays.json shape plus approved canonical public app_security/app_security_binding projection. |
 | app_profile.json | Existing native profile: schema_version 1, app shadify_api; generated/provisioned by runtime owner. |
 | database.credentials.json | Explicit Shadify PostgreSQL assignment below; installer-owned. |
-| storage.credentials.json | User-supplied R2 S3 credentials and Shadify upload settings below. |
+| storage.credentials.json | User-supplied R2 S3 credentials and independent upload/playback settings below. |
 | replay.credentials.json | Assigned protected Redis URL for canonical ON replay: {"url":"<assigned-redis-or-rediss-url>"}. |
 | app_security.credentials.json | Canonical key projection, imported natively by the shell; never parsed/logged by app code. |
 
@@ -119,7 +123,7 @@ Storage file:
 {"provider":"r2","endpoint_url":"https://<32-character-account-id>.r2.cloudflarestorage.com",
  "bucket":"<existing-private-originals-development-bucket>",
  "access_key_id":"<R2-S3-access-key-id>","secret_access_key":"<R2-S3-secret-access-key>",
- "upload_ttl_seconds":300,"max_upload_bytes":104857600}
+ "upload_ttl_seconds":300,"playback_url_ttl_seconds":900,"max_upload_bytes":104857600}
 ```
 
 Use only existing bucket-scoped Object Read/Write S3 credentials. The API never
@@ -131,27 +135,46 @@ redacted; no real protected values were read, generated, printed or transmitted.
 Missing DB/storage can keep process liveness available while readiness/business
 operations stay pending. Invalid supplied protected config is rejected. Configured
 startup performs no migration, listener binding, DB connection or R2 request.
-GET /health is process liveness. GET /health/ready performs only a read-only schema
-check and reports canonical binding state plus storage configured_unverified or
-missing. Overall readiness stays 503 if DB/schema, binding or R2 config is missing;
+GET /health is process liveness. GET /health/ready performs a read-only schema check and canonical disposable
+replay reservation/recovery check, then reports binding/bounds and storage
+configured_unverified or missing. It never probes live R2. Overall readiness stays 503 if DB/schema, binding or R2 config is missing;
 configured_unverified is expressly not R2/network/bucket/CORS proof. No media worker
 or payment dependency is invented as a readiness gate.
 
-## Cloudflare and media policy
+## Phase 1 private signed delivery
 
-`shadify.org` is the selected main app hostname on Node B; `dev.shadify.org` stays
-WSL. `media.shadify.org` is the accepted single media delivery hostname.
-It is an R2 Custom Domain/public delivery boundary, not a tunnel hostname.
-Use a separate public delivery bucket for derived/versioned audio/video/artwork/
-previews; private originals/drafts stay in their separate private bucket.
-Do not attach that private bucket wholesale to the public domain.
+The revised docs/R2_SIGNED_MEDIA_DELIVERY.md replaces mandatory public delivery
+buckets and R2 Custom Domain playback. media.shadify.org is reserved for a future
+Worker/CDN boundary. Phase 1 Player -> API -> Presigned GET -> private R2 uses the
+standard account S3 endpoint. No DNS/bucket/Custom Domain/tunnel changes occur.
 
-Direct uploads use the R2 S3 hostname, not the media domain. User configures CORS
-for the exact approved frontend origin, PUT and returned Content-Type/If-None-Match
-headers. Development and VM origins remain separately configurable; no wildcard
-origin or bucket public grant is installed by this code. User owns media Custom
-Domain, Cloudflare WAF/rate limits/cache controls and monitoring. No tunnel, DNS,
-bucket or Cloudflare settings changed. Protected paid delivery remains deferred.
+R2Storage.create_playback_access returns PlaybackAccess(url,expires_at), using
+the protected playback_url_ttl_seconds setting (default 900), independent of PUT
+TTL. This optional field requires the updated source reader; do not inject it into
+the older 4ec0b0d baseline before selecting a compatible updated package. The existing SDK/client/provider is reused; signing is local, not proof of
+bucket/object access. URLs are reusable until expiry and can repeat for identical
+same-second signing inputs. No IP binding, media replay ledger or URL uniqueness
+claim is added. The player treats URLs as opaque; stable keys stay server metadata.
+Track/Playlist/PostgreSQL never persist presigned URLs; Playlist stores track_id.
+
+delivery.py prepares a provider-independent PlaybackService/PlaybackRepository
+boundary. Its authoritative track+asset projection must prove publication,
+readiness, free access and derived/preview identity. Published free full tracks
+allow guests without Authentication. A paid track can expose only a separately
+selected free preview; full paid playback fails closed even with an account until
+existing purchase/entitlement proof is implemented in an approved future phase.
+No HTTP playback route/catalog, DB schema/publication, purchase/entitlement or
+payment/Worker integration is activated. Current schema supports only private
+draft originals, so no live repository projection is inferred or fabricated.
+
+Existing uploads remain direct Presigned PUT with prior ownership/size/type/TTL
+checks. User configures exact-origin browser CORS for PUT/GET/range as applicable,
+using the protected existing storage configuration and minimum bucket-scoped
+permissions. No secret is requested in chat or read from operational files.
+The future access-issuance endpoint is a rate-limit boundary, not a new framework.
+Future Worker delivery can replace the provider without changing Player's
+url+expires_at or Playlist/Track stable IDs. Real R2/access/CORS/expiry/publication
+proof remains pending. Reviewed4ec0b0d native package remains deployment baseline.
 
 ## Package and verification
 
@@ -177,7 +200,8 @@ install the verified package/transport/profiles, explicitly apply the two migrat
 and map an approved owned artist. User privately supplies R2 settings in the
 confirmed protected route. Only then run one tiny supported upload and prove CORS,
 signature/type/length enforcement, overwrite rejection, expiry, ownership and
-private/draft completion. Public-media/cache checks remain separate.
+private/draft completion. Private signed-playback/expiry/CORS/range and guest/published/free checks await
+approved delivery metadata/HTTP wiring; paid full remains denied absent entitlement.
 
 
 ## Local Unix ingress and readiness correction
@@ -295,7 +319,7 @@ the owner's bounded Astra PASS. The pinned wheel SHA256 is
 reproducible source digest is
 213c52c172a5ba57cde617ee410e9630a74dbfe53ceca29e31b86291f5b112fc.
 node_agent_transport_dependency.json preserves the full build receipt including
-the source-digest rule, all10module hashes, packaging recipe hashes and pinned
+the source-digest rule, all10 module hashes, packaging recipe hashes and pinned
 build dependencies. The builder verifies the exact wheel/version/hash, embedded
 provenance and all module bytes; no old0.1.8 substitution is accepted. Retained
 historical releases still verify with their original hash manifests; a release

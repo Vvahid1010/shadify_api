@@ -8,6 +8,7 @@ shadify_api will become the server-authoritative backend for Shadify. The reposi
 
 Before any media/storage work, read:
 
+- docs/R2_SIGNED_MEDIA_DELIVERY.md (Phase 1 source of truth)
 - docs/MEDIA_STORAGE_ARCHITECTURE.md
 - docs/MEDIA_DELIVERY_CACHE_SECURITY.md
 
@@ -40,32 +41,26 @@ Mandatory rules:
 
 ## Media delivery contract
 
-Media delivery must be isolated from the main application host.
+Phase 1: Player -> shadify_api -> short-lived Presigned GET URL -> private R2.
+No Worker or public playback bucket is required. media.shadify.org is reserved
+for a future Worker/CDN boundary, not a current public R2 Custom Domain mandate.
+Do not delete/reassign DNS or change Cloudflare settings from this source task.
+See docs/R2_SIGNED_MEDIA_DELIVERY.md for the authoritative current contract.
 
-The intended public media hostname is:
+Guest playback must work for published free tracks after authoritative checks.
+Paid full media requires Authentication and existing purchase/entitlement; absent
+proof denies. A free paid preview uses a separate asset. Do not implement payments
+or infer entitlement. Current schema remains draft/original-only; do not expose
+playback HTTP routes without approved publication/repository/ingress wiring.
+Player receives opaque url+expires_at; Playlist stores stable track_id. Database,
+Track and Playlist never persist presigned URLs. Keys remain backend metadata.
+URLs are reusable until expiry; same-second signing may return identical URLs.
+No IP binding/HMAC IP lock. TTL comes from protected storage configuration.
 
-- media.shadify.org
-
-Do not use the application hostname as the long-term media delivery surface.
-
-Reasons:
-
-- keep application HTML/session/API cache rules separate from media cache rules;
-- allow aggressive media caching without caching the whole application;
-- apply media-specific WAF, rate limiting and abuse controls;
-- keep public/free delivery distinct from protected paid delivery;
-- reduce unnecessary origin/R2 reads through CDN caching;
-- allow future Worker-based authorization for protected media without changing the app routes.
-
-Cache is populated on request, not at upload time.
-
-For public/free delivery, the intended request path is:
-
-Internet -> Cloudflare DDoS/WAF/Rate Limit -> CDN Cache -> R2 only on cache miss.
-
-For paid/private full media, authorization is server-controlled and short-lived. A permanent public media URL must never act as proof of entitlement.
-
-See docs/MEDIA_DELIVERY_CACHE_SECURITY.md for the full contract.
+Keep the existing object-storage/provider abstraction; domain code must not use
+boto/S3 signing parameters. Future Worker delivery replaces its provider adapter.
+Cache/authorization and API issuance rate controls remain separate concerns;
+no global application caching or speculative rate-limit framework is authorized.
 
 ## Initial simplicity policy
 
@@ -92,7 +87,8 @@ When implementation begins:
 - keep originals private;
 - never log signed URLs or secrets;
 - explicitly track upload, processing and publish state;
-- use Cloudflare DDoS protection plus media-specific WAF/rate-limit rules before R2;
+- prepare the access-issuance endpoint as the future abuse/rate-limit boundary;
+- do not claim application-zone WAF/CDN rules cover direct R2 S3 playback;
 - treat cache and authorization as separate concerns;
 - do not assume every abusive request will be classified as DDoS; design rate limits and cache policy to reduce billable origin/R2 reads.
 
@@ -120,7 +116,9 @@ Current scope: canonical shell-admitted Authentication identity, Shadify user
 projection, already-owned artist draft tracks, private original upload issuance/
 completion and metadata. Artist eligibility/enrollment remains undefined; do not
 infer artist ownership or create grants from a browser or Authentication role.
-No playback/publishing/payment/entitlement/worker expansion is authorized here.
+Phase 1 signed GET/config/provider and read-only authorization-boundary preparation
+is authorized. Playback HTTP/publication schema, purchases/entitlements/payments
+and Worker deployment remain pending; keep the existing private API scope.
 
 Node Agent owns installation/update/lifecycle on selected Node B, catalog
 shadify-api, app identity shadify_api. It owns protected config/profile and native
@@ -130,9 +128,9 @@ Python3.14 Linux x86_64 source/offline-wheel/hash-manifest shape; source and bui
 publication use normal non-force pushes scoped to this repository.
 
 shadify.org is the accepted VM app hostname; dev.shadify.org remains WSL.
-media.shadify.org is the accepted single R2 Custom Domain delivery host, never a
-tunnel route. Public derived delivery uses a separate bucket; originals/drafts
-remain private. User owns Cloudflare/R2 setup and supplies keys through the
+media.shadify.org is reserved for a future Worker/CDN delivery boundary. Phase 1
+uses private R2 S3 presigned GETs; no public playback bucket/Custom Domain is
+required. Originals/drafts and derived delivery remain private. User owns Cloudflare/R2 setup and supplies keys through the
 confirmed protected runtime route; do not request values in chat or read them.
 
 See local_bootstrap.md and docs/API_FOUNDATION.md for app-owned exact filenames,

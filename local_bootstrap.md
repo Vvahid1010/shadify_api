@@ -68,3 +68,15 @@ node_agent_transport_dependency.json. The offline package carries the exact
 reviewed wheel and its hashed lock. API source tests now use that installed wheel
 directly; no owner source-path overlay is required. Live configuration and Unix
 socket/replay ownership grants remain Node Agent's separate activation scope.
+
+
+Phase 1 media contract: docs/R2_SIGNED_MEDIA_DELIVERY.md. storage.credentials.json
+optionally sets playback_url_ttl_seconds (default 900) independently of upload TTL.
+The current reviewed4ec0b0d package remains the deployment baseline; signed GET
+provider/policy preparation adds no HTTP playback route, schema/publication or
+Worker and implies no live bucket/DNS/credential effect.
+
+The optional playback TTL field is accepted by the updated source reader, not
+the current4ec0b0d baseline. Keep that deployed projection unchanged until an
+updated compatible package is explicitly selected. Source proof:51offline tests
+pass and pip check is clean; actual HTTP/playback/publication/R2 proof is pending.

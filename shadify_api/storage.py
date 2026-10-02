@@ -1,5 +1,6 @@
 """Provider boundary. Presigning is local; inspection performs bounded R2 reads."""
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from .config import StorageConfig
@@ -14,6 +15,17 @@ class UploadAuthorization:
     url: str = field(repr=False)
     headers: dict[str, str]
     expires_in: int
+
+
+@dataclass(frozen=True)
+class PlaybackAccess:
+    url: str = field(repr=False)
+    expires_at: datetime
+
+
+class MediaDeliveryProvider(Protocol):
+    # Internal server-selected key; domain authorization precedes this call.
+    def create_playback_access(self, key: str) -> PlaybackAccess: ...
 
 
 @dataclass(frozen=True)
@@ -54,6 +66,19 @@ class R2Storage:
                                        self.config.upload_ttl_seconds)
         except Exception:
             raise StorageUnavailable("Upload authorization unavailable") from None
+
+    def create_playback_access(self, key):
+        try:
+            # Conservative expiry rounded to seconds before SDK signing. This
+            # returns no later than signing time + TTL even across a second tick.
+            issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+            url = self.client.generate_presigned_url(
+                "get_object", Params={"Bucket": self.config.bucket, "Key": key},
+                ExpiresIn=self.config.playback_url_ttl_seconds, HttpMethod="GET",
+            )
+            return PlaybackAccess(url, issued_at + timedelta(seconds=self.config.playback_url_ttl_seconds))
+        except Exception:
+            raise StorageUnavailable("Playback authorization unavailable") from None
 
     def inspect(self, key):
         try:

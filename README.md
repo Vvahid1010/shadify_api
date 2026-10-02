@@ -6,6 +6,7 @@ PostgreSQL owns domain metadata, R2 owns media bytes.
 
 - [Current endpoints, protected config and remaining live prerequisites](docs/API_FOUNDATION.md)
 - [Native development/package contract](local_bootstrap.md)
+- [Phase1 private signed media delivery](docs/R2_SIGNED_MEDIA_DELIVERY.md)
 - [Storage architecture](docs/MEDIA_STORAGE_ARCHITECTURE.md)
 - [Media delivery/cache/security](docs/MEDIA_DELIVERY_CACHE_SECURITY.md)
 

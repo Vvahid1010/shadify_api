@@ -17,6 +17,7 @@ class StorageConfig(BaseModel):
     access_key_id: SecretStr
     secret_access_key: SecretStr
     upload_ttl_seconds: int = Field(default=300, ge=30, le=900)
+    playback_url_ttl_seconds: int = Field(default=900, ge=1, le=604800, strict=True)
     max_upload_bytes: int = Field(default=104857600, gt=0, le=104857600)
 
     @model_validator(mode="after")

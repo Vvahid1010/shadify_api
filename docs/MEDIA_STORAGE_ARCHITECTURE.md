@@ -1,6 +1,6 @@
 # Shadify Media Storage Architecture
 
-> Media delivery, CDN cache, the dedicated media hostname, protected-media access and DDoS/abuse cost controls are defined in `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`.
+> Phase 1 source of truth: `docs/R2_SIGNED_MEDIA_DELIVERY.md`. Cache and future Worker/CDN policy: `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`. The earlier mandatory public R2 playback/Custom Domain design is replaced.
 
 ## Decision
 
@@ -41,13 +41,13 @@ A conceptual layout is:
 
 Development and production use separate durable namespaces, preferably separate buckets.
 
-For public launch, use separate buckets for private originals/drafts and public
-derived delivery assets. The accepted public delivery host media.shadify.org
-binds only to the public delivery bucket through R2 Custom Domain; it is not a
-tunnel route and must not expose the private original bucket. The current upload
-adapter targets the private originals bucket only; it provisions no bucket/domain.
-All initial classes remain on R2 Standard. This is privacy separation, not a new
-storage provider or tier.
+Phase 1 originals and derived delivery remain private. The player obtains an
+API-authorized short-lived Presigned GET URL for a stable server-selected key and
+fetches R2 directly through the standard S3-compatible endpoint. No public playback
+bucket or Worker is required. Private namespaces can use the assigned existing
+bucket; separate allocations may be chosen later without changing the Player.
+media.shadify.org is reserved for a future Worker/CDN boundary, not a current R2
+Custom Domain/public-bucket instruction. No bucket/domain/DNS change occurs here.
 
 ## Originals and delivery
 
@@ -60,7 +60,7 @@ Normal playback uses derived delivery assets, not the original master.
 Initial delivery direction:
 
 - Audio: AAC/M4A and practical quality variants; HLS may be introduced for adaptive/controlled streaming.
-- Video: HLS adaptive streaming with only the resolutions supported by the source, for example 1080p, 720p, 480p and 360p.
+- Video: source-appropriate derived delivery; HLS/adaptive variants are deferred to an approved processing/player phase, not a Phase 1 platform requirement.
 - Artwork: preserve the original and generate optimized responsive variants such as AVIF.
 
 The exact codec/bitrate matrix is intentionally deferred until the media-processing phase.
@@ -116,13 +116,17 @@ A future MediaAsset model may include concepts such as:
 - access class;
 - version.
 
-This is conceptual, not a frozen schema.
+This is conceptual, not a frozen schema. Presigned URLs are never persisted in
+PostgreSQL, Track or Playlist; Playlist retains stable track_id and requests new
+url+expires_at at actual playtime. Stable object keys remain backend metadata.
 
 The database is authoritative for ownership, domain relationships, processing/publish state and access/entitlement decisions. Object storage is authoritative for object bytes.
 
 ## Free, paid and preview media
 
-Free/public delivery can be CDN/cache friendly.
+Published free tracks allow guests without mandatory login, but storage remains
+private. The API checks authoritative published+free status and ready derived
+assets before signing GET access. Current draft originals are never playable.
 
 Paid/private full media must not use a permanent public object URL as an entitlement mechanism.
 
@@ -131,14 +135,17 @@ Future paid flow:
     Fan requests full media
         -> shadify_api checks Authentication and entitlement
         -> short-lived controlled media authorization
-        -> CDN/object storage
+        -> private R2 through short-lived Presigned GET (Phase 1)
         -> Shadify Player
 
 Chapary will handle future payment execution. Shadify API remains authoritative for resulting entitlement state.
 
 Paid releases should use a separate derived preview asset. Preview access must never be implemented by exposing the unrestricted full paid object.
 
-Detailed delivery/cache/security behavior is defined in docs/MEDIA_DELIVERY_CACHE_SECURITY.md.
+Full paid playback remains closed when existing entitlement proof is absent; no
+purchase/entitlement/payment implementation is introduced. Free paid previews
+are separate assets, never an unrestricted full-object fallback. Current delivery
+and response contracts are in docs/R2_SIGNED_MEDIA_DELIVERY.md.
 
 ## Provider abstraction
 
