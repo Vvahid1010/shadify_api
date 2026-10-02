@@ -10,7 +10,7 @@ dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "boto3>=1.36,<2", "psyc
 
 [project.optional-dependencies]
 test = ["httpx>=0.28,<1", "cryptography==50.0.2", "pqcrypto==1.0.0"]
-managed = ["app-security-shell==0.4.6", "redis==8.1.0", "node-agent-local-shell-transport==0.1.8"]
+managed = ["app-security-shell==0.4.6", "redis==8.1.0", "node-agent-local-shell-transport==0.1.9"]
 
 [tool.setuptools.packages.find]
 include = ["shadify_api*"]

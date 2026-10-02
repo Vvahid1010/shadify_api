@@ -240,7 +240,7 @@ source tests alone do not establish that old wheel as deployable.
 
 Candidate proof command (2026-10-02; owner source is under independent review):
 `PYTHONPATH=/tmp/node-reporter-settings-main/backend .venv/bin/python -m unittest discover -s tests -q`
-Result:43tests passed. node_agent_transport_dependency.json records exact public
+Result:44tests passed. node_agent_transport_dependency.json records exact public
 candidate adapter file hashes separately from the previous0.1.8 wheel receipt.
 Do not confuse those source hashes with a validated replacement wheel. The
 builder rejects any transport wheel without local_uds and still requires the
@@ -285,3 +285,24 @@ The regressions both fail on c142c53e with HTTP200 instead of503. All43 focused
 tests pass with the fix and pip check is clean. Corrected publication awaits the
 requested bounded review; the replacement transport wheel remains separately
 pending. No live Redis/DB/R2/cloud/VM/credential/grant effect occurred.
+
+
+## Reviewed transport packaging completed
+
+The exact replacement node-agent-local-shell-transport0.1.9 wheel has received
+the owner's bounded Astra PASS. The pinned wheel SHA256 is
+0a7566754891f473b025c3781646599225b251cf6d6b6b15e0adc4c956e853cf;
+reproducible source digest is
+213c52c172a5ba57cde617ee410e9630a74dbfe53ceca29e31b86291f5b112fc.
+node_agent_transport_dependency.json preserves the full build receipt including
+the source-digest rule, all10module hashes, packaging recipe hashes and pinned
+build dependencies. The builder verifies the exact wheel/version/hash, embedded
+provenance and all module bytes; no old0.1.8 substitution is accepted. Retained
+historical releases still verify with their original hash manifests; a release
+declaring the transport dependency requires its provenance document.
+
+The accepted5d082a3 API admission/recovery implementation is unchanged. Run the
+focused test suite without PYTHONPATH overrides against the installed reviewed
+wheel. Corrected package proof is offline acquisition/hash/installation/startup
+and synthetic Auth/ingress/replay behavior; live deployment, real Auth/DB/R2 and
+private replay allocation/grant remain pending separately.

@@ -61,3 +61,10 @@ does not confer readiness. No changes to shared WSL or live VM were made.
 For offline combined native proof, install the test extras into the isolated
 venv (cryptography 50.0.2 and pqcrypto 1.0.0) and run unittest discovery. These
 fixture generators are not included in the production offline wheel package.
+
+
+The reviewed transport is now pinned0.1.9 with a full public build receipt in
+node_agent_transport_dependency.json. The offline package carries the exact
+reviewed wheel and its hashed lock. API source tests now use that installed wheel
+directly; no owner source-path overlay is required. Live configuration and Unix
+socket/replay ownership grants remain Node Agent's separate activation scope.

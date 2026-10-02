@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 
 RUNTIME = {"kind":"python", "python_minor":"3.14", "platform":"linux", "architecture":"x86_64"}
 ROOT_FILES = {"requirements.txt", "pyproject.toml", "management_schema.json", "config_overlays.json", "app_security_dependency.json", "node_agent_transport_dependency.json"}
-REQUIRED = {"source/" + name for name in ROOT_FILES} | {"source/shadify_api/main.py", "source/shadify_api/runtime.py",
+REQUIRED = {"source/" + name for name in ROOT_FILES - {"node_agent_transport_dependency.json"}} | {"source/shadify_api/main.py", "source/shadify_api/runtime.py",
     "source/migrations/001_media_foundation.sql", "source/migrations/002_user_profile_track_drafts.sql", "requirements.lock"}
 
 
@@ -57,4 +57,7 @@ def verify(root, source):
             raise ValueError("invalid_package_file")
         actual.add(name)
     if actual!=files.keys():raise ValueError("manifest_inventory_mismatch")
+    if "node-agent-local-shell-transport==" in (root/"source/requirements.txt").read_text():
+        if "source/node_agent_transport_dependency.json" not in files:
+            raise ValueError("missing_transport_provenance")
     return data

@@ -54,6 +54,15 @@ def build(root,wheels,output,source):
                 with zipfile.ZipFile(wheel) as transport_archive:
                     if "node_agent_local_shell_transport/local_uds.py" not in transport_archive.namelist():
                         raise ValueError("shadify_local_transport_missing")
+                    receipt=transport_dependency["build_receipt"]
+                    embedded=json.loads(transport_archive.read("node_agent_local_shell_transport/_source_provenance.json"))
+                    if (transport_dependency["wheel_status"]!="reviewed_exact_artifact"
+                            or embedded!={k:v for k,v in receipt.items() if k not in {"wheel","wheel_sha256"}}
+                            or sha(json.dumps(receipt["source_files"],sort_keys=True,separators=(",",":")).encode())!=transport_dependency["source_sha256"]):
+                        raise ValueError("canonical_transport_provenance_mismatch")
+                    for file,digest in receipt["source_files"].items():
+                        if file.startswith("backend/") and sha(transport_archive.read(file.removeprefix("backend/")))!=digest:
+                            raise ValueError("canonical_transport_source_mismatch")
                 if version!=transport_dependency["version"] or sha(wheel.read_bytes())!=transport_dependency["wheel_sha256"]:
                     raise ValueError("canonical_transport_wheel_mismatch")
             seen[normalized]=version

@@ -34,6 +34,17 @@ class NativePackageTests(unittest.TestCase):
             (root/"source/shadify_api/main.py").write_bytes(b"changed")
             with self.assertRaises(ValueError):verify(root,source)
 
+    def test_declared_transport_requires_provenance_and_legacy_retention_still_verifies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source="a"*40;manifest=package(root,source)
+            # Retained historical releases predate the transport dependency.
+            verify(root,source)
+            raw=b"node-agent-local-shell-transport==0.1.9\n"
+            (root/"source/requirements.txt").write_bytes(raw)
+            manifest["files"]["source/requirements.txt"]={"size":len(raw),"sha256":sha(raw)}
+            (root/"build-info.json").write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError,"missing_transport_provenance"):verify(root,source)
+
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;package(root,source)
