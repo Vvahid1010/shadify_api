@@ -1,5 +1,5 @@
 fastapi==0.142.2
-uvicorn==0.54.0
+uvicorn==0.53.0
 boto3==1.43.107
 psycopg[binary]==3.3.6
 httpx==0.28.1

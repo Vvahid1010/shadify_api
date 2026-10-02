@@ -240,7 +240,7 @@ source tests alone do not establish that old wheel as deployable.
 
 Candidate proof command (2026-10-02; owner source is under independent review):
 `PYTHONPATH=/tmp/node-reporter-settings-main/backend .venv/bin/python -m unittest discover -s tests -q`
-Result:38tests passed. node_agent_transport_dependency.json records exact public
+Result:41tests passed. node_agent_transport_dependency.json records exact public
 candidate adapter file hashes separately from the previous0.1.8 wheel receipt.
 Do not confuse those source hashes with a validated replacement wheel. The
 builder rejects any transport wheel without local_uds and still requires the
@@ -250,3 +250,9 @@ The replay reader currently accepts protected password-bearing loopback redis://
 or remote rediss:// URLs. A private Unix replay URL is not yet an assigned owner
 contract and is not silently substituted. If the owner selects a Unix allocation,
 coordinate its exact protected URL/ACL interface before connected activation.
+
+
+Runtime Uvicorn is pinned0.53.0, within the existing transport wheel's declared
+>=0.37,<0.54 support range. Offline candidate tests pass with that pin and
+pip check finds no broken requirements. This does not supply or approve the
+missing replacement transport wheel.
