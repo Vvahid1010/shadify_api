@@ -25,3 +25,40 @@ def create_binding(projection, directory, replay_factory=None):
     return AppSecurityBinding(snapshot_provider=lambda: projection,
                               directory_provider=lambda: str(directory),
                               receiver_catalog=receiver_catalog(), replay_factory=replay_factory)
+
+
+class ManagedReceiver:
+    """Thin wiring to the owner-supplied canonical local Unix adapter."""
+    def __init__(self, binding, document, policy, bounds):
+        from node_agent_local_shell_transport.managed_uds import install_configured_receiver
+        if type(document) is not dict or document.get("profile") != "local_unix_v1":
+            raise ValueError("Shadify local Unix receiver required")
+        self.binding, self.bounds, self.active = binding, bounds, True
+        self.channel = install_configured_receiver(binding, document, policy,
+                              clock_bounds=bounds.clock_ready, storage_bounds=bounds.storage_ready)
+        from node_agent_local_shell_transport.local_uds import LocalUnixBinding
+        if type(self.channel) is not LocalUnixBinding:
+            raise ValueError("Shadify local Unix adapter unavailable")
+
+    def current(self):
+        # Immutable process-owned selection, compared to the actual native
+        # context. No request-supplied selector or fabricated digest is accepted.
+        try:
+            native = self.binding.acquire()
+            return (self.active and native.status()[:2] == ("shadify_api", self.channel.recipient_app_instance_id)
+                    and native.revisions() == [(self.channel.connection_id, self.channel.policy_revision, self.channel.policy_digest)])
+        except Exception:
+            return False
+
+    def http_protocol(self, *args, **kwargs):
+        from node_agent_local_shell_transport.local_uds import ingress_protocol
+        return ingress_protocol(self.channel, current=self.current)(*args, **kwargs)
+
+    def readiness(self):
+        return {"managed_ingress": "installed" if self.current() else "selection_unavailable",
+                "clock_bounds": "ready" if self.bounds.clock_ready() else "unavailable",
+                "replay_storage_bounds": "ready" if self.bounds.storage_ready() else "unavailable"}
+
+    def close(self):
+        self.active = False
+        self.bounds.close()

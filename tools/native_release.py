@@ -21,6 +21,7 @@ def build(root,wheels,output,source):
     dirty=subprocess.check_output(["git","status","--porcelain","--untracked-files=no"],cwd=root)
     if actual!=source or dirty:raise ValueError("source_not_clean_and_pinned")
     names=subprocess.check_output(["git","ls-files","-z"],cwd=root).decode().split("\0")
+    transport_dependency=json.loads((root/"node_agent_transport_dependency.json").read_text())
     dependency=json.loads((root/"app_security_dependency.json").read_text())
     with tempfile.TemporaryDirectory(prefix="shadify-native-build-") as temporary:
         dest=Path(temporary)
@@ -49,6 +50,12 @@ def build(root,wheels,output,source):
                 expected=dependency["source_validation_wheel"]
                 if version!=dependency["package_version"] or wheel.name!=expected["filename"] or sha(wheel.read_bytes())!=expected["sha256"]:
                     raise ValueError("canonical_shell_wheel_mismatch")
+            if normalized=="node-agent-local-shell-transport":
+                with zipfile.ZipFile(wheel) as transport_archive:
+                    if "node_agent_local_shell_transport/local_uds.py" not in transport_archive.namelist():
+                        raise ValueError("shadify_local_transport_missing")
+                if version!=transport_dependency["version"] or sha(wheel.read_bytes())!=transport_dependency["wheel_sha256"]:
+                    raise ValueError("canonical_transport_wheel_mismatch")
             seen[normalized]=version
             shutil.copyfile(wheel,dest/"wheels"/wheel.name)
             lock.append(f"{name}=={version} --hash=sha256:{sha(wheel.read_bytes())}")

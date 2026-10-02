@@ -1,5 +1,9 @@
 """Explicit native composition. No migrations, listeners, cloud probes or secret discovery."""
 import os
+import asyncio
+import hashlib
+import secrets
+import time
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr
@@ -9,7 +13,7 @@ from .config import load_protected_json, load_database_config, load_storage_conf
 from .domain import DomainService
 from .media import MediaService
 from .repository import PostgresMediaRepository
-from .security import create_binding
+from .security import create_binding, ManagedReceiver
 from .storage import R2Storage
 
 
@@ -20,9 +24,10 @@ class RuntimeConfig(BaseModel):
     storage_file: Literal["storage.credentials.json"] = "storage.credentials.json"
     app_security: dict
     app_security_binding: dict
+    app_security_transport: dict | None = None
 
 
-def replay_factory(directory):
+def replay_address(directory):
     """Canonical ON replay on the assigned existing Redis allocation; no queue."""
     value = load_protected_json(directory / "replay.credentials.json")
     if set(value) != {"url"} or type(value["url"]) is not str:
@@ -32,7 +37,11 @@ def replay_factory(directory):
     if (url.scheme not in {"redis", "rediss"} or not url.hostname or not url.password
             or (url.scheme == "redis" and url.hostname not in {"localhost", "127.0.0.1", "::1"})):
         raise ValueError("Replay allocation requires protected credentials and remote TLS")
-    address = SecretStr(value["url"])
+    return SecretStr(value["url"])
+
+
+def replay_factory(directory, address=None):
+    address = address or replay_address(directory)
     def factory(instance, clock_bounds, storage_bounds):
         from redis.asyncio import Redis
         from app_security_shell.replay import RedisReplayStore
@@ -46,6 +55,7 @@ def replay_factory(directory):
 
 def create_runtime_app(directory: Path, *, binding=None):
     directory = Path(directory)
+    receiver = None
     try:
         config = RuntimeConfig.model_validate(load_protected_json(directory / "shadify_api.config.json"))
         profile = load_protected_json(directory / "app_profile.json")
@@ -56,9 +66,20 @@ def create_runtime_app(directory: Path, *, binding=None):
             database = load_database_config(directory / config.database_file)
             repository = PostgresMediaRepository(database.connect)
         if binding is None:
-            factory = replay_factory(directory) if (directory / "replay.credentials.json").exists() else None
+            address = replay_address(directory) if (directory / "replay.credentials.json").exists() else None
+            factory = replay_factory(directory, address) if address is not None else None
             projection = {"app_security": config.app_security, "app_security_binding": config.app_security_binding}
             binding = create_binding(projection, directory, factory)
+            if config.app_security_transport is not None:
+                if address is None:
+                    raise ValueError("Protected replay allocation required for managed receiver")
+                from .replay_bounds import LocalReplayBounds
+                bounds = LocalReplayBounds(address.get_secret_value())
+                try:
+                    receiver = ManagedReceiver(binding, config.app_security_transport, config.app_security, bounds)
+                except Exception:
+                    bounds.close()
+                    raise
     except Exception:
         raise RuntimeError("Shadify runtime configuration invalid; values redacted") from None
     # Storage can remain absent during Auth/profile/database preparation. Never read
@@ -70,27 +91,44 @@ def create_runtime_app(directory: Path, *, binding=None):
             if repository is not None:
                 service = MediaService(repository, R2Storage(storage), storage.max_upload_bytes, storage.upload_ttl_seconds)
         except Exception:
+            if receiver is not None:
+                receiver.close()
             raise RuntimeError("Shadify storage configuration invalid; values redacted") from None
 
-    def readiness():
+    async def readiness():
         checks = {"authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
                   "storage": "configured_unverified" if service else "missing"}
+        checks.update(await asyncio.to_thread(receiver.readiness) if receiver is not None else {"managed_ingress": "missing",
+                      "clock_bounds": "unavailable", "replay_storage_bounds": "unavailable"})
         if repository is not None:
             try:
-                repository.ready()
+                await asyncio.to_thread(repository.ready)
                 checks["database"] = "schema_ready"
             except Exception:
                 pass
+        checks["replay_admission"] = "unavailable"
+        if (checks["authentication"] == "Active" and receiver is not None
+                and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"):
+            try:
+                # A disposable probe uses the canonical reservation/recovery gate;
+                # no business dispatch, release, bespoke replay logic or background job.
+                now = int(time.time())
+                await binding.reserve(hashlib.sha256(secrets.token_bytes(32)).hexdigest(), now + 1, now)
+                checks["replay_admission"] = "ready"
+            except Exception:
+                checks["replay_admission"] = "recovering_or_unavailable"
         ready = (checks["authentication"] == "Active" and checks["database"] == "schema_ready"
-                 and service is not None)
+                 and service is not None and checks["managed_ingress"] == "installed"
+                 and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
+                 and checks["replay_admission"] == "ready")
         # Metadata can be served independently while overall upload readiness is
         # pending. Configured storage remains explicitly unverified cloud access.
         return ready, checks
 
     from .main import create_app
     return create_app(service, require_account, domain=DomainService(repository) if repository else None,
-                      repository=repository, binding=binding, readiness=readiness)
+                      repository=repository, binding=binding, readiness=readiness, receiver=receiver)
 
 
 def app_factory():
@@ -110,3 +148,11 @@ def _entrypoint():
 
 
 app = _entrypoint()
+
+
+def http_protocol(*args, **kwargs):
+    """Node Agent's fixed Uvicorn --http shadify_api.runtime:http_protocol target."""
+    receiver = getattr(app.state, "managed_receiver", None)
+    if receiver is None:
+        raise RuntimeError("Shadify local receiver configuration required")
+    return receiver.http_protocol(*args, **kwargs)

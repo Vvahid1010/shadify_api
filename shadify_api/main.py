@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import inspect
 from typing import Callable
 from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -15,16 +16,26 @@ def require_identity():
 
 
 def create_app(service: MediaService | None = None, identity: Callable = require_identity,
-               *, domain=None, repository=None, binding=None, readiness=None):
+               *, domain=None, repository=None, binding=None, readiness=None, receiver=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
+            if binding is not None:
+                try:
+                    await binding.ready()
+                except Exception:
+                    pass  # Liveness survives missing/invalid projection; admission stays closed.
             yield
         finally:
             if binding is not None:
-                await binding.close()
+                try:
+                    await binding.close()
+                finally:
+                    if receiver is not None:
+                        receiver.close()
 
     app = FastAPI(title="Shadify API", version="0.2.0", lifespan=lifespan)
+    app.state.managed_receiver = receiver
     if binding is not None:
         from app_security_shell.receiver import GuardedASGI
         app.state.app_security = binding
@@ -58,11 +69,12 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return {"status": "ok", "service": "shadify-api", "mode": "foundation"}
 
     @app.get("/health/ready")
-    def ready():
+    async def ready():
         if readiness is None:
             return JSONResponse(status_code=503, content={"status": "pending_integration"})
         try:
-            available, checks = readiness()
+            result = readiness()
+            available, checks = await result if inspect.isawaitable(result) else result
         except Exception:
             available, checks = False, {"runtime": "unavailable"}
         return JSONResponse(status_code=200 if available else 503,

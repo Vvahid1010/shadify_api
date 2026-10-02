@@ -29,7 +29,9 @@
     "entrypoint": "shadify_api.runtime:app",
     "health_path": "/health",
     "ready_path": "/health/ready",
-    "workers": []
+    "workers": [],
+    "http_protocol": "shadify_api.runtime:http_protocol",
+    "transport_profile": "local_unix_v1"
   },
   "native_connection_contract": {
     "version": 1,

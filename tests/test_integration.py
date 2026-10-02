@@ -151,6 +151,28 @@ class DatabaseAndRuntimeTests(unittest.TestCase):
                 self.assertEqual(response.status_code,503)
                 self.assertEqual(response.json()["checks"]["database"],"missing")
                 self.assertEqual(response.json()["checks"]["storage"],"missing")
+                self.assertEqual(response.json()["checks"]["managed_ingress"],"missing")
+                self.assertEqual(response.json()["checks"]["replay_admission"],"unavailable")
+
+
+    def test_active_policy_alone_cannot_make_runtime_ready(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            for name,value in {"shadify_api.config.json":{"app_security":{"local":{"app_id":"shadify_api"}},"app_security_binding":{}},
+                               "app_profile.json":{"schema_version":1,"app":"shadify_api"}}.items():
+                path=directory/name;path.write_text(json.dumps(value));path.chmod(0o600)
+            from shadify_api.security import create_binding
+            binding=create_binding({"app_security":{"local":{"app_id":"shadify_api"}},"app_security_binding":{}},directory)
+            binding.status=Mock(return_value={"state":"Active"})
+            from unittest.mock import AsyncMock
+            binding.ready=AsyncMock();binding.close=AsyncMock();binding.reserve=AsyncMock()
+            app=create_runtime_app(directory,binding=binding)
+            with TestClient(app) as client:
+                response=client.get("/health/ready")
+                self.assertEqual(response.status_code,503)
+                self.assertEqual(response.json()["checks"]["authentication"],"Active")
+                self.assertEqual(response.json()["checks"]["managed_ingress"],"missing")
+            binding.reserve.assert_not_called()
 
     def test_wrong_app_profile_or_shell_identity_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:

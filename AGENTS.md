@@ -138,5 +138,5 @@ confirmed protected runtime route; do not request values in chat or read them.
 See local_bootstrap.md and docs/API_FOUNDATION.md for app-owned exact filenames,
 endpoints, validation and remaining real Auth/DB/R2/VM proof. The canonical shell
 authenticates complete admitted requests; this app has no standalone HMAC crypto
-fork. Any independent assertion-verifier requirement must be coordinated with
-the existing canonical provider before connection enrollment.
+fork. Canonical shell admission is the accepted identity trust boundary; no independent
+assertion HMAC verifier is required.

@@ -49,3 +49,15 @@ Absolute protected paths, DB, peer/transport/checkpoint and replay/clock bounds
 remain unassigned prerequisites. No startup migration or cloud probe exists.
 Health /health is liveness; /health/ready reports pending DB/binding/R2 configuration
 without claiming real storage proof. Details/checklist: docs/API_FOUNDATION.md.
+
+
+Managed receiver installation prerequisites are specified in
+docs/API_FOUNDATION.md (Local Unix ingress and readiness correction): immutable
+app_security_transport in the existing protected config; standard
+local_uds.ingress_protocol(channel, current=callback) via runtime:http_protocol on the fixed Unix listener; assigned protected
+replay.credentials.json; working chronyc and bounded standalone replay Redis.
+Node Agent owns that listener/projection/installation. Main policy Active alone
+does not confer readiness. No changes to shared WSL or live VM were made.
+For offline combined native proof, install the test extras into the isolated
+venv (cryptography 50.0.2 and pqcrypto 1.0.0) and run unittest discovery. These
+fixture generators are not included in the production offline wheel package.

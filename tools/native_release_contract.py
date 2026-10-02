@@ -6,7 +6,7 @@ import stat
 from pathlib import PurePosixPath
 
 RUNTIME = {"kind":"python", "python_minor":"3.14", "platform":"linux", "architecture":"x86_64"}
-ROOT_FILES = {"requirements.txt", "pyproject.toml", "management_schema.json", "config_overlays.json", "app_security_dependency.json"}
+ROOT_FILES = {"requirements.txt", "pyproject.toml", "management_schema.json", "config_overlays.json", "app_security_dependency.json", "node_agent_transport_dependency.json"}
 REQUIRED = {"source/" + name for name in ROOT_FILES} | {"source/shadify_api/main.py", "source/shadify_api/runtime.py",
     "source/migrations/001_media_foundation.sql", "source/migrations/002_user_profile_track_drafts.sql", "requirements.lock"}
 

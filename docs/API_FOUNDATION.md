@@ -47,12 +47,8 @@ provide a separate standalone assertion-HMAC verifier. A raw browser assertion,
 identity header, loopback address or config flag never establishes identity.
 The source-default `main:app` has no identity override and remains closed.
 
-This is the canonical shell-admitted identity model, not permission to route raw
-Authentication HTTP directly. If the integration owner requires independently
-verifying the assertion HMAC as well, the existing canonical reusable verifier
-must be provided; it is not exported by app-security-shell, and app-local legacy
-crypto must not be copied into Shadify. Confirm that boundary during connection
-enrollment. Authentication/backend and Node Agent source are unchanged here.
+The accepted identity boundary is canonical shell admission; no separate HMAC
+verifier is required. Authentication/backend source remains unchanged here.
 
 Native transport, root-selected connection/checkpoint, peer identity, keys and
 healthy replay/clock bounds remain Node Agent-owned. The existing canonical ON
@@ -182,3 +178,75 @@ and map an approved owned artist. User privately supplies R2 settings in the
 confirmed protected route. Only then run one tiny supported upload and prove CORS,
 signature/type/length enforcement, overwrite rejection, expiry, ownership and
 private/draft completion. Public-media/cache checks remain separate.
+
+
+## Local Unix ingress and readiness correction
+
+Node Agent's sealed adapter contract is local_unix_v1, not managed_nginx. The
+API calls managed_uds.install_configured_receiver(binding, document, app_security,
+clock_bounds=real_callback, storage_bounds=real_callback) and retains its returned
+LocalUnixBinding. Canonical local_uds.ingress_protocol(channel, current=callback)
+checks real SO_PEERCRED for na-authentication, exact channel commitments and
+current selection before creating typed evidence. GuardedASGI clears any forged
+admission marker and verifies the complete Authentication request; no independent
+assertion HMAC verifier or copied transport/crypto is required.
+
+Protected shadify_api.config.json includes exact app_security_transport shape:
+{"profile":"local_unix_v1","role":"receiver","channels":{
+"<connection-UUID>":{"node_id":"<B-UUID>",
+"sender_app_instance_id":"<Authentication-instance-UUID>",
+"recipient_app_instance_id":"<Shadify-instance-UUID>","generation":1,
+"record_sha256":"<approved-local-record-sha256>","policy_revision":1,
+"policy_digest":"<actual-native-context-transport-binding-digest>"}}}.
+Node Agent supplies these exact values. They cannot be fabricated or selected
+by a browser. The current callback compares the immutable process channel with
+the actual native recipient status and connection revision/digest and becomes false on shutdown or mismatch.
+Configuration changes require the owner-controlled process lifecycle.
+
+Serve runtime:app with Uvicorn --http shadify_api.runtime:http_protocol on the
+fixed /run/node-agent-shadify-api/receiver.sock. Ordinary H11 cannot create peer
+evidence and business routes deny. Owner-selected directory0750/socket0660,
+na-shadify-api owner/node_shadify_api_local group and na-authentication sender
+are private grants distinct from the approved public frontend connector grant.
+This API change provisions none of them.
+
+The app follows the established local chronyc/ClockContinuity and Redis INFO
+bounds checks: standalone master, no replicas/cluster/loading, noeviction,
+positive memory bound and no AOF. Run-id/eviction epoch changes invalidate a
+warmed store. The assigned protected replay.credentials.json supplies the URL;
+no service, queue, background observer or Node Agent business gate is added.
+
+Lifespan initializes canonical policy without DB/R2/Redis contact. Readiness
+requires Active policy, current installed local adapter, healthy bounds,
+successful canonical disposable replay reservation, PostgreSQL schema and
+storage configuration. The readiness reservation touches only the app replay
+namespace and expires normally (at most62seconds); no business dispatch occurs.
+Canonical151-second recovery remains enforced and returns readiness503 while
+recovering. Configured storage remains explicitly configured_unverified; this
+is not real R2 or real end-to-end Authentication/VM acceptance.
+
+tests/test_managed_ingress.py executes the exact local Unix protocol and native
+ON shell through require_account to /api/me. SO_PEERCRED return and Redis command
+backend are synthetic; crypto, policy, complete-message verification, recovery
+and replay enforcement are canonical. It denies forged header/admission marker,
+wrong UID/commitment/current selection, tampering, ON replay and bad clock bounds.
+No listener, live Redis/DB/R2, operational credential, VM effect or grant occurs.
+
+Package prerequisite: the previously approved transport0.1.8 wheel lacks local_uds.
+Owner-reviewed transport source and immutable wheel/version/hash receipt are
+required before corrected connected-release packaging/publication. Candidate
+source tests alone do not establish that old wheel as deployable.
+
+
+Candidate proof command (2026-10-02; owner source is under independent review):
+`PYTHONPATH=/tmp/node-reporter-settings-main/backend .venv/bin/python -m unittest discover -s tests -q`
+Result:38tests passed. node_agent_transport_dependency.json records exact public
+candidate adapter file hashes separately from the previous0.1.8 wheel receipt.
+Do not confuse those source hashes with a validated replacement wheel. The
+builder rejects any transport wheel without local_uds and still requires the
+exact assigned version/hash receipt; corrected build publication remains blocked.
+
+The replay reader currently accepts protected password-bearing loopback redis://
+or remote rediss:// URLs. A private Unix replay URL is not yet an assigned owner
+contract and is not silently substituted. If the owner selects a Unix allocation,
+coordinate its exact protected URL/ACL interface before connected activation.
