@@ -49,6 +49,14 @@ It allows Shadify to:
 
 Do not use a global "Cache Everything" rule on the primary Shadify application as a substitute for this separation.
 
+The accepted single host is media.shadify.org for versioned public audio, video,
+artwork and previews. Configure it as an R2 Custom Domain on the separate public
+derived-delivery bucket, not as a Cloudflare Tunnel hostname. Private originals/
+drafts remain in their private bucket; never attach that bucket to the public
+domain. The selected main VM app host is shadify.org; dev.shadify.org remains WSL.
+User owns Cloudflare activation. No DNS, bucket, tunnel or public grant has been
+created by the API source work.
+
 ## 4. Cache mental model
 
 Upload and cache are different operations.

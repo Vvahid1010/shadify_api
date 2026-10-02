@@ -191,7 +191,7 @@ class ConfigTests(unittest.TestCase):
             path.chmod(0o600)
             link = Path(directory)/"link"
             link.symlink_to(path)
-            with self.assertRaises(OSError):
+            with self.assertRaises((OSError, ValueError)):
                 load_storage_config(link)
 
     def test_endpoint_ttl_placeholder_and_redacted_errors(self):

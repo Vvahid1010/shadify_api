@@ -1,74 +1,51 @@
-# Shadify API native WSL contract
+# Shadify API native development and package contract
 
-Authoritative source: `/srv/Coding_space/shadify_api` on Ubuntu ext4.
-Toolchain: native WSL Python >=3.12, FastAPI/Uvicorn, psycopg and boto3.
-Runtime: source-only, inactive. There is no Shadify API managed venv, unit,
-listener, database assignment or credential directory installed. Do not start
-an ad hoc service or reuse another application's runtime/identity.
+Source: `/srv/Coding_space/shadify_api` on Ubuntu WSL ext4. Toolchain: native
+Python 3.14. The ignored repo-local `.venv` is for isolated tests/build preparation.
+No Shadify API managed WSL venv, unit, listener, DB or credentials are installed.
+Do not start an ad hoc service. Shared WSL runtime remains owned by
+`/srv/Coding_space/Topology_bootstrap-/local/wsl`.
 
-Shared runtime owner: `/srv/Coding_space/Topology_bootstrap-/local/wsl`.
-Its manifest, systemd/nginx templates, protected configuration and installation
-workflow own activation. Node Agent integration remains a later coordinated step.
+Node B is the selected VM placement for Shadify app/Authentication/API. Node Agent
+owns installation, lifecycle and manual/switchable automatic GitHub updates.
+App hostname is shadify.org; dev.shadify.org remains WSL. Candidate WSL port 24002
+is a historical unreserved proposal, not a VM or runtime assignment. No port,
+database placement or cross-app credentials are silently reused.
 
-## Coordinated activation proposal (not installed)
-
-- Stable downstream/proxy app identity: `shadify_api` (distinct from Mizfood).
-- Domain app: `shadify`, coordinated with the Authentication/frontend owner.
-- Candidate loopback receiver: `127.0.0.1:24002`, observed unused 2026-10-01;
-  recheck/reserve in shared manifest before use. Native app-security mTLS shell
-  transport must be integrated before exposing this receiver through Authentication.
-- Liveness: `GET /health`; readiness: `GET /health/ready`. Liveness is process
-  evidence only. Readiness currently returns 503, including when dependencies
-  are injected, because no live Authentication/PostgreSQL/R2 check exists yet.
-- Logical ASGI app: `shadify_api.main:app`; default instance deliberately has
-  no cloud/database wiring and rejects upload endpoints with 503.
-- Browser upload-session routes should go through the existing same-origin
-  Authentication proxy. Proposed downstream paths: `POST /api/media/uploads`
-  and `POST /api/media/uploads/{asset_id}/complete`. Final ingress prefix and
-  canonical app-security binding belong to the parent/shared topology owner.
-
-Authentication's `domain_apps.shadify.proxy_app` needs a separately registered
-`proxy_apps.shadify_api`, its canonical outbound destination/endpoint binding,
-and a distinct Shadify app profile/assertion registry. Identity dependency must
-use the pinned canonical shared verifier and validate purpose/audience, domain,
-session/account, expiry and transport. Do not copy crypto or trust raw headers.
-The existing Authentication service is unchanged by this foundation.
-
-## Local verification without runtime activation
-
-An isolated source-local `.venv` now exists for explicitly authorized dependency
-and offline SDK validation. It is ignored by Git and is not a managed application
-runtime. No other application's venv was changed. Python 3.14.4 and the exact
-26 API/test dependency versions are recorded in `requirements.lock`.
-
-From this source directory in Ubuntu:
+## Repeatable local checks
 
 ```bash
 .venv/bin/python -m pip check
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -v
+env -u CREDENTIALS_DIRECTORY PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-For a fresh isolated environment, use the exact validated pins from trusted PyPI:
+Registry dependency versions are in requirements.lock. Canonical private native
+shell 0.4.6 is supplied separately using the exact producer-approved wheel/provenance
+in app_security_dependency.json; do not fetch a public same-name substitute.
+All checks use synthetic files/identities or stubbed reads, not deployed secrets.
+The non-failing Starlette httpx TestClient deprecation warning is known.
+
+## Native release
+
+Catalog shadify-api; app/package shadify_api. Existing runtime format: Python 3.14,
+Linux x86_64; source/ plus offline wheels/, hash requirements.lock, canonical
+build-info.json. The release includes SQL migrations but never auto-applies them.
+Build only from the exact clean committed source and a validated complete wheelhouse:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip --isolated install -r requirements.lock
-.venv/bin/python -m pip --isolated install --index-url https://pypi.org/simple --no-deps -e .
+.venv/bin/python tools/native_release.py --source <full-main-commit> --wheels <prepared-wheelhouse> --output <new-archive-path>
+.venv/bin/python tools/publish_native_release.py --source <published-main-commit> --archive <verified-archive-path>
 ```
 
-Latest validation: 19 tests pass; pip check reports no broken requirements.
-The real installed boto3/botocore signer validates PutObject parameters locally,
-including signed content-length, content-type and if-none-match headers.
-SDK HeadObject/GetObject models are tested with botocore Stubber, not R2.
-Uvicorn imports the real ASGI target and completes startup/shutdown lifespan
-without binding a listener; database connections and outbound HTTP/network are
-blocked in that check. In-process ASGI liveness is 200, readiness/upload routes
-remain 503 even with forged identity headers. Protected config validation uses
-only synthetic unit-test files. Starlette emits a non-failing httpx TestClient
-deprecation warning; the exact tested versions are pinned.
+Publisher uses the existing three-version build-branch snapshot layout and a normal
+non-force push. It does not activate/update a VM or broaden repository access.
+Node Agent installer compatibility and VM acceptance remain its owner's work.
 
-No managed environment, database migration, R2 request or runtime activation
-occurred. Live Authentication/PostgreSQL/R2 and browser upload proof remain pending.
-
-See `docs/API_FOUNDATION.md` for exact protected storage configuration and the
-pending integration verification sequence.
+Runtime ASGI target: shadify_api.runtime:app with CREDENTIALS_DIRECTORY
+provided by the runtime owner. Protected filenames: shadify_api.config.json,
+app_profile.json, database.credentials.json, storage.credentials.json,
+replay.credentials.json and canonical app_security.credentials.json as applicable.
+Absolute protected paths, DB, peer/transport/checkpoint and replay/clock bounds
+remain unassigned prerequisites. No startup migration or cloud probe exists.
+Health /health is liveness; /health/ready reports pending DB/binding/R2 configuration
+without claiming real storage proof. Details/checklist: docs/API_FOUNDATION.md.

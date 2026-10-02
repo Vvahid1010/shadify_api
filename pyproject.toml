@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shadify-api"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.12"
 dependencies = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "boto3>=1.36,<2", "psycopg[binary]>=3.2,<4"]
 
 [project.optional-dependencies]
 test = ["httpx>=0.28,<1"]
+managed = ["app-security-shell==0.4.6", "redis==8.1.0"]
 
 [tool.setuptools.packages.find]
 include = ["shadify_api*"]

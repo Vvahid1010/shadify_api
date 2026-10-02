@@ -61,7 +61,7 @@ class RealSDKTests(unittest.TestCase):
 class NoDataStartupTests(unittest.TestCase):
     def test_uvicorn_import_and_lifespan_startup_shutdown_without_listener(self):
         async def verify():
-            configuration = uvicorn.Config("shadify_api.main:app", lifespan="on", log_level="warning")
+            configuration = uvicorn.Config("shadify_api.runtime:app", lifespan="on", log_level="warning")
             configuration.load()
             lifespan = LifespanOn(configuration)
             await lifespan.startup()

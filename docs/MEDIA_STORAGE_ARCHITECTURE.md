@@ -39,7 +39,15 @@ A conceptual layout is:
     artwork/users/{user_id}/...
     artwork/moments/{moment_id}/...
 
-Development and production must eventually use separate durable namespaces, preferably separate buckets.
+Development and production use separate durable namespaces, preferably separate buckets.
+
+For public launch, use separate buckets for private originals/drafts and public
+derived delivery assets. The accepted public delivery host media.shadify.org
+binds only to the public delivery bucket through R2 Custom Domain; it is not a
+tunnel route and must not expose the private original bucket. The current upload
+adapter targets the private originals bucket only; it provisions no bucket/domain.
+All initial classes remain on R2 Standard. This is privacy separation, not a new
+storage provider or tier.
 
 ## Originals and delivery
 

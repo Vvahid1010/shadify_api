@@ -35,7 +35,7 @@ class StorageConfig(BaseModel):
         return self
 
 
-def load_storage_config(path: Path) -> StorageConfig:
+def load_protected_json(path: Path) -> dict:
     # Open without following a symlink and check the opened descriptor, avoiding TOCTOU.
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd, "r") as stream:
@@ -44,6 +44,53 @@ def load_storage_config(path: Path) -> StorageConfig:
                 or info.st_uid not in (0, os.geteuid())):
             raise ValueError("Configuration must be an owner-only regular file owned by root or the API user")
         try:
-            return StorageConfig.model_validate(json.load(stream))
+            value = json.load(stream)
+            if not isinstance(value, dict):
+                raise ValueError()
+            return value
         except Exception:
-            raise ValueError("Storage configuration is invalid; values are redacted") from None
+            raise ValueError("Protected configuration is invalid; values are redacted") from None
+
+
+def load_storage_config(path: Path) -> StorageConfig:
+    try:
+        return StorageConfig.model_validate(load_protected_json(path))
+    except Exception:
+        raise ValueError("Storage configuration is invalid; values are redacted") from None
+
+
+class DatabaseConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    host: str = Field(min_length=1)
+    port: int = Field(default=5432, ge=1, le=65535)
+    dbname: str = Field(min_length=1)
+    user: str = Field(min_length=1)
+    password: SecretStr
+    sslmode: Literal["disable", "require", "verify-ca", "verify-full"] = "verify-full"
+    sslrootcert: str | None = None
+
+    @model_validator(mode="after")
+    def validate_assignment(self):
+        # Explicit structured settings; no inherited libpq service/connection URL.
+        if not self.password.get_secret_value().strip():
+            raise ValueError("Database credentials are not configured")
+        if self.sslmode == "disable" and self.host not in {"127.0.0.1", "::1", "localhost"}:
+            raise ValueError("Remote PostgreSQL requires TLS")
+        return self
+
+    def connect(self):
+        import psycopg
+        options = {"host": self.host, "port": self.port, "dbname": self.dbname,
+                   "user": self.user, "password": self.password.get_secret_value(),
+                   "sslmode": self.sslmode, "connect_timeout": 5,
+                   "options": "-c statement_timeout=10000 -c lock_timeout=5000"}
+        if self.sslrootcert:
+            options["sslrootcert"] = self.sslrootcert
+        return psycopg.connect(**options)
+
+
+def load_database_config(path: Path) -> DatabaseConfig:
+    try:
+        return DatabaseConfig.model_validate(load_protected_json(path))
+    except Exception:
+        raise ValueError("Database configuration is invalid; values are redacted") from None

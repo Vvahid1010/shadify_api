@@ -109,20 +109,34 @@ If the media storage contract changes, update docs/MEDIA_STORAGE_ARCHITECTURE.md
 If media hostname, cache, access or abuse-protection behavior changes, update docs/MEDIA_DELIVERY_CACHE_SECURITY.md in the same change.
 
 
-## Implemented source foundation (2026-10-01)
+## Current API implementation (2026-10-02)
 
-The operator explicitly authorized initial API/R2 preparation. Source lives at
-`/srv/Coding_space/shadify_api` on Ubuntu ext4; use WSL-native Python >=3.12.
-No managed local API venv, unit, listener or database is installed. Source-only
-status grants no ad hoc runtime activation. See `local_bootstrap.md` and
-`docs/API_FOUNDATION.md` for tests, exact protected configuration and the proposed
-distinct Authentication proxy identity. Default uploads fail closed; no real
-R2, database, media delivery, processing or entitlement proof exists yet.
-Coordinate shared topology/Auth changes with their owner; do not enroll
-Shadify as Mizfood or copy shared crypto/framework code.
+The operator authorized authenticated API/PostgreSQL/R2 integration and scoped
+normal publication. Source is /srv/Coding_space/shadify_api on Ubuntu WSL ext4;
+use native Python 3.14 and the isolated source-local .venv. No managed WSL API
+service, database, migration or cloud resource has been activated.
 
-An explicitly authorized isolated source-local `.venv` now exists for offline
-SDK/framework tests only (not a managed runtime). Use its native Python for
-validation; `requirements.lock` pins the tested dependencies. Nineteen offline
-tests and pip check pass, including real SDK local signing and no-listener
-Uvicorn lifespan startup. These checks prove no live R2/database/Auth integration.
+Current scope: canonical shell-admitted Authentication identity, Shadify user
+projection, already-owned artist draft tracks, private original upload issuance/
+completion and metadata. Artist eligibility/enrollment remains undefined; do not
+infer artist ownership or create grants from a browser or Authentication role.
+No playback/publishing/payment/entitlement/worker expansion is authorized here.
+
+Node Agent owns installation/update/lifecycle on selected Node B, catalog
+shadify-api, app identity shadify_api. It owns protected config/profile and native
+transport/connection/checkpoint/replay projections. Do not modify Node Agent,
+shared WSL topology or Authentication independently. Package only the existing
+Python3.14 Linux x86_64 source/offline-wheel/hash-manifest shape; source and build
+publication use normal non-force pushes scoped to this repository.
+
+shadify.org is the accepted VM app hostname; dev.shadify.org remains WSL.
+media.shadify.org is the accepted single R2 Custom Domain delivery host, never a
+tunnel route. Public derived delivery uses a separate bucket; originals/drafts
+remain private. User owns Cloudflare/R2 setup and supplies keys through the
+confirmed protected runtime route; do not request values in chat or read them.
+
+See local_bootstrap.md and docs/API_FOUNDATION.md for app-owned exact filenames,
+endpoints, validation and remaining real Auth/DB/R2/VM proof. The canonical shell
+authenticates complete admitted requests; this app has no standalone HMAC crypto
+fork. Any independent assertion-verifier requirement must be coordinated with
+the existing canonical provider before connection enrollment.

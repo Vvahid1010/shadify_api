@@ -1,5 +1,5 @@
-# Exact API/test dependency versions validated on Ubuntu WSL Python 3.14.4.
-# Install from trusted PyPI in the dedicated .venv; no application editable path is locked here.
+# Exact registry dependencies validated on native Python 3.14.
+# Canonical private shell wheel is supplied separately and pinned in app_security_dependency.json.
 --index-url https://pypi.org/simple
 annotated-doc==0.0.5
 annotated-types==0.8.0
@@ -20,6 +20,7 @@ psycopg-binary==3.3.6
 pydantic==2.13.5
 pydantic_core==2.46.5
 python-dateutil==2.9.0.post0
+redis==8.1.0
 s3transfer==0.19.2
 six==1.17.0
 starlette==1.7.0
