@@ -82,7 +82,13 @@ class CombinedIngressTests(unittest.TestCase):
     def test_real_shell_identity_tamper_peer_forgery_and_on_replay(self):
         asyncio.run(self.run_combined())
 
-    async def run_combined(self):
+    def test_readiness_first_run_change_preserved_marker_lost_reservations(self):
+        asyncio.run(self.run_combined(epoch_change="run_id"))
+
+    def test_readiness_first_eviction_change_preserved_marker_lost_reservations(self):
+        asyncio.run(self.run_combined(epoch_change="evicted_keys"))
+
+    async def run_combined(self, epoch_change=None):
         with tempfile.TemporaryDirectory() as temporary,patch("node_agent_local_shell_transport.local_uds.pwd.getpwnam",return_value=Mock(pw_uid=1001)), \
              patch("socket.socket.connect",side_effect=AssertionError("network prohibited")), \
              patch("socket.socket.bind",side_effect=AssertionError("listener prohibited")), \
@@ -106,6 +112,14 @@ class CombinedIngressTests(unittest.TestCase):
             def factory(instance,clock,storage):
                 return RedisReplayStore(redis,"app-security:replay:"+instance,clock,storage_bounds=storage,monotonic=lambda:ticks[0]),close
             bounds=Mock();bounds.clock_ready.return_value=True;bounds.storage_ready.return_value=True
+            if epoch_change is not None:
+                from shadify_api.replay_bounds import LocalReplayBounds
+                with patch("shadify_api.replay_bounds.Redis.from_url",return_value=Mock()):
+                    bounds=LocalReplayBounds("redis://:synthetic@127.0.0.1")
+                bounds.clock_ready=Mock(return_value=True)
+                info=dict(run_id="a"*40,evicted_keys=0,role="master",connected_slaves=0,cluster_enabled=0,
+                          loading=0,aof_enabled=0,maxmemory_policy="noeviction",maxmemory=1048576)
+                bounds.client.info.return_value=info
             channel=dict(node_id=a["node_id"],sender_app_instance_id=a["app_instance_id"],
                          recipient_app_instance_id=b["app_instance_id"],generation=1,record_sha256="a"*64,
                          policy_revision=1,policy_digest=sender.transport_binding(connection)[5])
@@ -153,6 +167,31 @@ class CombinedIngressTests(unittest.TestCase):
                     self.assertEqual(checked.status_code,503) # R2 deliberately absent.
                     self.assertEqual(checked.json()["checks"]["replay_admission"],"ready")
                     self.assertEqual(checked.json()["checks"]["storage"],"missing")
+                    if epoch_change is not None:
+                        # Lose reservations but keep the real canonical marker token.
+                        markers={key:value for key,value in redis.values.items() if key.endswith(":continuity")}
+                        self.assertEqual(len(markers),1)
+                        self.assertGreater(len(redis.values),len(markers))
+                        redis.values.clear();redis.values.update(markers)
+                        info[epoch_change]="b"*40 if epoch_change=="run_id" else 1
+                        observed=await http.get("http://fixture/health/ready") # First consumer after epoch change.
+                        self.assertEqual(observed.status_code,503)
+                        self.assertEqual(observed.json()["checks"]["replay_storage_bounds"],"unavailable")
+                        self.assertEqual(redis.values,markers) # Never reset/change the continuity marker.
+                        self.assertEqual((await call(http,first.wire())).status_code,503)
+                        self.assertEqual(observed.json()["checks"]["replay_admission"],"recovering_or_unavailable")
+                        self.assertEqual(repo.project_user.call_count,1)
+                        ticks[0]=302 # Only150seconds since renewed recovery started at152.
+                        self.assertEqual((await call(http,first.wire())).status_code,503)
+                        self.assertEqual(repo.project_user.call_count,1)
+                        self.assertEqual(redis.values,markers)
+                        ticks[0]=303
+                        recovered=ticket()
+                        result=await call(http,recovered.wire())
+                        self.assertEqual(result.status_code,200,result.text)
+                        self.assertEqual(repo.project_user.call_count,2)
+                        for key,value in markers.items():self.assertEqual(redis.values[key],value)
+                        return
                     self.assertEqual((await call(http,first.wire())).status_code,503)
                     fresh=ticket()
                     self.assertEqual((await call(http,fresh.wire(),{"x-node-agent-local-generation":"2"})).status_code,403)

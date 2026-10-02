@@ -240,7 +240,7 @@ source tests alone do not establish that old wheel as deployable.
 
 Candidate proof command (2026-10-02; owner source is under independent review):
 `PYTHONPATH=/tmp/node-reporter-settings-main/backend .venv/bin/python -m unittest discover -s tests -q`
-Result:41tests passed. node_agent_transport_dependency.json records exact public
+Result:43tests passed. node_agent_transport_dependency.json records exact public
 candidate adapter file hashes separately from the previous0.1.8 wheel receipt.
 Do not confuse those source hashes with a validated replacement wheel. The
 builder rejects any transport wheel without local_uds and still requires the
@@ -256,3 +256,32 @@ Runtime Uvicorn is pinned0.53.0, within the existing transport wheel's declared
 >=0.37,<0.54 support range. Offline candidate tests pass with that pin and
 pip check finds no broken requirements. This does not supply or approve the
 missing replacement transport wheel.
+
+
+## Replay continuity review correction
+
+The c142c53e readiness path could consume LocalReplayBounds' one-shot Redis
+run/eviction epoch failure before canonical binding.reserve observed it. If the
+continuity marker survived but reservations were lost, the warmed canonical
+store could remain usable without renewed recovery. That source is not approved
+for connected activation.
+
+Readiness now attempts canonical admission first whenever current policy is
+Active. Bounds callbacks record their result only while being consumed by the
+canonical binding/store. ManagedReceiver.readiness reports those results without
+calling stateful observers. A false epoch observation therefore invalidates the
+canonical warm store before readiness returns. Subsequent true observations
+cannot bypass its unchanged151-second recovery gate. No marker reset, new replay
+logic, recovery relaxation or transport/Authentication change is introduced.
+
+Two combined regressions use the real LocalReplayBounds storage observer,
+canonical RedisReplayStore/native ON shell/local Unix ingress and runtime reader.
+After a successful warm request they retain the marker, discard reservations,
+change run_id or evicted_keys, query readiness first, then replay the request.
+Both deny dispatch immediately and at150seconds of renewed recovery, preserving
+the marker; a fresh request succeeds at151seconds. Synthetic monotonic time and
+Redis command/kernel peer fixtures avoid real waits, listeners or services.
+The regressions both fail on c142c53e with HTTP200 instead of503. All43 focused
+tests pass with the fix and pip check is clean. Corrected publication awaits the
+requested bounded review; the replacement transport wheel remains separately
+pending. No live Redis/DB/R2/cloud/VM/credential/grant effect occurred.

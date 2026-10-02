@@ -99,17 +99,8 @@ def create_runtime_app(directory: Path, *, binding=None):
         checks = {"authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
                   "storage": "configured_unverified" if service else "missing"}
-        checks.update(await asyncio.to_thread(receiver.readiness) if receiver is not None else {"managed_ingress": "missing",
-                      "clock_bounds": "unavailable", "replay_storage_bounds": "unavailable"})
-        if repository is not None:
-            try:
-                await asyncio.to_thread(repository.ready)
-                checks["database"] = "schema_ready"
-            except Exception:
-                pass
         checks["replay_admission"] = "unavailable"
-        if (checks["authentication"] == "Active" and receiver is not None
-                and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"):
+        if checks["authentication"] == "Active" and receiver is not None and receiver.current():
             try:
                 # A disposable probe uses the canonical reservation/recovery gate;
                 # no business dispatch, release, bespoke replay logic or background job.
@@ -118,6 +109,14 @@ def create_runtime_app(directory: Path, *, binding=None):
                 checks["replay_admission"] = "ready"
             except Exception:
                 checks["replay_admission"] = "recovering_or_unavailable"
+        checks.update(receiver.readiness() if receiver is not None else {"managed_ingress": "missing",
+                      "clock_bounds": "unavailable", "replay_storage_bounds": "unavailable"})
+        if repository is not None:
+            try:
+                await asyncio.to_thread(repository.ready)
+                checks["database"] = "schema_ready"
+            except Exception:
+                pass
         ready = (checks["authentication"] == "Active" and checks["database"] == "schema_ready"
                  and service is not None and checks["managed_ingress"] == "installed"
                  and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
