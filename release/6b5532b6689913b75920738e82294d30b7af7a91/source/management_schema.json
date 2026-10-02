@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "app": "shadify_api",
+  "managed_contract": {
+    "version": 1,
+    "app": "shadify_api",
+    "settings": [],
+    "credentials": {
+      "kind": "object",
+      "label": "Installer-owned protected resources",
+      "properties": {
+        "resources": {
+          "kind": "string",
+          "label": "Assigned by installer",
+          "secret": false,
+          "required": false,
+          "constant": "installer_owned"
+        }
+      }
+    },
+    "connections": "native"
+  },
+  "native_runtime": {
+    "mode": "native_unbound",
+    "config_credential": "shadify_api.config.json",
+    "profile_credential": "app_profile.json",
+    "resource_ownership": "installer",
+    "connections": "native",
+    "entrypoint": "shadify_api.runtime:app",
+    "health_path": "/health",
+    "ready_path": "/health/ready",
+    "workers": []
+  },
+  "native_connection_contract": {
+    "version": 1,
+    "profile": "node-agent-shared-shell-v1",
+    "checkpoint": "root_selected_native_v1"
+  },
+  "app_security_contract": {
+    "contract_revision": 2,
+    "dependency": {
+      "schema_version": 1,
+      "wallet_commit": "59df5406a5277df057e0260c84746414431052d8",
+      "source_directory": "security_shell",
+      "source_sha256": "c0ff8ac71e8f16d99686708c424ba7f13ccac26c3fa59e3dc2ec1c1497558842",
+      "package_version": "0.4.6",
+      "protocol_version": 1,
+      "adoption_contract_revision": 2,
+      "binding_schema_version": 1,
+      "source_validation_wheel": {
+        "filename": "app_security_shell-0.4.6-cp314-cp314-manylinux_2_38_x86_64.whl",
+        "sha256": "76ce252adac72132e6ea820629ca53c5b4ee711ce9909cbf40f3ca2d432ac225"
+      }
+    },
+    "receiver_catalog": [
+      {
+        "endpoint_id": "shadify_api.me.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/me",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/tracks",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/artists/{artist_id}/tracks",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.media.upload.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/media/uploads",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.media.upload.complete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/media/uploads/{asset_id}/complete",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.media.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/media/{asset_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      }
+    ],
+    "credential_file": "app_security.credentials.json",
+    "settings_paths": [
+      "app_security",
+      "app_security_binding"
+    ],
+    "extra_encryption_default": true,
+    "endpoint_overrides": []
+  }
+}
