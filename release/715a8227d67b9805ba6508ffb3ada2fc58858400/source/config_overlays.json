@@ -1,0 +1,24 @@
+{
+  "app_id": "shadify_api",
+  "database_file": "database.credentials.json",
+  "storage_file": "storage.credentials.json",
+  "app_security": {
+    "contract_version": 1,
+    "extra_encryption_default": true,
+    "credentials_file": "app_security.credentials.json",
+    "credential_snapshot_sha256": "",
+    "local": {
+      "node_id": "",
+      "app_id": "shadify_api",
+      "app_instance_id": "",
+      "generation": 0
+    },
+    "connections": [],
+    "endpoint_overrides": []
+  },
+  "app_security_binding": {
+    "schema_version": 1,
+    "destinations": [],
+    "outbound_endpoints": []
+  }
+}

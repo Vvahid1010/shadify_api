@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "wallet_commit": "59df5406a5277df057e0260c84746414431052d8",
+  "source_directory": "security_shell",
+  "source_sha256": "c0ff8ac71e8f16d99686708c424ba7f13ccac26c3fa59e3dc2ec1c1497558842",
+  "package_version": "0.4.6",
+  "protocol_version": 1,
+  "adoption_contract_revision": 2,
+  "binding_schema_version": 1,
+  "source_validation_wheel": {
+    "filename": "app_security_shell-0.4.6-cp314-cp314-manylinux_2_38_x86_64.whl",
+    "sha256": "76ce252adac72132e6ea820629ca53c5b4ee711ce9909cbf40f3ca2d432ac225"
+  }
+}

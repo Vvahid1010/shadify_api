@@ -1,0 +1,35 @@
+{
+  "distribution": "node-agent-local-shell-transport",
+  "version": "0.1.9",
+  "source_sha256": "213c52c172a5ba57cde617ee410e9630a74dbfe53ceca29e31b86291f5b112fc",
+  "wheel_sha256": "0a7566754891f473b025c3781646599225b251cf6d6b6b15e0adc4c956e853cf",
+  "required_profile": "local_unix_v1",
+  "wheel_status": "reviewed_exact_artifact",
+  "build_receipt": {
+    "build_dependencies": {
+      "setuptools": "84.0.0",
+      "wheel": "0.48.0"
+    },
+    "distribution": "node-agent-local-shell-transport",
+    "schema_version": 1,
+    "source_digest_rule": "sha256 of utf8 sorted compact json of relative_path to file_sha256",
+    "source_files": {
+      "backend/node_agent_local_shell_transport/__init__.py": "978d4aa3380bc5bd57dd5521b51a7584af95e2d53f9d5a551ef5c32866038ac5",
+      "backend/node_agent_local_shell_transport/ingress.py": "f04d548e2cce1fa4727398d42d9e8aeaa74a6f42a2b055d7e6948948ec980f77",
+      "backend/node_agent_local_shell_transport/local_uds.py": "56851348c0650013bce4999b714ec526dc1766da0917ef7ab3e8615d62acd4d4",
+      "backend/node_agent_local_shell_transport/managed_binding.py": "11d8590af5749243f5a5fa29a8614e39b8ddb5ec88607f07aa10e7920eb1a9a5",
+      "backend/node_agent_local_shell_transport/managed_bounds.py": "478ed78ba513d843967c069dfa828d6846f3c5dc359116acc8fa2faefdbe5092",
+      "backend/node_agent_local_shell_transport/managed_uds.py": "703bc25061136b2a2c55a6a839e79777dadaf65df01143846444114ae8f09c03",
+      "backend/node_agent_local_shell_transport/preflight.py": "d10b28d4db48c5d900ed39a76db377f7f1b65c68715a9e63dada5511423387d6",
+      "backend/node_agent_local_shell_transport/projection.py": "277e3a949a59393d199de12f5969f5795093ef02bbae878572dd438ed8affa1b",
+      "backend/node_agent_local_shell_transport/serve.py": "840c4fc72a59d4d3d8146626e303acdb5c3be7b8833620b1bbfa41d906c059e4",
+      "backend/node_agent_local_shell_transport/transport.py": "29cdd302700dcca174ab4b53647d883630c5ad2236ebc8a5abb13ac4ea53c206",
+      "packaging/local-shell-transport/build_wheel.py": "b2a18ea2fb129950d4c77d493bd2cd3ea592015e8b7c1676cf3094ff27f4df5c",
+      "packaging/local-shell-transport/pyproject.toml": "a7c29b14995a7b0d5f371da8bba7df56f530d365d7bce67ea666d3dd28c748bb"
+    },
+    "source_sha256": "213c52c172a5ba57cde617ee410e9630a74dbfe53ceca29e31b86291f5b112fc",
+    "version": "0.1.9",
+    "wheel": "node_agent_local_shell_transport-0.1.9-py3-none-any.whl",
+    "wheel_sha256": "0a7566754891f473b025c3781646599225b251cf6d6b6b15e0adc4c956e853cf"
+  }
+}
