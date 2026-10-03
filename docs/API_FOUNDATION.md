@@ -133,6 +133,11 @@ missing; R2 configuration is optional for this initial slice. Media stays503
 without storage and checks.scope=profile_database makes the readiness scope explicit;
 configured_unverified is expressly not R2/network/bucket/CORS proof. No media worker
 or payment dependency is invented as a readiness gate.
+This readiness scope covers user/artist-page/content metadata management. It does
+not prove operational playback, guest ingress, processing, video/profile uploads,
+payments/entitlements, followers, a live session or an admin grant. Self-profile
+editing has no endpoint; admin public-profile editing is a separate interface.
+See the artist contract for the qualified source/package and live cutover limits.
 
 ## Phase 1 private signed delivery
 

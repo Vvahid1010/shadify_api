@@ -18,7 +18,7 @@
       "target": "new_page",
       "action": "create_unassigned_page",
       "expected": "allowed",
-      "invariant": "no membership; draft; actor audited",
+      "invariant": "no membership; draft; actual actor in response; no persistent creation audit event",
       "local_test": "test_admin_unassigned_curated_page_and_official_moments"
     },
     {

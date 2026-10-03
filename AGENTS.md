@@ -151,3 +151,14 @@ publication and verification stay independent. Isolated database tests/migration
 scripts are allowed; live migrations, grants, cloud effects and shared topology
 changes require separately coordinated authority. Frontend work is limited to
 documentation references; the other owner retains UI/session integration.
+
+
+## Current continuation boundary (2026-10-03)
+
+The parent narrowed continuation to local documentation corrections and final
+handoff only. No push, source/build publication or deployment is authorized; do
+not retry the rejected publication delegation without explicit parent approval.
+Astra limited PASS applies to implementation053d93bc. Documentation corrections
+must not add runtime features, live migrations/grants, secret reads or topology
+effects. Current readiness and qualified artifact/rollback limits are recorded in
+docs/ARTIST_PROFILES_AND_ACCESS.md; a new docs commit is not the old artifact source.

@@ -3,8 +3,11 @@
 Status: Stage 1 accepted with corrections by independent Astra review
 `01a10343-cde5-76e5-a121-fd46c7f91471`, relayed by parent on 2026-10-03.
 This is the single source of truth for the authorized artist-page backend mission.
-Stages 2 and 3 have met isolated source acceptance. Stage 4 source regression
-checks pass; native candidate qualification is recorded separately below.
+Stages 2–4 have met local source/package acceptance at reviewed implementation
+commit `053d93bc9b145871fae4895d6bcbadf4dd565bef`. Independent Astra limited PASS
+applies to that exact implementation, not operational activation. This continuation
+corrects documentation/acceptance metadata only; no publication or deployment is
+authorized. Explicit parent approval is required before any publication retry.
 The implementation ledger distinguishes tested source behavior from operational integration.
 
 ## Evidence and scope
@@ -107,7 +110,10 @@ Lock the stable artist row in a transaction; verify actor/admin, expected owner
 and target identity; revoke old membership, insert new membership if any, and
 append audit before commit. Unique-index enforcement also protects direct races.
 A stale expected owner returns 409. Audit records immutable event ID, artist ID,
-actual actor, action, old/new owner account IDs and UTC timestamp. No credentials,
+actual actor, action, old/new owner account IDs and UTC timestamp. Persistent
+ownership audit rows cover assign/transfer/revoke only. Unassigned page creation
+identifies the actual actor in its response but does not persist a creation audit
+row; response actor context is not persistent audit evidence. No credentials,
 tokens or contact/security fields in audit. Failure rolls back the whole change.
 Preserve IDs, slug, works, follower references and object keys. No payout, purchase
 history, copyright or entitlement changes are implied by a transfer.
@@ -161,7 +167,9 @@ key. Use composite target_id/artist_id constraints where possible and authoritat
 scope checks for every reference. Disallow ownership/page reassignment in generic
 content edits. Public user-profile administration exposes only these public
 Shadify fields and cannot inspect another account's security or contact data.
-Self-profile editing is separate from artist administration and never grants access.
+There is no self-profile editing endpoint in this candidate. `/api/me` reads
+the identity projection; admin public-profile editing is not a self-service edit
+interface and must not be used as one by the frontend.
 
 Reuse frontend section IDs `featured`, `songs`, `video`, `moments`, `bio`, `tour`.
 `merch` is reserved/unsupported, not a commerce feature. Return section availability
@@ -331,14 +339,15 @@ PostgreSQL for transactional assertions and the API for scope/DTO checks:
 - Revocation or user tombstone preserves page/content/audit; no destructive FK
   cascade. Reserved commerce/video/profile upload features stay unavailable.
 
-Actual results, 2026-10-03: Stage 1 documentation and 22 pending acceptance inputs
-prepared; JSON parses and scoped diff whitespace checks pass. Existing source
-suite rerun with `.venv/bin/python -m unittest discover -s tests -v`: **52 passed**,
-including managed admission/replay and stubbed S3 signing/inspection. No real cloud
-or operational database was used. These are baseline regressions, not proof of
-the new artist cases. Stage 2 isolated data/authority acceptance is met; Stage 3 core API acceptance is met; Stage 4 complete regression/package handoff remains pending. Remaining integration decisions: schema/package cutover handling and public
-guest/catalog owner enrollment. The bounded verified-target rule was accepted. Real cloud, VM, admin bootstrap and central
-deletion-sync checks remain pending regardless of local test results.
+Stage 1 history: documentation and 22 acceptance inputs were prepared; the
+then-existing baseline suite passed 52 tests. The inputs now map to local test
+coverage. Stages 2–4 local acceptance is complete: final source and fresh offline
+packaged suites each passed **72 tests**, with clean dependency checks. The local
+candidate receipt records exact implementation commit053d93bc and schema target005.
+These results establish tested code/metadata-management behavior, not live
+application operation. Real cloud/VM, schema/package cutover, trusted admin
+bootstrap, central deletion/revocation synchronization and guest enrollment remain
+pending. The bounded previously-observed-identity rule was accepted.
 
 ### Stage 2 evidence (2026-10-03)
 
@@ -408,8 +417,14 @@ No operational cutover, partial upgrade or auto-migration is authorized here.
 
 The owner must review coordinated schema/package selection, canonical provenance
 preparation for any existing owners (003 then genuine trusted observation, never
-row-only guessed backfill), 004/005 application and rollback strategy. A legacy
-row without proof stops cutover. Empty test databases take 001..005 in order.
+row-only guessed backfill) and 004/005 application with matching schema005 package.
+Before any live cutover, require a validated database backup and an explicitly
+reviewed restore/rollback procedure, including a matching old package and schema.
+004 drops `artists.owner_id`; reverting application code alone cannot restore
+compatibility with the old package. The restore plan must cover the schema/data
+boundary and post-backup writes; do not imply lossless automatic rollback. No
+live backup, migration, restore or code rollback was performed or authorized here.
+A legacy row without proof stops cutover. Empty test databases take 001..005 in order.
 Trusted admin bootstrap is separately operator-controlled: existing observed
 identity, reviewed grant/provenance, no HTTP grant path and no real grant from tests.
 New route enrollment requires Authentication/Node Agent owner review; current
@@ -442,14 +457,22 @@ artifact tests. A former mocked SQL-string test was replaced by real isolated
 database authority/SQL-binding proof; baseline behavior changes are intentional
 404 private denials, membership authority and capability-aware draft DTOs.
 
-Native candidate qualification uses the existing 29-wheel offline hash install
-and unchanged reviewed shell0.4.6/transport0.1.9/Uvicorn0.53.0. When completed,
-exact commit/archive/manifest digests, 005 target, file inventory and measured
-packaged test count are recorded in ignored
-`.build-tools/artist-access-offline-proof.json`; absence of that receipt means
-qualification is incomplete. Candidate archive path:
-`.build-tools/shadify-api-artist-access.tar.gz`. This is a local review artifact;
-no GitHub source/build push or Node Agent installation follows automatically.
+Native candidate qualification completed for exact implementation commit
+`053d93bc9b145871fae4895d6bcbadf4dd565bef`: **72 packaged tests passed** after
+a fresh offline hash install of 29 production wheels; 57 manifest files, target
+`005_artist_content`, packaged SQL matching tested source, clean pip check and
+blocked socket/database/cloud startup-side-effect proof. Reviewed
+shell0.4.6/transport0.1.9/Uvicorn0.53.0 are unchanged. Exact evidence:
+`.build-tools/artist-access-offline-proof.json`; archive:
+`.build-tools/shadify-api-artist-access.tar.gz`.
+
+Archive SHA256: `5e0aae0666ef14ac776453119bed6a83ac0373456e09355d1242d6329b1d3255`.
+Manifest SHA256: `fbed3ea1e39da85d08b0d09e69bc099251d63cea3316d5c05caa5024dd6b9b74`.
+Documentation/acceptance-metadata corrections do not change packaged runtime,
+schema, catalog, dependencies or build inputs. The existing archive/proof remain
+pinned to053d93bc; a later documentation commit must not be presented as its
+source. Any future exact-head artifact rebuild/publication requires separately
+authorized scope; nothing was rebuilt or published for this correction.
 
 Simplest next verification: independent source/candidate review, then replay the
 isolated test commands. Any operational follow-up must separately approve exact
@@ -457,3 +480,20 @@ schema/package selection and canonical endpoint enrollment; privately supplied
 R2 configuration and a tiny real upload are later integration proof, not local
 test claims. The frontend documentation reference17f5f07 was published by its
 owner through selector commitf18c3a6; API work did not re-push/reconstruct it.
+
+
+### Exact readiness and audit limits
+
+`/health/ready` retains `scope=profile_database`: structural schema005 compatibility
+plus the current canonical receiver, clock/replay bounds and admission/recovery
+gate for user/artist-page/content metadata management. It does not prove any admin
+grant or artist enrollment, a real user session, deployed guest ingress, processing,
+video/profile media uploads, operational playback, purchase/payment/entitlement or
+follower functionality. Storage may be missing while this scope is ready; a
+configured adapter remains `configured_unverified`, never real R2 proof. Existing
+original upload support still requires its own protected storage and real-cloud
+verification. Video metadata management does not imply a video upload pipeline.
+Self-profile editing has no endpoint. Ownership audit persists assignment,
+transfer and revocation only; creation returns actor context without a persistent
+creation audit event. No new audit, readiness, feature or endpoint was added by
+this documentation correction.

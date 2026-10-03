@@ -75,12 +75,18 @@ selection must review 003 provenance preparation, 004 guarded owner backfill and
 ready() performs read-only SELECT LIMIT0 across required artist/content/authority
 columns. Exact schema/activation prerequisites have one source in the artist contract. This app DB target is not
 Node Agent's own schema version or another app's database.
+Any approved live schema005/package cutover must first have a validated database
+backup and reviewed restore plan covering schema/data and post-backup writes.
+004 removes artists.owner_id, so old application code alone is not a rollback.
+No live migration/backup/restore or grant is authorized by this documentation.
 
 GET /health is process liveness200; no listeners/cloud/DB probes at startup.
 GET /health/ready scope=profile_database requires Active canonical policy/current
 local receiver, healthy real clock/Redis bounds, canonical replay reservation
 outside151-second recovery and schema compatibility. R2 may remain missing while
-that scope is ready200. Missing schema, wrong peer, lost continuity or recovery
+that scope is ready200. The scope is page/content metadata management, not
+operational playback, guest ingress, processing, video/profile uploads, payments
+or followers. No self-profile edit endpoint exists. Missing schema, wrong peer, lost continuity or recovery
 keeps readiness503. Media upload endpoints remain503 without storage even after
 successful native admission. Storage configured_unverified is never real R2 proof.
 Profile GET projects a stable Shadify user for the admitted Auth account and

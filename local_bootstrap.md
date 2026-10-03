@@ -50,8 +50,11 @@ app_profile.json, database.credentials.json, storage.credentials.json,
 replay.credentials.json and canonical app_security.credentials.json as applicable.
 Absolute protected paths, DB, peer/transport/checkpoint and replay/clock bounds
 remain unassigned prerequisites. No startup migration or cloud probe exists.
-Health /health is liveness; /health/ready reports pending DB/binding/R2 configuration
-without claiming real storage proof. Details/checklist: docs/API_FOUNDATION.md.
+Health /health is liveness. /health/ready scope=profile_database checks canonical
+admission and schema005 for page/content metadata management; optional storage is
+missing or configured_unverified, not real R2 proof. It does not establish playback,
+guest ingress, processing, video/profile uploads, payments or followers. Self-profile
+editing has no endpoint. Details/checklist: docs/ARTIST_PROFILES_AND_ACCESS.md.
 
 
 Managed receiver installation prerequisites are specified in
