@@ -101,6 +101,32 @@ class ArtistApiTests(ArtistPostgresCase):
         for patch in ({'verified':True},{'owner_id':'owner-a'},{'is_artist':True},{'publish_state':'published'},{'admin':True}):
             self.assertEqual(self.client.patch(self.page_path(),json=patch).status_code,422)
 
+    def test_empty_artist_list_reports_current_admin_creation_capability(self):
+        # Existing synthetic grant/test DB only; no operational bootstrap or grant.
+        with self.connect() as c:
+            c.execute('DELETE FROM shadify_artists')
+        self.actor='admin'
+        response=self.client.get('/api/me/artists')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['pages'],[])
+        self.assertTrue(response.json()['acting_as_admin'])
+        self.assertEqual(response.json()['capabilities'],{'create_artist':True})
+        self.actor='listener'
+        response=self.client.get('/api/me/artists')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['pages'],[])
+        self.assertFalse(response.json()['acting_as_admin'])
+        self.assertEqual(response.json()['capabilities'],{'create_artist':False})
+        # Revocation must also remove the top-level ability on the next request.
+        with self.connect() as c:
+            c.execute('UPDATE shadify_admin_grants SET revoked_at=clock_timestamp()')
+        self.actor='admin'
+        response=self.client.get('/api/me/artists')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertFalse(response.json()['acting_as_admin'])
+        self.assertEqual(response.json()['capabilities'],{'create_artist':False})
+        self.assertEqual(self.client.post('/api/admin/artists',json={'slug':'denied-page','name':'Denied'}).status_code,403)
+
     def test_identity_assignment_proof_and_canonical_observer(self):
         with self.connect() as c:
             user=uuid4()

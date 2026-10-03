@@ -230,7 +230,7 @@ no-store in this initial scope; no new caching framework.
 | --- | --- |
 | GET /api/artists/{artist_id}/public | Filtered published metadata; draft/suspended absent, no membership IDs, audit, original keys, private assets or signed URL. |
 | GET /api/artist-slugs/{slug}/public | Same filtered projection via normalized unique slug. |
-| GET /api/me/artists | All currently manageable pages; one person may own several; bounded pagination; actual actor and computed per-page capabilities. Admin scope may explicitly include unassigned pages. |
+| GET /api/me/artists | All currently manageable pages; one person may own several; bounded pagination; top-level actual actor, acting_as_admin and capabilities.create_artist even when pages is empty; computed per-page capabilities. Admin includes unassigned pages. |
 | POST /api/admin/artists | Admin creates unassigned draft page; supplied owner/admin flags rejected. |
 | GET/PATCH /api/admin/users/{user_id}/profile | Admin reads/edits existing user's public Shadify profile fields only; no account lookup directory, contact/security access or identity creation. |
 | GET /api/artists/{artist_id} | Current owner's/admin's private page and capabilities. |
@@ -247,6 +247,13 @@ no-store in this initial scope; no new caching framework.
 | GET/PATCH/DELETE /api/artists/{artist_id}/{resource}/{id} | Scoped private read/edit/delete; reference/dependency conflicts reject deletion, no artist cascade. |
 | PUT /api/artists/{artist_id}/{resource}/{id}/publication | Shared technical/publication checks for tracks/releases/videos/Moments; events are validated calendar metadata following page visibility and use cancellation instead. |
 | POST /api/media/uploads; POST /api/media/uploads/{id}/complete; GET /api/media/{id} | Existing interfaces, now current page authority rather than uploader authority; no key substitution or unrelated media read. |
+
+`GET /api/me/artists` additionally returns top-level `acting_as_admin` and
+`capabilities: {"create_artist": <boolean>}` from the same current locked app-admin
+authority. These remain present when `pages` is empty, allowing an authorized
+admin to discover page creation without an existing page. Listener/owner-only or
+revoked admin identities receive false. No new endpoint, directory, grant or
+role inference is added; POST /api/admin/artists independently reauthorizes.
 
 Private DTO envelope identifies `actor_account_id`, `artist_id`, `acting_as_admin`
 and computed capabilities such as edit_profile, manage_content, publish_content,
@@ -497,3 +504,20 @@ Self-profile editing has no endpoint. Ownership audit persists assignment,
 transfer and revocation only; creation returns actor context without a persistent
 creation audit event. No new audit, readiness, feature or endpoint was added by
 this documentation correction.
+
+
+### Bounded frontend capability follow-up
+
+Parent-requested correction adds top-level admin context and create_artist
+capability to the existing manageable-page response. No page-list filter or
+endpoint change. A focused isolated test covers zero-page admin, zero-page
+listener and revoked admin; no real admin grant was created. Qualification at
+053d93bc/its 72 packaged tests predates this runtime response change: the existing
+candidate does not contain it and is not a package for this later source commit.
+Native build publication, installation and database preparation remain separate.
+
+Follow-up evidence: `test_artist_api.py` focused discovery returned **12 passed**
+after the capability correction; scoped diff whitespace validation passed. Its
+synthetic existing-grant fixtures are confined to disposable PostgreSQL. No
+operational grant/account/bootstrap tool was added. The earlier full source and
+packaged 72-test evidence remains bound to053d93bc, not this later runtime change.

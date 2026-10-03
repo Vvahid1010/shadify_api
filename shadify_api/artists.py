@@ -114,7 +114,8 @@ class ArtistOperations:
                                'WHERE m.user_id=%s AND m.revoked_at IS NULL AND (%s::uuid IS NULL OR a.id>%s) '
                                'ORDER BY a.id LIMIT %s',(auth.user_id,cursor,cursor,limit+1)).fetchall()
             from dataclasses import replace
-            return {'actor_account_id':actor,'pages':[{'page':{k:self._page(row)[k] for k in ('id','name','slug','publish_state','verified')},
+            return {'actor_account_id':actor,'acting_as_admin':auth.admin,'capabilities':{'create_artist':auth.admin},
+                'pages':[{'page':{k:self._page(row)[k] for k in ('id','name','slug','publish_state','verified')},
                 **replace(auth,artist_id=row['id'],publish_state=row['publish_state']).dto()} for row in rows[:limit]],
                 'next_cursor':str(rows[limit-1]['id']) if len(rows)>limit else None,'availability':AVAILABILITY}
 
