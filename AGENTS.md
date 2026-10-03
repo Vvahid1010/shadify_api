@@ -138,3 +138,16 @@ endpoints, validation and remaining real Auth/DB/R2/VM proof. The canonical shel
 authenticates complete admitted requests; this app has no standalone HMAC crypto
 fork. Canonical shell admission is the accepted identity trust boundary; no independent
 assertion HMAC verifier is required.
+
+## Artist profiles and access mission (2026-10-03)
+
+The operator authorized staged artist-page backend implementation. Read
+docs/ARTIST_PROFILES_AND_ACCESS.md before artist, content or media permission work;
+it is the single contract and implementation-status source. Stage 1 requires the
+parent's independent Astra acceptance before data/authorization or API changes.
+Reuse canonical Authentication and per-page memberships; never infer is_artist,
+admin or durable media access from browser fields or uploader IDs. Ownership,
+publication and verification stay independent. Isolated database tests/migration
+scripts are allowed; live migrations, grants, cloud effects and shared topology
+changes require separately coordinated authority. Frontend work is limited to
+documentation references; the other owner retains UI/session integration.

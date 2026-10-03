@@ -1,0 +1,192 @@
+{
+  "status": "pending_implementation_not_executed",
+  "contract": "docs/ARTIST_PROFILES_AND_ACCESS.md",
+  "actors": [
+    "guest",
+    "listener",
+    "owner_a",
+    "owner_b",
+    "old_owner_a",
+    "new_owner_a",
+    "admin"
+  ],
+  "execution": "API + isolated native PostgreSQL; fake object storage; no cloud or operational DB",
+  "cases": [
+    {
+      "id": "unassigned_create",
+      "actor": "admin",
+      "target": "new_page",
+      "action": "create_unassigned_page",
+      "expected": "allowed",
+      "invariant": "no membership; draft; actor audited"
+    },
+    {
+      "id": "known_assignment",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "assign_verified_listener",
+      "expected": "allowed",
+      "invariant": "same projected user; no account creation"
+    },
+    {
+      "id": "unknown_assignment",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "assign_unknown_or_unverified_identity",
+      "expected": "denied",
+      "invariant": "no user or membership inserted"
+    },
+    {
+      "id": "multiple_pages",
+      "actor": "admin",
+      "target": "page_b",
+      "action": "assign_existing_owner_a",
+      "expected": "allowed",
+      "invariant": "one identity owns page_a and page_b"
+    },
+    {
+      "id": "concurrent_owner",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "race_assign_or_transfer",
+      "expected": "serialized",
+      "invariant": "at most one active owner; stale request 409"
+    },
+    {
+      "id": "cross_private_read",
+      "actor": "owner_b",
+      "target": "page_a",
+      "action": "read_private_page_or_asset",
+      "expected": "404",
+      "invariant": "no target metadata or keys"
+    },
+    {
+      "id": "cross_content_write",
+      "actor": "owner_b",
+      "target": "page_a",
+      "action": "create_edit_delete_publish",
+      "expected": "404",
+      "invariant": "no content mutation"
+    },
+    {
+      "id": "cross_reference",
+      "actor": "owner_a",
+      "target": "page_a",
+      "action": "attach_page_b_asset_track_or_feature",
+      "expected": "denied",
+      "invariant": "no cross-artist join or attachment"
+    },
+    {
+      "id": "transfer_revocation",
+      "actor": "old_owner_a",
+      "target": "page_a",
+      "action": "write_after_transfer_commit",
+      "expected": "404",
+      "invariant": "new owner/admin can manage; stable IDs and keys"
+    },
+    {
+      "id": "completion_transfer_race",
+      "actor": "old_owner_a",
+      "target": "page_a",
+      "action": "complete_paused_across_transfer",
+      "expected": "404",
+      "invariant": "post-inspection state unchanged; no attachment"
+    },
+    {
+      "id": "completion_new_owner",
+      "actor": "new_owner_a",
+      "target": "page_a",
+      "action": "complete_valid_prior_pending_upload",
+      "expected": "allowed",
+      "invariant": "uploader preserved for audit only"
+    },
+    {
+      "id": "completion_repeat",
+      "actor": "old_owner_a",
+      "target": "page_a",
+      "action": "repeat_completed_upload_after_transfer",
+      "expected": "404",
+      "invariant": "idempotence does not skip authorization"
+    },
+    {
+      "id": "failure_write_transfer",
+      "actor": "old_owner_a",
+      "target": "page_a",
+      "action": "mark_upload_failed_after_transfer",
+      "expected": "404",
+      "invariant": "failure transition also reauthorizes"
+    },
+    {
+      "id": "no_owner_escalation",
+      "actor": "owner_a",
+      "target": "page_a",
+      "action": "set_admin_verify_or_unsuspend",
+      "expected": "denied",
+      "invariant": "protected fields and suspension unchanged"
+    },
+    {
+      "id": "independent_states",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "transfer_or_revoke",
+      "expected": "allowed",
+      "invariant": "publication verification and works unchanged; audit atomic"
+    },
+    {
+      "id": "public_filter",
+      "actor": "guest",
+      "target": "page_a",
+      "action": "read_public_projection",
+      "expected": "filtered",
+      "invariant": "only published page/children; no originals private keys or memberships"
+    },
+    {
+      "id": "public_suspended",
+      "actor": "guest",
+      "target": "suspended_page",
+      "action": "read_public_projection",
+      "expected": "404",
+      "invariant": "no suspended content"
+    },
+    {
+      "id": "public_unassigned",
+      "actor": "guest",
+      "target": "published_unassigned_page",
+      "action": "read_public_projection",
+      "expected": "allowed",
+      "invariant": "computed curated_by_shadify true"
+    },
+    {
+      "id": "technical_readiness",
+      "actor": "owner_a",
+      "target": "page_a",
+      "action": "publish_original_only_track_or_video",
+      "expected": "409",
+      "invariant": "upload success is not ready delivery"
+    },
+    {
+      "id": "paid_separation",
+      "actor": "owner_a",
+      "target": "page_a",
+      "action": "play_paid_full_without_entitlement",
+      "expected": "denied",
+      "invariant": "management never grants paid playback"
+    },
+    {
+      "id": "no_cascade",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "revoke_owner_or_tombstone_user",
+      "expected": "allowed",
+      "invariant": "page works media and audit preserved"
+    },
+    {
+      "id": "atomic_audit",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "transfer_with_injected_audit_failure",
+      "expected": "rollback",
+      "invariant": "original owner retained; no partial membership change"
+    }
+  ]
+}
