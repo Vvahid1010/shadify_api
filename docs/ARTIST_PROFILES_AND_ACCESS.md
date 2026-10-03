@@ -1,8 +1,9 @@
 # Artist profiles and access
 
-Status: Stage 1 review candidate, 2026-10-03. This is the single source of truth
-for the authorized artist-page backend mission. Stages 2–4 require the parent's
-independent Astra acceptance of this contract. This document describes proposed
+Status: Stage 1 accepted with corrections by independent Astra review
+`01a10343-cde5-76e5-a121-fd46c7f91471`, relayed by parent on 2026-10-03.
+This is the single source of truth for the authorized artist-page backend mission.
+Stage 2 isolated implementation is authorized; advance stages after their acceptance. This document describes proposed
 behavior unless the implementation ledger explicitly marks it implemented.
 
 ## Evidence and scope
@@ -60,13 +61,16 @@ display name or arbitrary new account. The current Auth API exports self-account
 operations, not a cross-account directory. Proposed bounded initial rule: the
 target must already exist in the Shadify user projection from a successful
 canonical admitted request, must not be locally revoked/tombstoned, and must have
-recorded canonical verification provenance. Assignment never creates a user.
+recorded canonical admission provenance, written only by the trusted server
+admission adapter. An existing shadify_users row alone is insufficient: the old
+projection recorded no provenance. Assignment never creates a user or proof.
 Unknown or unverified targets fail closed. Historical admission does not prove
 the account still exists centrally: automated central deletion/revocation sync
 and a current trusted resolver remain owner-coordinated integration gaps. Do
 not query/import Auth's private database or call its internal service directly.
-Independent review must accept this bounded rule or select an available trusted
-resolver before assignment implementation. A disabled local identity loses
+Astra accepted this previously-observed-identity rule. Every management request
+still requires current valid canonical admission; no immediate central revocation
+claim is possible without trusted synchronization. A disabled local identity loses
 management regardless of membership; locally revoked users cannot self-reactivate
 by another projection. Membership removal and central account deletion are
 distinct operations, neither deletes page content.
@@ -104,8 +108,13 @@ tokens or contact/security fields in audit. Failure rolls back the whole change.
 Preserve IDs, slug, works, follower references and object keys. No payout, purchase
 history, copyright or entitlement changes are implied by a transfer.
 
-All management writes take the same artist row lock and recheck current identity
-and authority within their transaction. Authorization and commit must not be
+All management reads/writes take the same artist row lock and recheck current
+identity and authority within their transaction. They also lock actor/target
+projection rows in sorted account-ID order and the actor's admin-grant row until
+commit. A trusted tombstone or grant revocation updates those rows and therefore
+serializes with the operation; an artist lock alone is insufficient. Grant/identity
+revocation must not reverse this lock order by acquiring artist rows afterward.
+Concurrent revocation tests cover actor, target and admin-grant validity. Authorization and commit must not be
 separate unchecked database operations. After transfer commits, old owner cannot
 read new private state or perform another write. A read authorized before commit
 may have already returned bytes; no retroactive revocation claim. Private read
@@ -115,7 +124,11 @@ responses are no-store. Never cache owner capability as authority.
 ## Data and compatibility contract
 
 Use additive, explicit SQL migrations, manually applied only to an isolated test
-database in this mission. An operational schema/package activation is separately
+database in this mission. 003 adds identity provenance without fabricating it;
+004 cuts over ownership only after actual trusted provenance exists for every
+legacy owner. Missing/ambiguous legacy proof aborts 004 atomically. Existing rows
+alone do not unblock it. Future operational preparation must be explicitly
+coordinated; no source task may manufacture proof to make migration succeed. An operational schema/package activation is separately
 coordinated; startup never runs migrations. Backfill each legacy owner into one
 active membership only when it maps unambiguously to a previously verified local
 canonical user. Abort migration on unresolved legacy owners and report IDs/counts
@@ -174,7 +187,13 @@ or successful upload completion do not prove processing/readiness. Release
 publication requires every included track to satisfy publication readiness; page
 publication filters private child content. Paid metadata can exist without a
 payment engine; paid full playback remains denied without existing entitlement
-proof. Management permission never implies playback entitlement.
+proof. Management permission never implies playback entitlement. Future playback
+projections must also carry authoritative artist page publication status; new URL
+issuance requires the page to be published and not suspended as well as eligible
+track/asset states. Suspension hides children without rewriting their publication
+states. Already issued bearer URLs remain valid until their existing TTL. The
+prepared PlaybackTarget adapter must fail closed when page status is absent;
+this requirement does not activate a playback HTTP route or guest ingress.
 
 Official platform playlists and home rails require app admin authority. Current
 frontend fixtures do not implement these backend resources. Do not add an extra
@@ -312,7 +331,19 @@ prepared; JSON parses and scoped diff whitespace checks pass. Existing source
 suite rerun with `.venv/bin/python -m unittest discover -s tests -v`: **52 passed**,
 including managed admission/replay and stubbed S3 signing/inspection. No real cloud
 or operational database was used. These are baseline regressions, not proof of
-the new artist cases. Stages 2–4 are not implemented. Required
-review decisions: bounded verified-target rule; schema/package cutover handling;
-public guest/catalog owner enrollment. Real cloud, VM, admin bootstrap and central
+the new artist cases. Stage 2 isolated data/authority acceptance is met; Stage 3 API integration and Stage 4 complete handoff remain pending. Remaining integration decisions: schema/package cutover handling and public
+guest/catalog owner enrollment. The bounded verified-target rule was accepted. Real cloud, VM, admin bootstrap and central
 deletion-sync checks remain pending regardless of local test results.
+
+### Stage 2 evidence (2026-10-03)
+
+Migrations 003/004 and `access.py` implement trusted admission provenance,
+non-reactivating local tombstones, single active owner, separate trusted admin
+grants, append-only ownership audit and artist/identity/grant transaction locks.
+`test_artist_postgres.py`: **8 passed** against a fresh native PostgreSQL 18
+instance with private temporary Unix socket, no TCP listener, disposed afterward.
+Proof includes simultaneous assignment + unique index, stale owner/audit rollback,
+old owner denial, actor/target/grant revocation waiting until commit, preservation
+on revocation/tombstone, and legacy row-only cutover abort followed by synthetic
+trusted-observation fixture backfill. No real identity, admin grant or operational
+database was used. Existing routes are integrated in Stage 3, not this milestone.
