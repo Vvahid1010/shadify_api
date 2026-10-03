@@ -68,6 +68,11 @@ The member must have exactly these four fields. Version is integer 1, never a
 boolean or float; roles is exactly [] or ["admin"]. Wrong app, malformed/duplicate
 fields, unknown roles or expired evidence reject the request. An absent member
 means no admin authority while ordinary membership permissions remain available.
+For admin evidence, both admission and every context-freshness recheck enforce
+0 < exp - iat <= 60 seconds, matching the issuer's absolute expiry cap captured
+before the grant read. 60 seconds is valid; 61 or 600 seconds is rejected even
+if otherwise canonically admitted and unexpired. Ordinary non-admin lifetimes
+retain their existing validity rules and are not capped by this admin-only bound.
 An immutable per-request Identity carries account, session, auth level, exact
 audience, issued/expiry times and admin through routes/services/repositories.
 Lost context fails closed; authority is never reconstructed from an account
@@ -583,3 +588,22 @@ receipt remains exclusively tied to053d93bc; exact-source local qualification
 for this consumer is recorded separately in .build-tools/central-admin-offline-proof.json.
 No operational release, migration, central grant or real R2 acceptance follows
 from these source/package checks.
+
+
+### Bounded admin lifetime review correction (2026-10-03)
+
+Independent review accepted context/media/freshness, no local fallback and
+ownership/tombstone/audit behavior, but found that the consumer accepted otherwise
+valid admitted admin evidence longer than the issuer's 60-second contract. This
+bounded correction enforces the lifetime at admission and context validation.
+Boundary tests cover 60-second acceptance, 61/600-second rejection and unchanged
+ordinary non-admin lifetimes. Previous e0be8b53 package/86-test evidence remains
+historical; revised exact-source proof is stored separately in
+.build-tools/central-admin-lifetime-offline-proof.json. No publication, deployment,
+grant, dependency, catalog or schema change is part of this correction.
+
+
+Revised source discovery: **88 passed**, clean pip check and scoped whitespace
+check, 2026-10-03. The two added tests exercise admission and immutable-context
+lifetime boundaries with synthetic admitted evidence; existing real native
+crypto/admission tests are retained. Real Auth issuer/VM/R2 proof remains pending.

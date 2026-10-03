@@ -75,6 +75,38 @@ class CentralAuthorityTests(unittest.TestCase):
         for changes in ({},{"app_authority":self.authority|{"roles":[]}}):
             self.assertFalse(identity_from_admitted_authentication(identity_request(changes=changes)).admin)
 
+    def test_admin_admission_lifetime_60_accepts_61_and_600_reject(self):
+        now=int(time.time())
+        with patch('shadify_api.auth.time.time',return_value=now):
+            accepted=identity_from_admitted_authentication(identity_request(changes={
+                "app_authority":self.authority,"iat":now,"exp":now+60}))
+            self.assertTrue(accepted.admin)
+            for lifetime in (0,-1,61,600):
+                with self.subTest(lifetime=lifetime),self.assertRaises(HTTPException) as error:
+                    identity_from_admitted_authentication(identity_request(changes={
+                        "app_authority":self.authority,"iat":now,"exp":now+lifetime}))
+                self.assertEqual(error.exception.status_code,401)
+            for lifetime in (61,600):
+                for authority in ({},{"app_authority":self.authority|{"roles":[]}}):
+                    identity=identity_from_admitted_authentication(identity_request(changes={
+                        **authority,"iat":now,"exp":now+lifetime}))
+                    self.assertFalse(identity.admin)
+                    self.assertEqual(identity.expires_at,now+lifetime)
+
+    def test_admin_context_lifetime_rechecked_and_nonadmin_unchanged(self):
+        from shadify_api.media import MediaError
+        now=int(time.time())
+        with patch('shadify_api.auth.time.time',return_value=now):
+            context=admitted_actor('admin',issued=now,expires=now+60)
+            self.assertIs(require_fresh_actor(context),context)
+            for lifetime in (0,-1,61,600):
+                with self.subTest(lifetime=lifetime),self.assertRaises(MediaError) as error:
+                    require_fresh_actor(admitted_actor('admin',issued=now,expires=now+lifetime))
+                self.assertEqual(error.exception.status,401)
+            for lifetime in (61,600):
+                context=admitted_actor('owner',issued=now,expires=now+lifetime)
+                self.assertIs(require_fresh_actor(context),context)
+
     def test_malformed_and_wrong_app_authority_rejected(self):
         values=[None,False,[],{},self.authority|{"version":True},self.authority|{"version":1.0},
                 self.authority|{"version":2},self.authority|{"domain_app":"mizfood_com"},

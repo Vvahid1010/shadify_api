@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from fastapi import HTTPException, Request
 
 
+ADMIN_MAX_LIFETIME_SECONDS = 60
+
+
 @dataclass(frozen=True)
 class Identity:
     account_id: str
@@ -37,7 +40,8 @@ def require_fresh_actor(actor: Identity) -> Identity:
             or type(actor.admin) is not bool
             or type(actor.issued_at) is not int or type(actor.expires_at) is not int
             or actor.expires_at <= actor.issued_at or actor.issued_at > now + 60
-            or actor.expires_at <= now):
+            or actor.expires_at <= now
+            or (actor.admin and actor.expires_at - actor.issued_at > ADMIN_MAX_LIFETIME_SECONDS)):
         raise MediaError(401, "Valid admitted Authentication context required")
     for value, maximum in ((actor.account_id, 36), (actor.session_id, 36), (actor.auth_level, 32)):
         if (type(value) is not str or not 1 <= len(value) <= maximum
@@ -116,8 +120,11 @@ def identity_from_admitted_authentication(request: Request) -> Identity:
         if (type(issued) is not int or type(expires) is not int or expires <= issued
                 or issued > now + 60 or expires <= now):
             raise ValueError()
+        admin = app_admin(claims)
+        if admin and expires - issued > ADMIN_MAX_LIFETIME_SECONDS:
+            raise ValueError("Admin assertion lifetime exceeds contract")
         return Identity(claims["account_id"], claims["session_id"], claims["auth_level"], expires,
-                        issued, claims["domain_app"], claims["proxy_app"], app_admin(claims))
+                        issued, claims["domain_app"], claims["proxy_app"], admin)
     except Exception:
         raise HTTPException(401, "Invalid Authentication identity") from None
 
