@@ -16,8 +16,9 @@ existing Authentication peer; public source-ASGI metadata routes do not imply
 operational guest access. All responses are no-store.
 
 Canonical admitted requests record identity provenance; artist memberships are
-the sole page authority and uploader IDs are audit only. Separate trusted admin
-grants govern unassigned pages, ownership lifecycle, suspension and verification.
+the sole ownership authority and uploader IDs are audit only. The admitted central
+Auth app-scoped admin claim governs unassigned pages, ownership lifecycle,
+suspension and verification; legacy local grants are inert with no fallback.
 Migrations 001..005 are explicit and were exercised only in disposable isolated
 PostgreSQL. No operational schema/grant was activated. Candidate readiness targets
 005; legacy owner cutover fails on absent canonical provenance and must be paired
@@ -39,7 +40,9 @@ identity header, loopback address or config flag never establishes identity.
 The source-default `main:app` has no identity override and remains closed.
 
 The accepted identity boundary is canonical shell admission; no separate HMAC
-verifier is required. Authentication/backend source remains unchanged here.
+verifier is required. The exact app_authority member and fail-closed context rules
+are in ARTIST_PROFILES_AND_ACCESS.md. No new headers, API endpoints or runtime
+config filenames are needed. Authentication/backend source remains unchanged here.
 
 Native transport, root-selected connection/checkpoint, peer identity, keys and
 healthy replay/clock bounds remain Node Agent-owned. The existing canonical ON
@@ -63,8 +66,11 @@ No upload body passes through the application process or durable local disk.
 Completion rechecks current membership/admin, track relationship and session expiry; HEAD plus a
 bounded GET reads at most 4096 bytes for the container signature. Wrong size,
 MIME or magic marks failed only after another locked current-authority check.
-Upload insertion, completion and attachment serialize with ownership/identity/grant
-revocation. A transfer during inspection denies the old actor's final state write;
+Upload insertion, completion and attachment serialize with local ownership/identity
+revocation. Immutable admitted actor context is carried separately from uploader
+audit IDs; freshness is rechecked after provider inspection/locks and before commit.
+Remote central admin revocation is bounded by issued assertion expiry, not globally
+atomic with local commits, and previously issued storage URLs retain their TTL. A transfer during inspection denies the old actor's final state write;
 new owner/admin may finish the same valid upload without copying objects. Uploaded never means processed, published or publicly playable.
 Magic checks are basic container identification, not full decoding/safety proof.
 Originals remain private/draft; current HTTP routes emit no playback URLs. A
@@ -197,7 +203,7 @@ not actual Authentication session, PostgreSQL migrations, R2 upload or edge deli
 
 Next: finalize DB assignment and canonical identity boundary with runtime owner;
 review matching package/schema selection, exact native route enrollment and
-provenance/admin bootstrap prerequisites in ARTIST_PROFILES_AND_ACCESS.md. User privately supplies R2 settings in the
+provenance/central-admin issuance prerequisites in ARTIST_PROFILES_AND_ACCESS.md. User privately supplies R2 settings in the
 confirmed protected route. Only then run one tiny supported upload and prove CORS,
 signature/type/length enforcement, overwrite rejection, expiry, ownership and
 private/draft completion. Private signed-playback/expiry/CORS/range and guest/published/free checks await

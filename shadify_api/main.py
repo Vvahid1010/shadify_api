@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from .media import MediaError, MediaService, UploadIntent
 from .domain import TrackDraft
 from .storage import StorageUnavailable
+from .auth import Identity
 
 
 def require_identity():
@@ -86,41 +87,41 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return domain
 
     @app.get("/api/me")
-    def me(owner: str = Depends(identity), data=Depends(domain_service)):
+    def me(owner: Identity = Depends(identity), data=Depends(domain_service)):
         return data.me(owner)
 
     @app.post("/api/artists/{artist_id}/tracks", status_code=201)
-    def create_track(artist_id: UUID, draft: TrackDraft, owner: str = Depends(identity),
+    def create_track(artist_id: UUID, draft: TrackDraft, owner: Identity = Depends(identity),
                      data=Depends(domain_service)):
         return data.create_track(owner, artist_id, draft)
 
     @app.get("/api/artists/{artist_id}/tracks")
-    def tracks(artist_id: UUID, owner: str = Depends(identity), data=Depends(domain_service),
+    def tracks(artist_id: UUID, owner: Identity = Depends(identity), data=Depends(domain_service),
                limit: int = Query(20, ge=1, le=100), cursor: UUID | None = None):
         return data.tracks(owner, artist_id, limit, cursor)
 
     @app.get("/api/media/{asset_id}")
-    def media_metadata(asset_id: UUID, owner: str = Depends(identity)):
+    def media_metadata(asset_id: UUID, owner: Identity = Depends(identity)):
         if repository is None:
             raise HTTPException(503, "Media persistence integration pending")
         return repository.media_metadata(owner, asset_id)
 
     @app.post("/api/media/uploads", status_code=201)
-    def create_upload(intent: UploadIntent, owner: str = Depends(identity),
+    def create_upload(intent: UploadIntent, owner: Identity = Depends(identity),
                       media: MediaService = Depends(media_service)):
         asset, authorization = media.create(owner, intent)
         context = repository.access_context(owner, asset.artist_id) if repository is not None else {
-            "actor_account_id": owner, "artist_id": str(asset.artist_id)}
+            "actor_account_id": owner.account_id, "artist_id": str(asset.artist_id)}
         return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "upload": {"method": "PUT", "url": authorization.url,
                 "headers": authorization.headers, "expires_in": authorization.expires_in}}
 
     @app.post("/api/media/uploads/{asset_id}/complete")
-    def complete_upload(asset_id: UUID, owner: str = Depends(identity),
+    def complete_upload(asset_id: UUID, owner: Identity = Depends(identity),
                         media: MediaService = Depends(media_service)):
         asset = media.complete(owner, asset_id)
         context = repository.access_context(owner, asset.artist_id) if repository is not None else {
-            "actor_account_id": owner, "artist_id": str(asset.artist_id)}
+            "actor_account_id": owner.account_id, "artist_id": str(asset.artist_id)}
         return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "access_class": asset.access_class, "publish_state": asset.publish_state}
 

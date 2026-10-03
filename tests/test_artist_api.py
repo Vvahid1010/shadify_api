@@ -2,10 +2,12 @@
 
 These tests do not prove guest managed ingress, processing or real R2 access.
 """
+from authority_fixture import admitted_actor
 from datetime import datetime,timedelta,timezone
 from dataclasses import replace
 from uuid import UUID,uuid4
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
+import time
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from shadify_api.auth import observed_account
@@ -28,7 +30,65 @@ class ArtistApiTests(ArtistPostgresCase):
         self.storage.inspect.return_value=ObjectInfo(20,'audio/flac',b'fLaC'+b'0'*16)
         self.media=MediaService(self.repo,self.storage,100,300)
         self.actor='admin'
-        self.client=TestClient(create_app(self.media,lambda:self.actor,domain=DomainService(self.repo),repository=self.repo))
+        self.admin=True
+        self.client=TestClient(create_app(self.media,lambda:admitted_actor(self.actor,admin=self.admin if self.actor=='admin' else False),domain=DomainService(self.repo),repository=self.repo))
+
+    def test_revoked_central_admin_has_no_local_fallback_but_keeps_ownership(self):
+        self.assign(target='admin')
+        with self.connect() as c:
+            c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) "
+                      "SELECT id,'inert-isolated-fixture' FROM shadify_users WHERE auth_account_id='admin'")
+        self.admin=False
+        response=self.client.get('/api/me/artists')
+        self.assertFalse(response.json()['acting_as_admin'])
+        self.assertFalse(response.json()['capabilities']['create_artist'])
+        self.assertEqual(len(response.json()['pages']),1)
+        self.assertEqual(self.client.patch(self.page_path(),json={'bio':'Still the owner'}).status_code,200)
+        self.assertEqual(self.client.put(self.page_path().replace('/artists/','/admin/artists/')+'/verification',
+                                        json={'verified':True}).status_code,403)
+        self.assertEqual(self.client.post('/api/admin/artists',json={'name':'Denied','slug':'denied-new'}).status_code,403)
+
+    def test_previously_issued_admin_claim_is_bounded_not_immediately_revoked(self):
+        now=int(time.time());clock=[now]
+        previous=admitted_actor('admin',issued=now,expires=now+1)
+        self.admin=False  # Simulates newly issued no-admin evidence, not a remote DB.
+        with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]):
+            self.assertFalse(self.client.get('/api/me/artists').json()['acting_as_admin'])
+            self.assertTrue(self.repo.manageable_pages(previous,20)['acting_as_admin'])
+            clock[0]=previous.expires_at
+            with self.assertRaises(MediaError) as error: self.repo.manageable_pages(previous,20)
+            self.assertEqual(error.exception.status,401)
+
+    def test_expiry_during_success_and_failed_media_inspection_keeps_pending(self):
+        for info in (ObjectInfo(20,'audio/flac',b'fLaC'+b'0'*16),ObjectInfo(21,'audio/flac',b'bad')):
+            with self.subTest(info=info):
+                track=self.track();asset=self.upload(track);now=int(time.time());clock=[now]
+                context=admitted_actor('admin',issued=now,expires=now+1)
+                def inspect(key): clock[0]=context.expires_at;return info
+                self.storage.inspect.side_effect=inspect
+                with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]):
+                    with self.assertRaises(MediaError) as error: self.media.complete(context,asset.id)
+                    self.assertEqual(error.exception.status,401)
+                self.assertEqual(self.repo.get(asset.id).state,'upload_pending')
+                self.storage.inspect.side_effect=None
+
+    def test_media_insertion_keeps_actor_context_and_uploader_is_audit_only(self):
+        track=self.track();asset=self.upload(track)
+        self.assertEqual(asset.owner_id,'admin')
+        with self.assertRaises(MediaError) as error:
+            self.repo.insert(admitted_actor('admin'),replace(asset,id=uuid4(),owner_id='listener'))
+        self.assertEqual(error.exception.status,422)
+        self.admin=False
+        denied=admitted_actor('admin',admin=False)
+        with self.assertRaises(MediaError) as error: self.media.complete(denied,asset.id)
+        self.assertEqual(error.exception.status,404)
+        with self.assertRaises(MediaError): self.repo.insert(denied,replace(asset,id=uuid4()))
+        with self.assertRaises(MediaError) as error: self.repo.insert('admin',replace(asset,id=uuid4()))
+        self.assertEqual(error.exception.status,401)
+        with self.assertRaises(MediaError) as error: self.repo.media_metadata('admin',asset.id)
+        self.assertEqual(error.exception.status,401)
+        self.assertEqual(self.repo.get(asset.id).state,'upload_pending')
+        self.assertEqual(self.media.complete(admitted_actor('admin'),asset.id).state,'uploaded')
 
     def page_path(self,artist=None): return '/api/artists/'+str(artist or self.artist)
     def track(self,artist=None,title='Track'):
@@ -56,7 +116,7 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertEqual(r.status_code,200,r.text)
         return track,asset
     def upload(self,track):
-        return self.media.create(self.actor,UploadIntent(artist_id=self.artist,track_id=track,
+        return self.media.create(admitted_actor(self.actor,admin=self.admin if self.actor=='admin' else False),UploadIntent(artist_id=self.artist,track_id=track,
                 asset_type='audio_original',mime='audio/flac',size=20))[0]
 
     def test_admin_unassigned_curated_page_and_official_moments(self):
@@ -102,7 +162,7 @@ class ArtistApiTests(ArtistPostgresCase):
             self.assertEqual(self.client.patch(self.page_path(),json=patch).status_code,422)
 
     def test_empty_artist_list_reports_current_admin_creation_capability(self):
-        # Existing synthetic grant/test DB only; no operational bootstrap or grant.
+        # Synthetic admitted central claims only; no operational grants.
         with self.connect() as c:
             c.execute('DELETE FROM shadify_artists')
         self.actor='admin'
@@ -118,8 +178,7 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertFalse(response.json()['acting_as_admin'])
         self.assertEqual(response.json()['capabilities'],{'create_artist':False})
         # Revocation must also remove the top-level ability on the next request.
-        with self.connect() as c:
-            c.execute('UPDATE shadify_admin_grants SET revoked_at=clock_timestamp()')
+        self.admin=False
         self.actor='admin'
         response=self.client.get('/api/me/artists')
         self.assertEqual(response.status_code,200,response.text)
@@ -137,7 +196,7 @@ class ArtistApiTests(ArtistPostgresCase):
         with self.assertRaises(HTTPException): observer(identity_request(admitted=False))
         with self.connect() as c:
             self.assertIsNone(c.execute("SELECT first_admitted_at FROM shadify_users WHERE auth_account_id='owner'").fetchone()[0])
-        self.assertEqual(observer(identity_request()),'owner')
+        self.assertEqual(observer(identity_request()).account_id,'owner')
         self.assertEqual(self.client.post(target,json={'account_id':'owner'}).status_code,200)
         with self.connect() as c:
             self.assertEqual(c.execute("SELECT id FROM shadify_users WHERE auth_account_id='owner'").fetchone()[0],user)
@@ -200,25 +259,25 @@ class ArtistApiTests(ArtistPostgresCase):
                     active=c.execute('SELECT u.auth_account_id FROM artist_memberships m JOIN shadify_users u ON u.id=m.user_id '
                                      'WHERE artist_id=%s AND revoked_at IS NULL',(self.artist,)).fetchone()
                 if active:
-                    self.repo.change_owner('admin',self.artist,action='transfer',target='owner-a',expected='owner-b')
+                    self.repo.change_owner(admitted_actor('admin'),self.artist,action='transfer',target='owner-a',expected='owner-b')
                 else: self.assign()
                 self.actor='owner-a'; track=self.track(); asset=self.upload(track)
                 def inspect(key):
-                    self.repo.change_owner('admin',self.artist,action='transfer',target='owner-b',expected='owner-a')
+                    self.repo.change_owner(admitted_actor('admin'),self.artist,action='transfer',target='owner-b',expected='owner-a')
                     return ObjectInfo(21 if bad else 20,'audio/flac',b'fLaC'+b'0'*16)
                 self.storage.inspect.side_effect=inspect
-                with self.assertRaises(MediaError) as error: self.media.complete('owner-a',asset.id)
+                with self.assertRaises(MediaError) as error: self.media.complete(admitted_actor('owner-a'),asset.id)
                 self.assertEqual(error.exception.status,404)
                 self.assertEqual(self.repo.get(asset.id).state,'upload_pending')
                 self.storage.inspect.side_effect=None
-                completed=self.media.complete('owner-b',asset.id)
+                completed=self.media.complete(admitted_actor('owner-b'),asset.id)
                 self.assertEqual(completed.state,'uploaded')
                 self.assertEqual(completed.owner_id,'owner-a')
                 self.actor='owner-b'
                 attached=self.client.patch(self.page_path()+'/tracks/'+str(track),json={'original_asset_id':str(asset.id)})
                 self.assertEqual(attached.status_code,200,attached.text)
-                with self.assertRaises(MediaError): self.media.complete('owner-a',asset.id)
-                self.assertEqual(self.media.complete('owner-b',asset.id).state,'uploaded')
+                with self.assertRaises(MediaError): self.media.complete(admitted_actor('owner-a'),asset.id)
+                self.assertEqual(self.media.complete(admitted_actor('owner-b'),asset.id).state,'uploaded')
                 metadata=self.client.get('/api/media/'+str(asset.id))
                 self.assertEqual(metadata.status_code,200)
                 self.assertNotIn(asset.key,metadata.text)
@@ -266,7 +325,7 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertEqual(self.client.delete(url).status_code,200)
 
     def test_unready_video_originals_events_and_layout_validation(self):
-        track=self.track(); asset=self.upload(track); self.media.complete('admin',asset.id)
+        track=self.track(); asset=self.upload(track); self.media.complete(admitted_actor('admin'),asset.id)
         url=self.page_path()+'/tracks/'+str(track)
         self.assertEqual(self.client.patch(url,json={'original_asset_id':str(asset.id)}).status_code,200)
         self.assertEqual(self.client.put(url+'/publication',json={'state':'published'}).status_code,409)
@@ -298,7 +357,7 @@ class ArtistApiTests(ArtistPostgresCase):
         for field in ('password','email','active','first_admitted_at','admin'):
             self.assertEqual(self.client.patch(path,json={field:'forged'}).status_code,422)
         self.actor='listener'; self.assertEqual(self.client.get(path).status_code,403)
-        self.assertFalse(self.repo.owns_track("owner'; DROP TABLE x;--",self.artist,uuid4()))
+        self.assertFalse(self.repo.owns_track(admitted_actor("owner';DROP_TABLE_x;--"),self.artist,uuid4()))
         with self.connect() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_users').fetchone()[0],4)
         self.assertTrue(self.repo.ready())

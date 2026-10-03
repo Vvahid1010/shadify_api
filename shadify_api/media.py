@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from .storage import ObjectStorage
+from .auth import Identity, require_fresh_actor
 
 
 class MediaError(Exception):
@@ -41,10 +42,10 @@ class Asset:
 
 
 class MediaRepository(Protocol):
-    def owns_track(self, owner: str, artist: UUID, track: UUID) -> bool: ...
-    def insert(self, asset: Asset) -> None: ...
-    def get_for_actor(self, actor: str, asset_id: UUID) -> Asset | None: ...
-    def transition(self, actor: str, asset_id: UUID, expected: str, target: str) -> bool: ...
+    def owns_track(self, owner: Identity, artist: UUID, track: UUID) -> bool: ...
+    def insert(self, actor: Identity, asset: Asset) -> None: ...
+    def get_for_actor(self, actor: Identity, asset_id: UUID) -> Asset | None: ...
+    def transition(self, actor: Identity, asset_id: UUID, expected: str, target: str) -> bool: ...
 
 
 def valid_signature(mime, data):
@@ -61,7 +62,8 @@ class MediaService:
         self.repository, self.storage = repository, storage
         self.max_size, self.ttl = max_size, ttl
 
-    def create(self, owner: str, intent: UploadIntent):
+    def create(self, owner: Identity, intent: UploadIntent):
+        require_fresh_actor(owner)
         if not self.repository.owns_track(owner, intent.artist_id, intent.track_id):
             raise MediaError(404, "Artist/track not found")
         allowed = {"audio_original": {"audio/wav", "audio/flac"},
@@ -71,25 +73,30 @@ class MediaService:
         asset_id = uuid4()
         key = f"originals/artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
         authorization = self.storage.authorize_upload(key, intent.mime, intent.size)
-        asset = Asset(asset_id, owner, intent.artist_id, intent.track_id, key,
+        require_fresh_actor(owner)
+        asset = Asset(asset_id, owner.account_id, intent.artist_id, intent.track_id, key,
                       intent.asset_type, intent.mime, intent.size,
                       datetime.now(timezone.utc) + timedelta(seconds=self.ttl))
-        self.repository.insert(asset)
+        self.repository.insert(owner, asset)
+        require_fresh_actor(owner)
         return asset, authorization
 
-    def complete(self, owner: str, asset_id: UUID):
+    def complete(self, owner: Identity, asset_id: UUID):
+        require_fresh_actor(owner)
         asset = self.repository.get_for_actor(owner, asset_id)
         if asset is None:
             raise MediaError(404, "Asset not found")
         if not self.repository.owns_track(owner, asset.artist_id, asset.track_id):
             raise MediaError(404, "Artist/track not found")
         if asset.state == "uploaded":
+            require_fresh_actor(owner)
             return asset
         if asset.state != "upload_pending":
             raise MediaError(409, "Upload cannot be completed")
         if asset.expires_at <= datetime.now(timezone.utc):
             raise MediaError(409, "Upload session expired; request a new asset")
         info = self.storage.inspect(asset.key)
+        require_fresh_actor(owner)
         if (info.size != asset.size or info.content_type != asset.mime
                 or not valid_signature(asset.mime, info.prefix)):
             if not self.repository.transition(owner, asset.id, "upload_pending", "failed"):
@@ -97,4 +104,5 @@ class MediaService:
             raise MediaError(422, "Object size, MIME or container signature mismatch")
         if not self.repository.transition(owner, asset.id, "upload_pending", "uploaded"):
             raise MediaError(409, "Upload state changed; retry")
+        require_fresh_actor(owner)
         return replace(asset, state="uploaded")

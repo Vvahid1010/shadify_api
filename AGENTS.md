@@ -114,10 +114,10 @@ use native Python 3.14 and the isolated source-local .venv. No managed WSL API
 service, database, migration or cloud resource has been activated.
 
 Current source scope includes canonical shell-admitted identity/provenance,
-artist memberships, separate trusted app admin, artist/profile/content lifecycle,
+artist memberships, central admitted app-scoped admin, artist/profile/content lifecycle,
 private original uploads and signed GET provider preparation. Artist authority
-and status are defined in docs/ARTIST_PROFILES_AND_ACCESS.md. Grants remain
-operator-controlled and no live grant/schema activation occurred. Playback HTTP,
+and status are defined in docs/ARTIST_PROFILES_AND_ACCESS.md. Central admin grants
+are Auth-owned; local grant rows are inert. No live grant/schema activation occurred. Playback HTTP,
 processing, purchases/entitlements/payments and Worker deployment remain pending.
 
 Node Agent owns installation/update/lifecycle on selected Node B, catalog
@@ -155,10 +155,12 @@ documentation references; the other owner retains UI/session integration.
 
 ## Current continuation boundary (2026-10-03)
 
-The parent narrowed continuation to local documentation corrections and final
-handoff only. No push, source/build publication or deployment is authorized; do
-not retry the rejected publication delegation without explicit parent approval.
-Astra limited PASS applies to implementation053d93bc. Documentation corrections
-must not add runtime features, live migrations/grants, secret reads or topology
-effects. Current readiness and qualified artifact/rollback limits are recorded in
-docs/ARTIST_PROFILES_AND_ACCESS.md; a new docs commit is not the old artifact source.
+The operator approved central Authentication app-scoped admin architecture, and
+the parent authorized local consumer implementation after Astra accepted the exact
+app_authority contract. Carry immutable admitted identity/admin context through
+every authority and media operation; never use local grants as a fallback. Page
+ownership stays local. Recheck expiry after locks/provider work and before commit;
+do not claim globally atomic remote grant revocation. Keep Auth/shared changes with
+their owners. Local scoped commits, isolated tests and exact-source package proof
+are preparation for independent review; no push or live migration/grant/deployment
+is authorized. Earlier PASS/artifact evidence remains pinned to its original source.

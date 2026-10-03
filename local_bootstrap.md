@@ -89,7 +89,7 @@ pass and pip check is clean; actual HTTP/playback/publication/R2 proof is pendin
 
 
 Artist mission source/candidate targets005_artist_content. Contract and exact
-schema/enrollment/admin/provenance prerequisites:
+schema/enrollment/central-admin/provenance prerequisites:
 docs/ARTIST_PROFILES_AND_ACCESS.md. Old 002 packages/schema cannot be mixed with
 this cutover. Local testing/packaging does not authorize migration, publication,
 grant or shared topology changes. Source-ASGI public metadata is tested; guest

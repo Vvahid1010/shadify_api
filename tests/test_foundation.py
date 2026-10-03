@@ -1,3 +1,4 @@
+from authority_fixture import admitted_actor
 import json
 import os
 import tempfile
@@ -28,9 +29,9 @@ class Repository:
         self.allowed = True
 
     def owns_track(self, owner, artist, track):
-        return self.allowed and owner == "owner"
+        return self.allowed and owner.account_id == "owner"
 
-    def insert(self, asset):
+    def insert(self, actor, asset):
         self.assets[asset.id] = asset
 
     def get(self, asset_id):
@@ -71,7 +72,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_upload_and_complete_stays_private_draft(self):
-        client = TestClient(create_app(self.service, lambda: "owner"))
+        client = TestClient(create_app(self.service, lambda: admitted_actor("owner")))
         created = client.post("/api/media/uploads", json=self.intent.model_dump(mode="json"))
         self.assertEqual(created.status_code, 201)
         self.assertNotIn("key", created.json())
@@ -86,35 +87,35 @@ class FoundationTests(unittest.TestCase):
 
     def test_cross_owner_rejected_before_storage(self):
         with self.assertRaises(MediaError) as error:
-            self.service.create("attacker", self.intent)
+            self.service.create(admitted_actor("attacker"), self.intent)
         self.assertEqual(error.exception.status, 404)
         self.storage.authorize_upload.assert_not_called()
 
     def test_completion_ownership_and_revocation(self):
-        asset, _ = self.service.create("owner", self.intent)
+        asset, _ = self.service.create(admitted_actor("owner"), self.intent)
         with self.assertRaises(MediaError) as error:
-            self.service.complete("attacker", asset.id)
+            self.service.complete(admitted_actor("attacker"), asset.id)
         self.assertEqual(error.exception.status, 404)
         self.repo.allowed = False
         with self.assertRaises(MediaError) as error:
-            self.service.complete("owner", asset.id)
+            self.service.complete(admitted_actor("owner"), asset.id)
         self.assertEqual(error.exception.status, 404)
         self.storage.inspect.assert_not_called()
 
     def test_expired_session_and_new_immutable_key(self):
-        first, _ = self.service.create("owner", self.intent)
-        second, _ = self.service.create("owner", self.intent)
+        first, _ = self.service.create(admitted_actor("owner"), self.intent)
+        second, _ = self.service.create(admitted_actor("owner"), self.intent)
         self.assertNotEqual(first.key, second.key)
         self.repo.assets[first.id] = replace(first, expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))
         with self.assertRaises(MediaError) as error:
-            self.service.complete("owner", first.id)
+            self.service.complete(admitted_actor("owner"), first.id)
         self.assertEqual(error.exception.status, 409)
         self.storage.inspect.assert_not_called()
 
     def test_type_size_and_extra_browser_keys(self):
         for changes in ({"size": 101}, {"mime": "image/png"}):
             with self.assertRaises(MediaError):
-                self.service.create("owner", self.intent.model_copy(update=changes))
+                self.service.create(admitted_actor("owner"), self.intent.model_copy(update=changes))
         for changes in ({"key": "originals/other"}, {"owner_id": "owner"}, {"size": 0}):
             with self.assertRaises(ValidationError):
                 UploadIntent.model_validate(self.intent.model_dump() | changes)
@@ -124,25 +125,25 @@ class FoundationTests(unittest.TestCase):
         for info in (ObjectInfo(21, "audio/flac", b"fLaC"),
                      ObjectInfo(20, "image/png", b"fLaC"),
                      ObjectInfo(20, "audio/flac", b"garbage")):
-            asset, _ = self.service.create("owner", self.intent)
+            asset, _ = self.service.create(admitted_actor("owner"), self.intent)
             self.storage.inspect.return_value = info
             with self.assertRaises(MediaError) as error:
-                self.service.complete("owner", asset.id)
+                self.service.complete(admitted_actor("owner"), asset.id)
             self.assertEqual(error.exception.status, 422)
             self.assertEqual(self.repo.get(asset.id).state, "failed")
 
     def test_missing_cloud_object_does_not_claim_uploaded(self):
-        asset, _ = self.service.create("owner", self.intent)
+        asset, _ = self.service.create(admitted_actor("owner"), self.intent)
         self.storage.inspect.side_effect = StorageUnavailable()
         with self.assertRaises(StorageUnavailable):
-            self.service.complete("owner", asset.id)
+            self.service.complete(admitted_actor("owner"), asset.id)
         self.assertEqual(self.repo.get(asset.id).state, "upload_pending")
 
     def test_conditional_transition_conflict(self):
-        asset, _ = self.service.create("owner", self.intent)
+        asset, _ = self.service.create(admitted_actor("owner"), self.intent)
         self.repo.transition = Mock(return_value=False)
         with self.assertRaises(MediaError) as error:
-            self.service.complete("owner", asset.id)
+            self.service.complete(admitted_actor("owner"), asset.id)
         self.assertEqual(error.exception.status, 409)
 
     def test_supported_container_signatures(self):

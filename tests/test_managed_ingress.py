@@ -91,7 +91,10 @@ class CombinedIngressTests(unittest.TestCase):
     def test_profile_database_ready_without_r2_and_media_closed(self):
         asyncio.run(self.run_combined(profile_only=True))
 
-    async def run_combined(self, epoch_change=None, profile_only=False):
+    def test_real_shell_carries_exact_central_admin_context(self):
+        asyncio.run(self.run_combined(central_admin=True))
+
+    async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False):
         with tempfile.TemporaryDirectory() as temporary,patch("node_agent_local_shell_transport.local_uds.pwd.getpwnam",return_value=Mock(pw_uid=1001)), \
              patch("socket.socket.connect",side_effect=AssertionError("network prohibited")), \
              patch("socket.socket.bind",side_effect=AssertionError("listener prohibited")), \
@@ -147,7 +150,8 @@ class CombinedIngressTests(unittest.TestCase):
             protocol.connection_made(transport)
             ingress_headers={name.decode():value.decode() for name,value in zip(_HEADERS,receiver.channel.metadata,strict=True)}
             body=dict(method="GET",path="/api/me",query_b64="",headers=[dict(name=k.decode(),value_b64=base64.b64encode(v).decode())
-                     for k,v in identity_request().scope["headers"]],body_b64="",status=None,response_to=None)
+                     for k,v in identity_request(changes={"app_authority":{"version":1,"domain_app":"shadify",
+                         "proxy_app":"shadify_api","roles":["admin"]}} if central_admin else {}).scope["headers"]],body_b64="",status=None,response_to=None)
             def ticket():return sender.begin(connection,"shadify_api.me.read",canonical(body),int(time.time()))
             async def call(http,wire,headers=None):
                 return await http.post("http://fixture/_app-security/v1/message",content=wire,
@@ -166,7 +170,8 @@ class CombinedIngressTests(unittest.TestCase):
                     decoded=json.loads(first.complete(response.content,int(time.time())))
                     self.assertEqual(decoded["status"],200)
                     self.assertEqual(json.loads(base64.b64decode(decoded["body_b64"]))["account_id"],"owner")
-                    repo.project_user.assert_called_once_with("owner")
+                    self.assertEqual(repo.project_user.call_args.args[0].account_id,"owner")
+                    self.assertEqual(repo.project_user.call_args.args[0].admin,central_admin)
                     checked=await http.get("http://fixture/health/ready")
                     self.assertEqual(checked.status_code,200) # Profile/DB slice needs no R2.
                     self.assertEqual(checked.json()["checks"]["scope"],"profile_database")

@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .artist_models import ArtistProfile, PublicUserProfile, RESOURCE_MODELS
 from .media import MediaError
+from .auth import require_fresh_actor
 
 TABLES = {name: 'shadify_' + name for name in RESOURCE_MODELS}
 REFS = {'tracks': ('original_asset_id','delivery_asset_id','preview_asset_id','artwork_asset_id'),
@@ -114,7 +115,7 @@ class ArtistOperations:
                                'WHERE m.user_id=%s AND m.revoked_at IS NULL AND (%s::uuid IS NULL OR a.id>%s) '
                                'ORDER BY a.id LIMIT %s',(auth.user_id,cursor,cursor,limit+1)).fetchall()
             from dataclasses import replace
-            return {'actor_account_id':actor,'acting_as_admin':auth.admin,'capabilities':{'create_artist':auth.admin},
+            return {'actor_account_id':auth.account_id,'acting_as_admin':auth.admin,'capabilities':{'create_artist':auth.admin},
                 'pages':[{'page':{k:self._page(row)[k] for k in ('id','name','slug','publish_state','verified')},
                 **replace(auth,artist_id=row['id'],publish_state=row['publish_state']).dto()} for row in rows[:limit]],
                 'next_cursor':str(rows[limit-1]['id']) if len(rows)>limit else None,'availability':AVAILABILITY}
@@ -176,8 +177,10 @@ class ArtistOperations:
                         model=validate(PublicUserProfile,{**{k:row[k] for k in PublicUserProfile.model_fields},**patch})
                         row=c.execute('UPDATE shadify_users SET name=%s,slug=%s,bio=%s,genres=%s WHERE id=%s RETURNING *',
                                       (model.name,model.slug,model.bio,Jsonb(model.genres),user_id)).fetchone()
-                    return {'actor_account_id':actor,'acting_as_admin':auth.admin,'profile':
+                    result={'actor_account_id':auth.account_id,'acting_as_admin':auth.admin,'profile':
                             {'user_id':str(row['id']),**{k:row[k] for k in PublicUserProfile.model_fields}}}
+                    require_fresh_actor(actor)
+                    return result
         except IntegrityError: raise MediaError(409,'Profile slug unavailable') from None
 
     def _validate_content(self,c,artist,resource,content_id,model):
@@ -207,7 +210,7 @@ class ArtistOperations:
         if resource=='tracks':
             extras={'title':model.title,'access_class':model.access_class}
             data.pop('title'); data.pop('access_class')
-        if resource=='moments' and create: extras={'author_account_id':actor}
+        if resource=='moments' and create: extras={'author_account_id':actor.account_id}
         values={'data':Jsonb(data),**refs,**extras}
         table=TABLES[resource]
         if create:

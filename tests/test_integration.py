@@ -1,4 +1,5 @@
 """Composition/security tests use synthetic files and admitted-scope fixtures only."""
+from authority_fixture import admitted_actor
 import base64
 import json
 import tempfile
@@ -12,7 +13,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 from app_security_shell.transport import TrustedPeer
 
-from shadify_api.auth import identity_from_admitted_authentication
+from shadify_api.auth import identity_from_admitted_authentication, require_fresh_actor
 from shadify_api.config import DatabaseConfig, load_database_config
 from shadify_api.domain import DomainService
 from shadify_api.main import create_app
@@ -60,6 +61,65 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code,401)
 
 
+class CentralAuthorityTests(unittest.TestCase):
+    authority = {"version":1,"domain_app":"shadify","proxy_app":"shadify_api","roles":["admin"]}
+
+    def test_exact_claim_and_immutable_complete_context(self):
+        from dataclasses import FrozenInstanceError
+        identity=identity_from_admitted_authentication(identity_request(changes={"app_authority":self.authority}))
+        self.assertTrue(identity.admin)
+        self.assertEqual((identity.account_id,identity.session_id,identity.domain_app,identity.proxy_app),
+                         ("owner","session","shadify","shadify_api"))
+        self.assertLess(identity.issued_at,identity.expires_at)
+        with self.assertRaises(FrozenInstanceError): identity.admin=False
+        for changes in ({},{"app_authority":self.authority|{"roles":[]}}):
+            self.assertFalse(identity_from_admitted_authentication(identity_request(changes=changes)).admin)
+
+    def test_malformed_and_wrong_app_authority_rejected(self):
+        values=[None,False,[],{},self.authority|{"version":True},self.authority|{"version":1.0},
+                self.authority|{"version":2},self.authority|{"domain_app":"mizfood_com"},
+                self.authority|{"proxy_app":"mizfood_api"},self.authority|{"roles":"admin"},
+                self.authority|{"roles":["owner"]},self.authority|{"roles":["admin","admin"]},
+                self.authority|{"roles":["admin","owner"]},self.authority|{"roles":[True]},
+                self.authority|{"extra":True}]
+        for value in values:
+            with self.subTest(value=value),self.assertRaises(HTTPException) as error:
+                identity_from_admitted_authentication(identity_request(changes={"app_authority":value}))
+            self.assertEqual(error.exception.status_code,401)
+
+    def test_forged_headers_unadmitted_and_expired_admin_rejected(self):
+        extra=[(b"x-authenticated-admin",b"true"),(b"x-app-authority",b"admin")]
+        self.assertFalse(identity_from_admitted_authentication(identity_request(extra_headers=extra)).admin)
+        for admitted,changes,status in (
+                (False,{"app_authority":self.authority},503),
+                (True,{"app_authority":self.authority,"exp":int(time.time())-1},401),
+                (True,{"app_authority":self.authority,"session_id":"other"},401)):
+            with self.subTest(changes=changes),self.assertRaises(HTTPException) as error:
+                identity_from_admitted_authentication(identity_request(admitted=admitted,changes=changes))
+            self.assertEqual(error.exception.status_code,status)
+
+    def test_duplicate_nested_authority_keys_rejected(self):
+        request=identity_request(changes={"app_authority":self.authority})
+        headers=request.scope["headers"]
+        version,payload,signature=headers[0][1].decode().split(".")
+        raw=base64.urlsafe_b64decode(payload+"="*(-len(payload)%4)).decode()
+        raw=raw.replace('"roles": ["admin"]','"roles": [], "roles": ["admin"]')
+        encoded=base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+        headers[0]=(b"x-auth-assertion",(version+"."+encoded+"."+signature).encode())
+        with self.assertRaises(HTTPException) as error: identity_from_admitted_authentication(request)
+        self.assertEqual(error.exception.status_code,401)
+
+    def test_lost_context_never_reconstructed_from_account_string(self):
+        from shadify_api.media import MediaError
+        for value in ("admin",{"account_id":"admin","admin":True},None):
+            with self.subTest(value=value),self.assertRaises(MediaError) as error: require_fresh_actor(value)
+            self.assertEqual(error.exception.status,401)
+        repo=Mock()
+        response=TestClient(create_app(identity=lambda:"admin",domain=DomainService(repo))).get("/api/me")
+        self.assertEqual(response.status_code,401)
+        repo.project_user.assert_not_called()
+
+
 class DomainTests(unittest.TestCase):
     def setUp(self):
         self.repository=Mock()
@@ -69,20 +129,21 @@ class DomainTests(unittest.TestCase):
         self.repository.create_track.return_value={"track_id":str(self.track),"artist_id":str(self.artist),
             "title":"Demo","publish_state":"draft"}
         self.repository.list_tracks.return_value={"tracks":[]}
-        self.client=TestClient(create_app(identity=lambda:"owner",domain=DomainService(self.repository)))
+        self.client=TestClient(create_app(identity=lambda:admitted_actor("owner"),domain=DomainService(self.repository)))
 
     def test_profile_does_not_grant_artist_capability(self):
         response=self.client.get("/api/me")
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.json()["artist_ids"],[])
         self.assertEqual(response.headers["cache-control"],"no-store")
-        self.repository.project_user.assert_called_once_with("owner")
+        self.assertEqual(self.repository.project_user.call_args.args[0].account_id,"owner")
 
     def test_owned_draft_track_creation_and_extra_owner_rejected(self):
         response=self.client.post(f"/api/artists/{self.artist}/tracks",json={"title":"  Demo  "})
         self.assertEqual(response.status_code,201)
         self.assertEqual(response.json()["publish_state"],"draft")
-        self.repository.create_track.assert_called_once_with("owner",self.artist,"Demo")
+        self.assertEqual(self.repository.create_track.call_args.args[0].account_id,"owner")
+        self.assertEqual(self.repository.create_track.call_args.args[1:],(self.artist,"Demo"))
         for payload in ({"title":"Demo","owner_id":"attacker"},{"title":"   "},{"title":"a\nb"}):
             self.assertEqual(self.client.post(f"/api/artists/{self.artist}/tracks",json=payload).status_code,422)
 

@@ -1,8 +1,10 @@
 """Real isolated SQL lifecycle/concurrency proof; synthetic identities, no R2."""
+from authority_fixture import admitted_actor
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
-from types import SimpleNamespace
+from unittest.mock import patch
+import time
 import unittest
 from uuid import uuid4
 import psycopg
@@ -39,10 +41,8 @@ class ArtistPostgresCase(unittest.TestCase):
         self.repo = AccessRepository(self.connect)
         # Direct synthetic test setup, not a claim of actual Authentication admission.
         for account in ('admin', 'owner-a', 'owner-b', 'listener'):
-            self.repo.observe_identity(SimpleNamespace(account_id=account))
+            self.repo.observe_identity(admitted_actor(account))
         with self.connect() as c:
-            c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) "
-                      "SELECT id,'isolated-test-fixture' FROM shadify_users WHERE auth_account_id='admin'")
             self.artist, self.other = uuid4(), uuid4()
             for artist in (self.artist, self.other):
                 c.execute("INSERT INTO shadify_artists(id,slug,name) VALUES (%s,%s,'Test')", (artist, 'artist-' + str(artist)))
@@ -57,11 +57,62 @@ class ArtistPostgresCase(unittest.TestCase):
                 c.execute((ROOT / 'migrations' / name).read_text())
 
     def assign(self, artist=None, target='owner-a'):
-        return self.repo.change_owner('admin', artist or self.artist, action='assign', target=target)
+        return self.repo.change_owner(admitted_actor('admin'), artist or self.artist, action='assign', target=target)
 
 
 
 class ArtistPostgresTests(ArtistPostgresCase):
+    def test_old_local_admin_grant_inert_and_central_admin_without_grant(self):
+        with self.connect() as c:
+            c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) "
+                      "SELECT id,'inert-isolated-fixture' FROM shadify_users WHERE auth_account_id='listener'")
+        with self.assertRaises(MediaError) as error:
+            self.repo.change_owner(admitted_actor('listener'),self.artist,action='assign',target='owner-a')
+        self.assertEqual(error.exception.status,403)
+        self.assign()
+        with self.connect() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM shadify_admin_grants g JOIN shadify_users u "
+                                       "ON u.id=g.user_id WHERE u.auth_account_id='admin'").fetchone()[0],0)
+
+    def test_expiry_before_commit_rolls_back_artist_and_audit(self):
+        self.assign()
+        now=int(time.time());clock=[now]
+        actor=admitted_actor('admin',issued=now,expires=now+1)
+        with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]):
+            with self.assertRaises(MediaError) as error:
+                with self.repo.authorized(actor,self.artist,admin_only=True) as (c,_,_,_):
+                    c.execute('UPDATE shadify_artists SET verified=true WHERE id=%s',(self.artist,))
+                    c.execute("INSERT INTO artist_ownership_audit(id,artist_id,actor_user_id,actor_account_id,action) "
+                              "SELECT %s,%s,id,'admin','revoke' FROM shadify_users WHERE auth_account_id='admin'",
+                              (uuid4(),self.artist))
+                    clock[0]=actor.expires_at
+            self.assertEqual(error.exception.status,401)
+        with self.connect() as c:
+            self.assertFalse(c.execute('SELECT verified FROM shadify_artists WHERE id=%s',(self.artist,)).fetchone()[0])
+            self.assertEqual(c.execute('SELECT count(*) FROM artist_ownership_audit').fetchone()[0],1)
+
+    def test_expiry_during_real_artist_lock_wait_prevents_transfer(self):
+        from shadify_api.auth import require_fresh_actor
+        self.assign();now=int(time.time());clock=[now];entered=Event()
+        actor=admitted_actor('admin',issued=now,expires=now+1)
+        def checked(value):
+            result=require_fresh_actor(value);entered.set();return result
+        with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]), \
+             patch('shadify_api.access.require_fresh_actor',side_effect=checked):
+            with ThreadPoolExecutor(1) as pool:
+                with self.connect() as c:
+                    c.execute('SELECT id FROM shadify_artists WHERE id=%s FOR UPDATE',(self.artist,))
+                    future=pool.submit(self.repo.change_owner,actor,self.artist,action='transfer',
+                                       target='owner-b',expected='owner-a')
+                    self.assertTrue(entered.wait(2))
+                    self.assertFalse(future.done())
+                    clock[0]=actor.expires_at
+                with self.assertRaises(MediaError) as error: future.result(timeout=5)
+                self.assertEqual(error.exception.status,401)
+        with self.repo.authorized(admitted_actor('owner-a'),self.artist): pass
+        with self.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM artist_ownership_audit').fetchone()[0],1)
+
     def test_unassigned_multiple_pages_and_no_identity_creation(self):
         self.assign()
         self.assign(self.other)
@@ -73,7 +124,7 @@ class ArtistPostgresTests(ArtistPostgresCase):
                 with self.connect() as c:
                     c.execute('INSERT INTO shadify_users(id,auth_account_id) VALUES (%s,%s)', (uuid4(), target))
             with self.assertRaises(MediaError) as error:
-                self.repo.change_owner('admin', self.artist, action='transfer', target=target, expected='owner-a')
+                self.repo.change_owner(admitted_actor('admin'), self.artist, action='transfer', target=target, expected='owner-a')
             self.assertEqual(error.exception.status, 422)
         with self.connect() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_users').fetchone()[0], count + 1)
@@ -82,12 +133,12 @@ class ArtistPostgresTests(ArtistPostgresCase):
         self.assign()
         with self.connect() as c:
             c.execute("UPDATE shadify_artists SET publish_state='suspended',verified=true WHERE id=%s", (self.artist,))
-        self.repo.change_owner('admin', self.artist, action='transfer', target='owner-b', expected='owner-a')
+        self.repo.change_owner(admitted_actor('admin'), self.artist, action='transfer', target='owner-b', expected='owner-a')
         with self.assertRaises(MediaError) as error:
-            with self.repo.authorized('owner-a', self.artist):
+            with self.repo.authorized(admitted_actor('owner-a'), self.artist):
                 pass
         self.assertEqual(error.exception.status, 404)
-        with self.repo.authorized('owner-b', self.artist) as (_, authority, artist, _):
+        with self.repo.authorized(admitted_actor('owner-b'), self.artist) as (_, authority, artist, _):
             self.assertTrue(artist['verified'])
             self.assertEqual(artist['publish_state'], 'suspended')
             self.assertFalse(authority.dto()['capabilities']['publish_content'])
@@ -101,7 +152,7 @@ class ArtistPostgresTests(ArtistPostgresCase):
     def test_concurrent_assignment_and_database_unique_owner(self):
         def attempt(target):
             try:
-                self.repo.change_owner('admin', self.artist, action='assign', target=target)
+                self.repo.change_owner(admitted_actor('admin'), self.artist, action='assign', target=target)
                 return 201
             except MediaError as e:
                 return e.status
@@ -117,24 +168,23 @@ class ArtistPostgresTests(ArtistPostgresCase):
     def test_stale_transfer_and_audit_failure_roll_back(self):
         self.assign()
         with self.assertRaises(MediaError) as error:
-            self.repo.change_owner('admin', self.artist, action='transfer', target='owner-b', expected='wrong')
+            self.repo.change_owner(admitted_actor('admin'), self.artist, action='transfer', target='owner-b', expected='wrong')
         self.assertEqual(error.exception.status, 409)
         with self.connect() as c:
             c.execute("CREATE FUNCTION reject_audit() RETURNS trigger LANGUAGE plpgsql AS $$ "
                       "BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$")
             c.execute('CREATE TRIGGER reject_audit BEFORE INSERT ON artist_ownership_audit FOR EACH ROW EXECUTE FUNCTION reject_audit()')
         with self.assertRaises(psycopg.Error):
-            self.repo.change_owner('admin', self.artist, action='transfer', target='owner-b', expected='owner-a')
-        with self.repo.authorized('owner-a', self.artist):
+            self.repo.change_owner(admitted_actor('admin'), self.artist, action='transfer', target='owner-b', expected='owner-a')
+        with self.repo.authorized(admitted_actor('owner-a'), self.artist):
             pass
         with self.connect() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM artist_ownership_audit').fetchone()[0], 1)
 
-    def test_actor_target_and_grant_revocation_serializes_until_commit(self):
+    def test_actor_target_tombstones_serialize_until_commit(self):
         changes = [
             ("UPDATE shadify_users SET active=false WHERE auth_account_id='admin'", 'actor'),
             ("UPDATE shadify_users SET active=false WHERE auth_account_id='listener'", 'target'),
-            ('UPDATE shadify_admin_grants SET revoked_at=CURRENT_TIMESTAMP', 'grant'),
         ]
         for query, kind in changes:
             with self.subTest(kind=kind):
@@ -145,29 +195,28 @@ class ArtistPostgresTests(ArtistPostgresCase):
                         c.execute(query)
                     finished.set()
                 with ThreadPoolExecutor(1) as pool:
-                    with self.repo.authorized('admin', self.artist, targets=('listener',), admin_only=True):
+                    with self.repo.authorized(admitted_actor('admin'), self.artist, targets=('listener',), admin_only=True):
                         future = pool.submit(revoke)
                         self.assertTrue(begun.wait(2))
                         self.assertFalse(finished.wait(.15), 'revocation must wait for transaction commit')
                     future.result(timeout=5)
                     self.assertTrue(finished.is_set())
                 with self.assertRaises(MediaError):
-                    with self.repo.authorized('admin', self.artist, targets=('listener',), admin_only=True):
+                    with self.repo.authorized(admitted_actor('admin'), self.artist, targets=('listener',), admin_only=True):
                         pass
                 with self.connect() as c:
                     c.execute('UPDATE shadify_users SET active=true')
-                    c.execute('UPDATE shadify_admin_grants SET revoked_at=NULL')
 
     def test_tombstone_not_reactivated_and_no_content_cascade(self):
         self.assign()
         with self.connect() as c:
             c.execute("UPDATE shadify_users SET active=false WHERE auth_account_id='owner-a'")
             c.execute('INSERT INTO shadify_tracks(id,artist_id,title) VALUES (%s,%s,%s)', (uuid4(), self.artist, 'Preserve'))
-        self.repo.observe_identity(SimpleNamespace(account_id='owner-a'))
+        self.repo.observe_identity(admitted_actor('owner-a'))
         with self.assertRaises(MediaError):
-            with self.repo.authorized('owner-a', self.artist):
+            with self.repo.authorized(admitted_actor('owner-a'), self.artist):
                 pass
-        self.repo.change_owner('admin', self.artist, action='revoke', expected='owner-a')
+        self.repo.change_owner(admitted_actor('admin'), self.artist, action='revoke', expected='owner-a')
         with self.connect() as c:
             self.assertFalse(c.execute("SELECT active FROM shadify_users WHERE auth_account_id='owner-a'").fetchone()[0])
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_tracks').fetchone()[0], 1)
@@ -180,11 +229,11 @@ class ArtistPostgresTests(ArtistPostgresCase):
         self.assign(self.other, 'owner-b')
         for actor in ('owner-b', 'listener'):
             with self.assertRaises(MediaError) as error:
-                with self.repo.authorized(actor, self.artist):
+                with self.repo.authorized(admitted_actor(actor), self.artist):
                     pass
             self.assertEqual(error.exception.status, 404)
         with self.assertRaises(MediaError) as error:
-            self.repo.change_owner('owner-a', self.artist, action='transfer', target='owner-b', expected='owner-a')
+            self.repo.change_owner(admitted_actor('owner-a'), self.artist, action='transfer', target='owner-b', expected='owner-a')
         self.assertEqual(error.exception.status, 403)
 
     def test_legacy_projection_without_proof_aborts_cutover(self):
@@ -205,7 +254,7 @@ class ArtistPostgresTests(ArtistPostgresCase):
             with connect() as c:
                 self.assertEqual(c.execute('SELECT owner_id FROM shadify_artists').fetchone()[0], 'legacy-owner')
                 self.assertIsNone(c.execute("SELECT to_regclass('artist_memberships')").fetchone()[0])
-            AccessRepository(connect).observe_identity(SimpleNamespace(account_id='legacy-owner'))
+            AccessRepository(connect).observe_identity(admitted_actor('legacy-owner'))
             with connect() as c:
                 c.execute((ROOT/'migrations/004_artist_memberships.sql').read_text())
                 self.assertEqual(c.execute('SELECT artist_id,user_id FROM artist_memberships').fetchone(), (artist, user))

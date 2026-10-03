@@ -4,6 +4,7 @@ from psycopg.rows import dict_row
 from .access import ArtistAccessRepository
 from .artists import ArtistOperations
 from .media import Asset, MediaError
+from .auth import require_fresh_actor
 
 
 class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
@@ -18,8 +19,10 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             if e.status in (403,404): return False
             raise
 
-    def insert(self,asset):
-        with self.authorized(asset.owner_id,asset.artist_id) as (c,_,_,_):
+    def insert(self,actor,asset):
+        with self.authorized(actor,asset.artist_id) as (c,_,_,_):
+            if asset.owner_id != actor.account_id:
+                raise MediaError(422,'Uploader audit identity mismatch')
             if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',(asset.track_id,asset.artist_id)).fetchone() is None:
                 raise MediaError(404,'Track not found')
             c.execute('INSERT INTO shadify_media_assets '
@@ -35,6 +38,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
                 return Asset(**row) if row else None
 
     def get_for_actor(self,actor,asset_id):
+        require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: return None
         with self.authorized(actor,asset.artist_id) as (c,_,_,_):
@@ -42,6 +46,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             return Asset(**row) if row else None
 
     def transition(self,actor,asset_id,expected,target):
+        require_fresh_actor(actor)
         if (expected,target) not in {('upload_pending','uploaded'),('upload_pending','failed')}:
             raise ValueError('Only original upload completion transitions are supported')
         asset=self.get(asset_id)
@@ -55,6 +60,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         with self.authorized(actor,artist) as (_,auth,_,_): return auth.dto()
 
     def media_metadata(self,actor,asset_id):
+        require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
         with self.authorized(actor,asset.artist_id) as (c,auth,_,_):
@@ -68,7 +74,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         with self.authorized(account_id) as (c,auth,_,_):
             artists=c.execute('SELECT artist_id FROM artist_memberships WHERE user_id=%s AND revoked_at IS NULL ORDER BY artist_id',
                               (auth.user_id,)).fetchall()
-            return {'user_id':str(auth.user_id),'account_id':account_id,'artist_ids':[str(r['artist_id']) for r in artists]}
+            return {'user_id':str(auth.user_id),'account_id':auth.account_id,'artist_ids':[str(r['artist_id']) for r in artists]}
 
     def create_track(self,account_id,artist_id,title):
         result=self.content_write(account_id,artist_id,'tracks',{'title':title})
@@ -84,8 +90,8 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         # Read-only compatibility check for the matching 001..005 schema; no auto-migration.
         with self.connect() as c:
             c.execute('SELECT u.first_admitted_at,u.active,a.slug,a.publish_state,t.delivery_asset_id,m.storage_provider, '
-                      'am.revoked_at,g.revoked_at,au.actor_account_id,r.data,v.data,mo.data,e.data '
+                      'am.revoked_at,au.actor_account_id,r.data,v.data,mo.data,e.data '
                       'FROM shadify_users u,shadify_artists a,shadify_tracks t,shadify_media_assets m, '
-                      'artist_memberships am,shadify_admin_grants g,artist_ownership_audit au,shadify_releases r, '
+                      'artist_memberships am,artist_ownership_audit au,shadify_releases r, '
                       'shadify_videos v,shadify_moments mo,shadify_events e LIMIT 0')
         return True

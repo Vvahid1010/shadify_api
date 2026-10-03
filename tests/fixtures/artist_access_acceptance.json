@@ -209,11 +209,57 @@
       "expected": "rollback",
       "invariant": "original owner retained; no partial membership change",
       "local_test": "test_stale_transfer_and_audit_failure_roll_back"
+    },
+    {
+      "id": "central_no_local_fallback",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "central_authority_validation",
+      "expected": "fail_closed",
+      "invariant": "local grant cannot confer admin; central admin needs no local grant",
+      "local_test": "test_old_local_admin_grant_inert_and_central_admin_without_grant"
+    },
+    {
+      "id": "central_revoked_owner",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "central_authority_validation",
+      "expected": "fail_closed",
+      "invariant": "fresh no-admin context loses admin while legitimate local ownership persists",
+      "local_test": "test_revoked_central_admin_has_no_local_fallback_but_keeps_ownership"
+    },
+    {
+      "id": "authority_lock_expiry",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "central_authority_validation",
+      "expected": "fail_closed",
+      "invariant": "expired admitted context cannot mutate after a real SQL lock wait",
+      "local_test": "test_expiry_during_real_artist_lock_wait_prevents_transfer"
+    },
+    {
+      "id": "authority_commit_expiry",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "central_authority_validation",
+      "expected": "fail_closed",
+      "invariant": "expired context rolls back metadata and audit before commit",
+      "local_test": "test_expiry_before_commit_rolls_back_artist_and_audit"
+    },
+    {
+      "id": "authority_inspection_expiry",
+      "actor": "admin",
+      "target": "page_a",
+      "action": "central_authority_validation",
+      "expected": "fail_closed",
+      "invariant": "neither success nor failure state written after admitted context expires",
+      "local_test": "test_expiry_during_success_and_failed_media_inspection_keeps_pending"
     }
   ],
   "limits": [
     "Synthetic canonical identity fixtures; existing managed crypto proof separate",
     "Derived assets are synthetic readiness metadata, no processor or real R2",
     "No guest managed ingress, operational migration/grant or VM activation"
-  ]
+  ],
+  "authority": "Canonical admitted central Auth app_authority; local page ownership; old grant rows inert"
 }

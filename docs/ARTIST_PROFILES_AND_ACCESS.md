@@ -5,9 +5,11 @@ Status: Stage 1 accepted with corrections by independent Astra review
 This is the single source of truth for the authorized artist-page backend mission.
 Stages 2–4 have met local source/package acceptance at reviewed implementation
 commit `053d93bc9b145871fae4895d6bcbadf4dd565bef`. Independent Astra limited PASS
-applies to that exact implementation, not operational activation. This continuation
-corrects documentation/acceptance metadata only; no publication or deployment is
-authorized. Explicit parent approval is required before any publication retry.
+applies to that exact implementation, not operational activation or the later
+central-admin consumer. The operator subsequently approved centrally managed
+app-scoped admin authority; the parent authorized local consumer implementation
+after Astra accepted the exact contract. Independent review of this new source
+is pending. No source/build publication or live activation is authorized here.
 The implementation ledger distinguishes tested source behavior from operational integration.
 
 ## Evidence and scope
@@ -54,12 +56,28 @@ Account deletion/revocation must never cascade pages, works or media. Preserve
 the local identity tombstone and end access; removing a membership preserves
 the page and its content. No browser-provided role grants access.
 
-App-local admin is a separate trusted server grant referencing a known projected
-identity. No default grant, environment boolean, self-service endpoint, central
-Auth role inference or per-page admin membership. Grant creation/revocation is
-an operator-controlled administrative operation outside this mission's runtime
-activation. Admin acts as themselves; every management result identifies actual
-actor, target page and whether admin authority was used. No impersonation.
+Admin authority is owned centrally by Authentication and is scoped to this
+exact app pair. Only after canonical admission and account/session/audience/expiry
+validation does the consumer read the signed assertion member:
+
+```json
+{"app_authority":{"version":1,"domain_app":"shadify","proxy_app":"shadify_api","roles":["admin"]}}
+```
+
+The member must have exactly these four fields. Version is integer 1, never a
+boolean or float; roles is exactly [] or ["admin"]. Wrong app, malformed/duplicate
+fields, unknown roles or expired evidence reject the request. An absent member
+means no admin authority while ordinary membership permissions remain available.
+An immutable per-request Identity carries account, session, auth level, exact
+audience, issued/expiry times and admin through routes/services/repositories.
+Lost context fails closed; authority is never reconstructed from an account
+string, browser header/body, auth_level, environment flag or cached projection.
+The legacy shadify_admin_grants table is inert historical schema and has no
+runtime authorization/readiness dependency, OR fallback or bootstrap interface.
+Page ownership remains local. Admin acts as themselves; management results identify
+actual actor, target page and whether admin authority was used. No impersonation.
+Central grant-management/issuance changes belong exclusively to the Auth owner;
+this consumer neither reads the Auth database nor creates operational grants.
 
 Assignment accepts an existing verified canonical identity ID, never an email,
 display name or arbitrary new account. The current Auth API exports self-account
@@ -120,12 +138,17 @@ history, copyright or entitlement changes are implied by a transfer.
 
 All management reads/writes take the same artist row lock and recheck current
 identity and authority within their transaction. They also lock actor/target
-projection rows in sorted account-ID order and the actor's admin-grant row until
-commit. A trusted tombstone or grant revocation updates those rows and therefore
-serializes with the operation; an artist lock alone is insufficient. Grant/identity
-revocation must not reverse this lock order by acquiring artist rows afterward.
-Concurrent revocation tests cover actor, target and admin-grant validity. Authorization and commit must not be
-separate unchecked database operations. After transfer commits, old owner cannot
+projection rows in sorted account-ID order until commit. Trusted local identity
+tombstones therefore serialize with the operation; an artist lock alone is
+insufficient. Local identity revocation must not reverse this order by acquiring
+artist rows afterward. Request freshness is rechecked after blocking authority
+locks, after external media inspection and immediately before transaction commit;
+expiry causes rollback, including ownership audit. Authorization and commit are
+not separate unchecked database operations. Remote central grant revocation is
+not globally atomic with a local commit: already issued admitted evidence remains
+valid until its issuer-bounded expiry. A freshly issued assertion after revocation
+has no admin authority. Existing storage URLs retain their own bounded validity;
+the consumer does not invalidate them or claim instant remote revocation. After transfer commits, old owner cannot
 read new private state or perform another write. A read authorized before commit
 may have already returned bytes; no retroactive revocation claim. Private reads use the same locked authorizer and query target scope in that transaction;
 responses are no-store. Never cache owner capability as authority.
@@ -153,7 +176,7 @@ this source work does not promise mixed-version compatibility or live migration.
 | User projection | Existing UUID / unique Auth account ID, canonical-admission provenance and local active/tombstone state; public name, slug, bio and genres only. No Auth credentials/contact/security fields. |
 | Artist | Existing UUID, unique slug, name, bio, genres, safe social links, nullable avatar/header asset references, publication state, verification state. |
 | Membership | UUID, artist FK, projected user FK, role owner, assigned/revoked UTC timestamps; one active owner index. |
-| Admin grant | Projected user FK, active/revoked state; trusted operator provenance. No HTTP grant endpoint. |
+| Admin authority | Central Auth app-scoped admitted claim; request-local and never persisted as a local grant. Legacy grant table remains inert. |
 | Ownership audit | Immutable actor/page/old owner/new owner/action/time; no delete cascade. |
 | Track | Extend existing artist-scoped row with ordinary metadata, free/paid access class, draft/published state and explicit original/delivery/preview asset references. |
 | Release | Stable artist-scoped ID, title, description, Single/EP/Album, cover, publication; ordered track join with unique order/track and same-artist foreign keys. |
@@ -249,7 +272,7 @@ no-store in this initial scope; no new caching framework.
 | POST /api/media/uploads; POST /api/media/uploads/{id}/complete; GET /api/media/{id} | Existing interfaces, now current page authority rather than uploader authority; no key substitution or unrelated media read. |
 
 `GET /api/me/artists` additionally returns top-level `acting_as_admin` and
-`capabilities: {"create_artist": <boolean>}` from the same current locked app-admin
+`capabilities: {"create_artist": <boolean>}` from the same current admitted app-admin
 authority. These remain present when `pages` is empty, allowing an authorized
 admin to discover page creation without an existing page. Listener/owner-only or
 revoked admin identities receive false. No new endpoint, directory, grant or
@@ -352,11 +375,14 @@ coverage. Stages 2–4 local acceptance is complete: final source and fresh offl
 packaged suites each passed **72 tests**, with clean dependency checks. The local
 candidate receipt records exact implementation commit053d93bc and schema target005.
 These results establish tested code/metadata-management behavior, not live
-application operation. Real cloud/VM, schema/package cutover, trusted admin
-bootstrap, central deletion/revocation synchronization and guest enrollment remain
+application operation. Real cloud/VM, schema/package cutover, central admin
+issuance integration, central account-deletion synchronization and guest enrollment remain
 pending. The bounded previously-observed-identity rule was accepted.
 
 ### Stage 2 evidence (2026-10-03)
+
+Historical local-grant implementation below is superseded by the central-admin
+consumer; its original evidence remains bound to the reviewed earlier source.
 
 Migrations 003/004 and `access.py` implement trusted admission provenance,
 non-reactivating local tombstones, single active owner, separate trusted admin
@@ -389,12 +415,13 @@ endpoint or booking workflow. Owners can edit them under the same page authority
 
 Canonical admission records previously observed identity provenance before private
 business dispatch. Projection/assignment cannot fabricate it. Every request still
-passes canonical admission; local tombstones stay inactive. Administrator grants
-are read-only to HTTP. Suspensions/verification use dedicated admin-only actions;
+passes canonical admission; local tombstones stay inactive. Current administrator
+authority comes only from the admitted central app claim, never the old local
+grants. Suspensions/verification use dedicated admin-only actions;
 only explicit suspension action can resume a held page, including for admins.
 
-Attachment/readiness validation locks referenced assets after artist/identity/
-grant locks until commit. Every future trusted producer must use that same order
+Attachment/readiness validation locks referenced assets after artist/identity
+locks until commit; admitted authority freshness is rechecked before commit. Every future trusted producer must use that same order
 for page/resource writes; no producer is installed here. Public projection uses a
 single read-only repeatable-read snapshot. It omits private originals/uploader and
 owner identities, hides draft/suspended pages and private/unready children, drops
@@ -432,8 +459,9 @@ compatibility with the old package. The restore plan must cover the schema/data
 boundary and post-backup writes; do not imply lossless automatic rollback. No
 live backup, migration, restore or code rollback was performed or authorized here.
 A legacy row without proof stops cutover. Empty test databases take 001..005 in order.
-Trusted admin bootstrap is separately operator-controlled: existing observed
-identity, reviewed grant/provenance, no HTTP grant path and no real grant from tests.
+Central admin management/issuance is Auth-owned and separately coordinated.
+The API requires valid admitted evidence plus an active canonically observed
+local actor; it has no local grant bootstrap or operational grant from tests.
 New route enrollment requires Authentication/Node Agent owner review; current
 authenticated managed proof does not make guest access operational.
 
@@ -444,7 +472,7 @@ S3 endpoint/access_key_id/secret_access_key and independent PUT/GET TTL settings
 `database.credentials.json`, canonical profile/key/config and replay projections
 remain runtime-owner assignments. No admin list or credentials enter artist DTOs.
 Real R2 PUT/completion/CORS/privacy/expiry, processing, playback HTTP, guest ingress,
-central revocation sync and VM schema/lifecycle proof remain pending. No payment,
+central account-deletion sync and VM schema/lifecycle proof remain pending. No payment,
 Worker, bucket, tunnel, DNS, shared service or frontend implementation was changed.
 
 Native GET declarations for public page and content lists use the existing
@@ -521,3 +549,37 @@ after the capability correction; scoped diff whitespace validation passed. Its
 synthetic existing-grant fixtures are confined to disposable PostgreSQL. No
 operational grant/account/bootstrap tool was added. The earlier full source and
 packaged 72-test evidence remains bound to053d93bc, not this later runtime change.
+
+
+### Central-admin consumer continuation (2026-10-03)
+
+The approved central Auth architecture replaces local grant authority. Exact
+claim shape and request-context/expiry behavior above supersede the historical
+local-grant ledger. No migrations were changed or auto-applied; the old table
+remains inert. Page ownership, identity tombstones, suspension/publication,
+verification, public privacy and immutable ownership audit remain independent.
+No new endpoint, header, native catalog, dependency or protected configuration
+filename is introduced. Credentials remain in the runtime-owner-confirmed protected
+directory, never in this repository or chat.
+
+Local regressions exercise exact/malformed/wrong-app claims, duplicate nested
+keys, forged/unadmitted and expired requests, immutable/lost context, central
+admin without a local grant, inert old grants, newly revoked admin retaining
+legitimate ownership, expiry during real artist-lock waits, precommit rollback,
+and both media-inspection outcomes. Retained tests cover old-owner denial,
+transfer/concurrency/tombstones/publication/privacy and actual canonical ingress.
+Synthetic admission, disposable PostgreSQL and stubbed R2 prove local behavior;
+real Auth issuance/revocation, cloud upload, VM schema/package selection and
+guest ingress remain pending. A valid previously issued claim can survive grant
+revocation until expiry; this is not immediate remote revocation proof.
+
+
+Final central-consumer source discovery returned **86 passed** on 2026-10-03:
+`env -u CREDENTIALS_DIRECTORY PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -q`.
+This includes 11 isolated transactional database tests, 16 API/database tests,
+exact claim/admission tests and actual native crypto/replay ingress. Dependency
+consistency and scoped whitespace checks passed. The older 72-test package
+receipt remains exclusively tied to053d93bc; exact-source local qualification
+for this consumer is recorded separately in .build-tools/central-admin-offline-proof.json.
+No operational release, migration, central grant or real R2 acceptance follows
+from these source/package checks.
