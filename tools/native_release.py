@@ -79,7 +79,7 @@ def build(root,wheels,output,source):
         (dest/"requirements.lock").write_text("\n".join(lock)+"\n")
         manifest={"schema":1,"app_id":"shadify_api","source_commit":source,"runtime":RUNTIME,
                   "requirements_path":"source/requirements.txt","lock_path":"requirements.lock",
-                  "migration_target":"002_user_profile_track_drafts","management_schema_version":1,
+                  "migration_target":"005_artist_content","management_schema_version":1,
                   "files":{p.relative_to(dest).as_posix():{"size":p.stat().st_size,"sha256":sha(p.read_bytes())}
                            for p in sorted(dest.rglob("*")) if p.is_file()}}
         (dest/"build-info.json").write_bytes(canonical(manifest))

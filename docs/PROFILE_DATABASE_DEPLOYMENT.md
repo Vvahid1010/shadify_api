@@ -1,6 +1,7 @@
 # Initial same-node Shadify API profile/database package contract
 
-Source-only candidate qualification,2026-10-03. Node Agent's sole writer owns
+Historical profile candidate qualification,2026-10-03. Current artist candidate
+status and prerequisites: [ARTIST_PROFILES_AND_ACCESS.md](ARTIST_PROFILES_AND_ACCESS.md). Node Agent's sole writer owns
 all allocator/lifecycle/local-pair/DB/grant/VM effects. This repo provisions none.
 Do not publish or select the candidate before bounded review. Current deployment
 baseline remains source4ec0b0d/buildc04ef5c until coordinated selection.
@@ -66,12 +67,13 @@ Auth/Node Agent own admission, mixed sender routing and exact domain projection.
 
 ## App schema and health
 
-Migration target remains002_user_profile_track_drafts. Apply001_media_foundation.sql
-then002_user_profile_track_drafts.sql ONLY to the assigned Shadify database under
-the owning installer's approved migration action. App startup never migrates.
-Four tables are required: shadify_users (id/auth_account_id), shadify_artists,
-shadify_tracks (including title) and shadify_media_assets. ready() performs a
-read-only SELECT LIMIT0 across their required columns. This app DB target is not
+Current source migration target is005_artist_content; prior profile candidate
+target was002. Apply nothing operationally from this task. Coordinated owner
+selection must review 003 provenance preparation, 004 guarded owner backfill and
+005 content tables with the matching package. Missing old owner proof aborts 004;
+002-only schema keeps candidate readiness closed. App startup never migrates.
+ready() performs read-only SELECT LIMIT0 across required artist/content/authority
+columns. Exact schema/activation prerequisites have one source in the artist contract. This app DB target is not
 Node Agent's own schema version or another app's database.
 
 GET /health is process liveness200; no listeners/cloud/DB probes at startup.
@@ -82,7 +84,7 @@ that scope is ready200. Missing schema, wrong peer, lost continuity or recovery
 keeps readiness503. Media upload endpoints remain503 without storage even after
 successful native admission. Storage configured_unverified is never real R2 proof.
 Profile GET projects a stable Shadify user for the admitted Auth account and
-returns existing artist_ids; no artist/publication/entitlement grant is created.
+returns existing artist_ids; no artist/admin membership or entitlement is created by profile projection.
 
 ## Source-only proof and remaining owner work
 

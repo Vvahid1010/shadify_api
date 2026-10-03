@@ -228,3 +228,10 @@ The invariant is simple:
 Shadify nodes manage product logic; object storage owns media bytes.
 
 Start with R2 Standard and its free allocation. Optimize only after real usage data exists.
+
+
+Artist management and media transfer rules have one source in
+[ARTIST_PROFILES_AND_ACCESS.md](ARTIST_PROFILES_AND_ACCESS.md). Current membership/
+trusted admin authorizes each private operation; uploader is audit only. New
+playback issuance also requires a published non-suspended page; suspension does
+not rewrite child states or revoke existing bearer URLs before their TTL.

@@ -22,7 +22,10 @@ env -u CREDENTIALS_DIRECTORY PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unitt
 Registry dependency versions are in requirements.lock. Canonical private native
 shell 0.4.6 is supplied separately using the exact producer-approved wheel/provenance
 in app_security_dependency.json; do not fetch a public same-name substitute.
-All checks use synthetic files/identities or stubbed reads, not deployed secrets.
+Checks use synthetic identities/object storage, not deployed secrets. Artist
+tests also start disposable native PostgreSQL 18 with a private temporary Unix
+socket and no TCP listener; it is closed/deleted afterward. Native test binaries
+must already be available; there is no external database fallback or installation.
 The non-failing Starlette httpx TestClient deprecation warning is known.
 
 ## Native release
@@ -80,3 +83,11 @@ The optional playback TTL field is accepted by the updated source reader, not
 the current4ec0b0d baseline. Keep that deployed projection unchanged until an
 updated compatible package is explicitly selected. Source proof:51offline tests
 pass and pip check is clean; actual HTTP/playback/publication/R2 proof is pending.
+
+
+Artist mission source/candidate targets005_artist_content. Contract and exact
+schema/enrollment/admin/provenance prerequisites:
+docs/ARTIST_PROFILES_AND_ACCESS.md. Old 002 packages/schema cannot be mixed with
+this cutover. Local testing/packaging does not authorize migration, publication,
+grant or shared topology changes. Source-ASGI public metadata is tested; guest
+managed ingress and playback HTTP remain inactive.

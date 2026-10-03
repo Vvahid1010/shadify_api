@@ -1,5 +1,5 @@
 {
-  "status": "pending_implementation_not_executed",
+  "status": "local_acceptance_coverage_operational_integration_pending",
   "contract": "docs/ARTIST_PROFILES_AND_ACCESS.md",
   "actors": [
     "guest",
@@ -18,7 +18,8 @@
       "target": "new_page",
       "action": "create_unassigned_page",
       "expected": "allowed",
-      "invariant": "no membership; draft; actor audited"
+      "invariant": "no membership; draft; actor audited",
+      "local_test": "test_admin_unassigned_curated_page_and_official_moments"
     },
     {
       "id": "known_assignment",
@@ -26,7 +27,8 @@
       "target": "page_a",
       "action": "assign_verified_listener",
       "expected": "allowed",
-      "invariant": "same projected user; no account creation"
+      "invariant": "same projected user; no account creation",
+      "local_test": "test_identity_assignment_proof_and_canonical_observer"
     },
     {
       "id": "unknown_assignment",
@@ -34,7 +36,8 @@
       "target": "page_a",
       "action": "assign_unknown_or_unverified_identity",
       "expected": "denied",
-      "invariant": "no user or membership inserted"
+      "invariant": "no user or membership inserted",
+      "local_test": "test_unassigned_multiple_pages_and_no_identity_creation"
     },
     {
       "id": "multiple_pages",
@@ -42,7 +45,8 @@
       "target": "page_b",
       "action": "assign_existing_owner_a",
       "expected": "allowed",
-      "invariant": "one identity owns page_a and page_b"
+      "invariant": "one identity owns page_a and page_b",
+      "local_test": "test_owner_multi_page_capabilities_and_admin_non_enumeration"
     },
     {
       "id": "concurrent_owner",
@@ -50,7 +54,8 @@
       "target": "page_a",
       "action": "race_assign_or_transfer",
       "expected": "serialized",
-      "invariant": "at most one active owner; stale request 409"
+      "invariant": "at most one active owner; stale request 409",
+      "local_test": "test_concurrent_assignment_and_database_unique_owner"
     },
     {
       "id": "cross_private_read",
@@ -58,7 +63,8 @@
       "target": "page_a",
       "action": "read_private_page_or_asset",
       "expected": "404",
-      "invariant": "no target metadata or keys"
+      "invariant": "no target metadata or keys",
+      "local_test": "test_cross_artist_content_release_layout_and_media_idor"
     },
     {
       "id": "cross_content_write",
@@ -66,7 +72,8 @@
       "target": "page_a",
       "action": "create_edit_delete_publish",
       "expected": "404",
-      "invariant": "no content mutation"
+      "invariant": "no content mutation",
+      "local_test": "test_cross_artist_content_release_layout_and_media_idor"
     },
     {
       "id": "cross_reference",
@@ -74,7 +81,8 @@
       "target": "page_a",
       "action": "attach_page_b_asset_track_or_feature",
       "expected": "denied",
-      "invariant": "no cross-artist join or attachment"
+      "invariant": "no cross-artist join or attachment",
+      "local_test": "test_cross_artist_content_release_layout_and_media_idor"
     },
     {
       "id": "transfer_revocation",
@@ -82,7 +90,8 @@
       "target": "page_a",
       "action": "write_after_transfer_commit",
       "expected": "404",
-      "invariant": "new owner/admin can manage; stable IDs and keys"
+      "invariant": "new owner/admin can manage; stable IDs and keys",
+      "local_test": "test_transfer_http_preserves_work_slug_and_revokes_all_management"
     },
     {
       "id": "completion_transfer_race",
@@ -90,7 +99,8 @@
       "target": "page_a",
       "action": "complete_paused_across_transfer",
       "expected": "404",
-      "invariant": "post-inspection state unchanged; no attachment"
+      "invariant": "post-inspection state unchanged; no attachment",
+      "local_test": "test_completion_and_failure_after_transfer_recheck_and_new_owner_attachment"
     },
     {
       "id": "completion_new_owner",
@@ -98,7 +108,8 @@
       "target": "page_a",
       "action": "complete_valid_prior_pending_upload",
       "expected": "allowed",
-      "invariant": "uploader preserved for audit only"
+      "invariant": "uploader preserved for audit only",
+      "local_test": "test_completion_and_failure_after_transfer_recheck_and_new_owner_attachment"
     },
     {
       "id": "completion_repeat",
@@ -106,7 +117,8 @@
       "target": "page_a",
       "action": "repeat_completed_upload_after_transfer",
       "expected": "404",
-      "invariant": "idempotence does not skip authorization"
+      "invariant": "idempotence does not skip authorization",
+      "local_test": "test_completion_and_failure_after_transfer_recheck_and_new_owner_attachment"
     },
     {
       "id": "failure_write_transfer",
@@ -114,7 +126,8 @@
       "target": "page_a",
       "action": "mark_upload_failed_after_transfer",
       "expected": "404",
-      "invariant": "failure transition also reauthorizes"
+      "invariant": "failure transition also reauthorizes",
+      "local_test": "test_completion_and_failure_after_transfer_recheck_and_new_owner_attachment"
     },
     {
       "id": "no_owner_escalation",
@@ -122,7 +135,8 @@
       "target": "page_a",
       "action": "set_admin_verify_or_unsuspend",
       "expected": "denied",
-      "invariant": "protected fields and suspension unchanged"
+      "invariant": "protected fields and suspension unchanged",
+      "local_test": "test_owner_multi_page_capabilities_and_admin_non_enumeration"
     },
     {
       "id": "independent_states",
@@ -130,7 +144,8 @@
       "target": "page_a",
       "action": "transfer_or_revoke",
       "expected": "allowed",
-      "invariant": "publication verification and works unchanged; audit atomic"
+      "invariant": "publication verification and works unchanged; audit atomic",
+      "local_test": "test_transfer_revokes_old_owner_preserves_page_and_audit"
     },
     {
       "id": "public_filter",
@@ -138,7 +153,8 @@
       "target": "page_a",
       "action": "read_public_projection",
       "expected": "filtered",
-      "invariant": "only published page/children; no originals private keys or memberships"
+      "invariant": "only published page/children; no originals private keys or memberships",
+      "local_test": "test_admin_unassigned_curated_page_and_official_moments"
     },
     {
       "id": "public_suspended",
@@ -146,7 +162,8 @@
       "target": "suspended_page",
       "action": "read_public_projection",
       "expected": "404",
-      "invariant": "no suspended content"
+      "invariant": "no suspended content",
+      "local_test": "test_suspension_and_verification_independent_and_no_public_leaks"
     },
     {
       "id": "public_unassigned",
@@ -154,7 +171,8 @@
       "target": "published_unassigned_page",
       "action": "read_public_projection",
       "expected": "allowed",
-      "invariant": "computed curated_by_shadify true"
+      "invariant": "computed curated_by_shadify true",
+      "local_test": "test_admin_unassigned_curated_page_and_official_moments"
     },
     {
       "id": "technical_readiness",
@@ -162,7 +180,8 @@
       "target": "page_a",
       "action": "publish_original_only_track_or_video",
       "expected": "409",
-      "invariant": "upload success is not ready delivery"
+      "invariant": "upload success is not ready delivery",
+      "local_test": "test_unready_video_originals_events_and_layout_validation"
     },
     {
       "id": "paid_separation",
@@ -170,7 +189,8 @@
       "target": "page_a",
       "action": "play_paid_full_without_entitlement",
       "expected": "denied",
-      "invariant": "management never grants paid playback"
+      "invariant": "management never grants paid playback",
+      "local_test": "test_paid_full_denied_even_with_account_before_signer"
     },
     {
       "id": "no_cascade",
@@ -178,7 +198,8 @@
       "target": "page_a",
       "action": "revoke_owner_or_tombstone_user",
       "expected": "allowed",
-      "invariant": "page works media and audit preserved"
+      "invariant": "page works media and audit preserved",
+      "local_test": "test_tombstone_not_reactivated_and_no_content_cascade"
     },
     {
       "id": "atomic_audit",
@@ -186,7 +207,13 @@
       "target": "page_a",
       "action": "transfer_with_injected_audit_failure",
       "expected": "rollback",
-      "invariant": "original owner retained; no partial membership change"
+      "invariant": "original owner retained; no partial membership change",
+      "local_test": "test_stale_transfer_and_audit_failure_roll_back"
     }
+  ],
+  "limits": [
+    "Synthetic canonical identity fixtures; existing managed crypto proof separate",
+    "Derived assets are synthetic readiness metadata, no processor or real R2",
+    "No guest managed ingress, operational migration/grant or VM activation"
   ]
 }

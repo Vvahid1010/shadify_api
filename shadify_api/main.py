@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import inspect
 from typing import Callable
 from uuid import UUID
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
 from .media import MediaError, MediaService, UploadIntent
 from .domain import TrackDraft
@@ -95,26 +95,23 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return data.create_track(owner, artist_id, draft)
 
     @app.get("/api/artists/{artist_id}/tracks")
-    def tracks(artist_id: UUID, owner: str = Depends(identity), data=Depends(domain_service)):
-        return data.tracks(owner, artist_id)
+    def tracks(artist_id: UUID, owner: str = Depends(identity), data=Depends(domain_service),
+               limit: int = Query(20, ge=1, le=100), cursor: UUID | None = None):
+        return data.tracks(owner, artist_id, limit, cursor)
 
     @app.get("/api/media/{asset_id}")
     def media_metadata(asset_id: UUID, owner: str = Depends(identity)):
         if repository is None:
             raise HTTPException(503, "Media persistence integration pending")
-        asset = repository.get(asset_id)
-        if (asset is None or asset.owner_id != owner
-                or not repository.owns_track(owner, asset.artist_id, asset.track_id)):
-            raise HTTPException(404, "Asset not found")
-        return {"asset_id": str(asset.id), "artist_id": str(asset.artist_id), "track_id": str(asset.track_id),
-                "asset_type": asset.asset_type, "mime": asset.mime, "size": asset.size,
-                "state": asset.state, "access_class": asset.access_class, "publish_state": asset.publish_state}
+        return repository.media_metadata(owner, asset_id)
 
     @app.post("/api/media/uploads", status_code=201)
     def create_upload(intent: UploadIntent, owner: str = Depends(identity),
                       media: MediaService = Depends(media_service)):
         asset, authorization = media.create(owner, intent)
-        return {"asset_id": str(asset.id), "state": asset.state,
+        context = repository.access_context(owner, asset.artist_id) if repository is not None else {
+            "actor_account_id": owner, "artist_id": str(asset.artist_id)}
+        return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "upload": {"method": "PUT", "url": authorization.url,
                 "headers": authorization.headers, "expires_in": authorization.expires_in}}
 
@@ -122,9 +119,13 @@ def create_app(service: MediaService | None = None, identity: Callable = require
     def complete_upload(asset_id: UUID, owner: str = Depends(identity),
                         media: MediaService = Depends(media_service)):
         asset = media.complete(owner, asset_id)
-        return {"asset_id": str(asset.id), "state": asset.state,
+        context = repository.access_context(owner, asset.artist_id) if repository is not None else {
+            "actor_account_id": owner, "artist_id": str(asset.artist_id)}
+        return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "access_class": asset.access_class, "publish_state": asset.publish_state}
 
+    from .artist_routes import install_artist_routes
+    install_artist_routes(app, identity, repository)
     return app
 
 

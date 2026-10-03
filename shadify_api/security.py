@@ -12,10 +12,44 @@ def receiver_catalog():
               ("media.upload.create", "POST", "/api/media/uploads"),
               ("media.upload.complete", "POST", "/api/media/uploads/{asset_id}/complete"),
               ("media.read", "GET", "/api/media/{asset_id}")]
-    return [dict(endpoint_id="shadify_api." + name, receiver_app="shadify_api",
+    routes += [
+        ("artists.mine", "GET", "/api/me/artists"),
+        ("artists.create", "POST", "/api/admin/artists"),
+        ("artists.public.slug", "GET", "/api/artist-slugs/{slug}/public"),
+        ("artists.public.id", "GET", "/api/artists/{artist_id}/public"),
+        ("artists.read", "GET", "/api/artists/{artist_id}"),
+        ("artists.edit", "PATCH", "/api/artists/{artist_id}"),
+        ("artists.layout", "PUT", "/api/artists/{artist_id}/layout"),
+        ("artists.assign", "POST", "/api/admin/artists/{artist_id}/owner"),
+        ("artists.transfer", "PUT", "/api/admin/artists/{artist_id}/owner"),
+        ("artists.revoke", "DELETE", "/api/admin/artists/{artist_id}/owner"),
+        ("artists.publication", "PUT", "/api/artists/{artist_id}/publication"),
+        ("artists.suspension", "PUT", "/api/admin/artists/{artist_id}/suspension"),
+        ("artists.verification", "PUT", "/api/admin/artists/{artist_id}/verification"),
+        ("artists.audit", "GET", "/api/admin/artists/{artist_id}/ownership-audit"),
+        ("users.profile.read", "GET", "/api/admin/users/{user_id}/profile"),
+        ("users.profile.edit", "PATCH", "/api/admin/users/{user_id}/profile")]
+    for resource in ("tracks", "releases", "videos", "moments", "events"):
+        path="/api/artists/{artist_id}/" + resource
+        if resource != "tracks":
+            routes += [(resource+".create", "POST", path), (resource+".list", "GET", path)]
+        path += "/{content_id}"
+        routes += [(resource+".item.read", "GET", path), (resource+".edit", "PATCH", path),
+                   (resource+".delete", "DELETE", path)]
+        if resource != "events":
+            routes += [(resource+".publication", "PUT", path+"/publication")]
+    catalog = [dict(endpoint_id="shadify_api." + name, receiver_app="shadify_api",
                  permitted_peer_apps=["authentication"], method=method, path=path,
                  headers=list(HEADERS), off_supported=True, proxy_headers=True)
             for name,method,path in routes]
+    # Public page contains several bounded collections; private list permits up
+    # to 100 bounded records. Declare the existing shell's supported 8 MiB bound.
+    for endpoint in catalog:
+        if endpoint['method']=='GET' and (endpoint['path'].endswith('/public')
+                or endpoint['path'].rsplit('/',1)[-1] in {'tracks','releases','videos','moments','events'}):
+            endpoint['max_response_bytes']=8388608
+    return catalog
+
 
 
 def create_binding(projection, directory, replay_factory=None):

@@ -50,8 +50,9 @@ See docs/R2_SIGNED_MEDIA_DELIVERY.md for the authoritative current contract.
 Guest playback must work for published free tracks after authoritative checks.
 Paid full media requires Authentication and existing purchase/entitlement; absent
 proof denies. A free paid preview uses a separate asset. Do not implement payments
-or infer entitlement. Current schema remains draft/original-only; do not expose
-playback HTTP routes without approved publication/repository/ingress wiring.
+or infer entitlement. Playback HTTP/repository/guest ingress remain inactive. Artist mission schema
+adds readiness/publication metadata but no derived producer; do not fabricate
+ready output or expose playback without approved repository/ingress wiring.
 Player receives opaque url+expires_at; Playlist stores stable track_id. Database,
 Track and Playlist never persist presigned URLs. Keys remain backend metadata.
 URLs are reusable until expiry; same-second signing may return identical URLs.
@@ -112,13 +113,12 @@ normal publication. Source is /srv/Coding_space/shadify_api on Ubuntu WSL ext4;
 use native Python 3.14 and the isolated source-local .venv. No managed WSL API
 service, database, migration or cloud resource has been activated.
 
-Current scope: canonical shell-admitted Authentication identity, Shadify user
-projection, already-owned artist draft tracks, private original upload issuance/
-completion and metadata. Artist eligibility/enrollment remains undefined; do not
-infer artist ownership or create grants from a browser or Authentication role.
-Phase 1 signed GET/config/provider and read-only authorization-boundary preparation
-is authorized. Playback HTTP/publication schema, purchases/entitlements/payments
-and Worker deployment remain pending; keep the existing private API scope.
+Current source scope includes canonical shell-admitted identity/provenance,
+artist memberships, separate trusted app admin, artist/profile/content lifecycle,
+private original uploads and signed GET provider preparation. Artist authority
+and status are defined in docs/ARTIST_PROFILES_AND_ACCESS.md. Grants remain
+operator-controlled and no live grant/schema activation occurred. Playback HTTP,
+processing, purchases/entitlements/payments and Worker deployment remain pending.
 
 Node Agent owns installation/update/lifecycle on selected Node B, catalog
 shadify-api, app identity shadify_api. It owns protected config/profile and native
@@ -143,8 +143,8 @@ assertion HMAC verifier is required.
 
 The operator authorized staged artist-page backend implementation. Read
 docs/ARTIST_PROFILES_AND_ACCESS.md before artist, content or media permission work;
-it is the single contract and implementation-status source. Stage 1 requires the
-parent's independent Astra acceptance before data/authorization or API changes.
+it is the single contract and implementation-status source. Stage 1 was accepted
+by the parent's independent Astra review; isolated data/API work is authorized.
 Reuse canonical Authentication and per-page memberships; never infer is_artist,
 admin or durable media access from browser fields or uploader IDs. Ownership,
 publication and verification stay independent. Isolated database tests/migration

@@ -59,7 +59,7 @@ class PlaybackBoundaryTests(unittest.TestCase):
         self.track=uuid4()
         self.asset=Asset(uuid4(),"synthetic-owner",uuid4(),self.track,"delivery/server-selected/audio.m4a",
                          "audio_delivery","audio/mp4",20,datetime.now(timezone.utc),state="ready",access_class="free",publish_state="published")
-        self.target=PlaybackTarget(self.track,"published","free",self.asset)
+        self.target=PlaybackTarget(self.track,"published","free",self.asset,page_publish_state="published")
         self.repo=Mock();self.repo.get_playback_target.return_value=self.target
         self.provider=Mock();self.provider.create_playback_access.return_value=PlaybackAccess("https://unit-test.invalid/opaque",datetime.now(timezone.utc))
         self.service=PlaybackService(self.repo,self.provider)
@@ -71,6 +71,14 @@ class PlaybackBoundaryTests(unittest.TestCase):
         self.provider.create_playback_access.assert_called_with(self.asset.key)
         self.assertEqual(first.url,"https://unit-test.invalid/opaque")
         self.assertFalse(hasattr(first,"key"))
+
+    def test_missing_draft_or_suspended_page_denied_before_signing(self):
+        for state in ("unknown", "draft", "suspended"):
+            self.repo.get_playback_target.return_value=replace(self.target,page_publish_state=state)
+            with self.assertRaises(MediaError) as error:
+                self.service.create_playback_access(self.track)
+            self.assertEqual(error.exception.status,404)
+        self.provider.create_playback_access.assert_not_called()
 
     def test_paid_full_denied_even_with_account_before_signer(self):
         self.repo.get_playback_target.return_value=replace(self.target,track_access_class="paid")

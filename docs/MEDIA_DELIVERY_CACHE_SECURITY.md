@@ -77,3 +77,10 @@ GET/range playback, private bucket/object access, valid expiry and denied unsign
 access, authorized guest free/draft/paid behavior after real schema/HTTP wiring,
 signed-URL redaction and request/cost observation. No DNS/bucket/tunnel/config,
 credentials, access grants or live R2 requests are performed by this source work.
+
+
+Artist management and media transfer rules have one source in
+[ARTIST_PROFILES_AND_ACCESS.md](ARTIST_PROFILES_AND_ACCESS.md). Current membership/
+trusted admin authorizes each private operation; uploader is audit only. New
+playback issuance also requires a published non-suspended page; suspension does
+not rewrite child states or revoke existing bearer URLs before their TTL.

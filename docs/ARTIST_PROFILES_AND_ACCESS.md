@@ -3,8 +3,9 @@
 Status: Stage 1 accepted with corrections by independent Astra review
 `01a10343-cde5-76e5-a121-fd46c7f91471`, relayed by parent on 2026-10-03.
 This is the single source of truth for the authorized artist-page backend mission.
-Stage 2 isolated implementation is authorized; advance stages after their acceptance. This document describes proposed
-behavior unless the implementation ledger explicitly marks it implemented.
+Stages 2 and 3 have met isolated source acceptance. Stage 4 source regression
+checks pass; native candidate qualification is recorded separately below.
+The implementation ledger distinguishes tested source behavior from operational integration.
 
 ## Evidence and scope
 
@@ -17,7 +18,7 @@ AUTHENTICATION_INTEGRATION.md, typed models, local providers and catalog fixture
 Both repositories were fetched safely; local/remote divergence was 0/0. Existing
 frontend component/browser-test edits belong to the other owner and are untouched.
 
-Current backend: one required `artists.owner_id`, draft tracks, user identity
+Baseline at Stage 1 inspection: one required `artists.owner_id`, draft tracks, user identity
 projection, private audio/artwork original uploads and upload completion. Media
 metadata/completion also require the original uploader. There is no persisted
 artist profile, membership, admin grant, release, video, event, Moment, layout,
@@ -39,7 +40,8 @@ One canonical Authentication identity can be a listener and own many artist page
 There is no global `is_artist`, second account, team, manager role or generic RBAC.
 An artist page has a stable UUID and case-normalized globally unique slug; it
 exists independently of its owner and starts unassigned. UUID never changes.
-Slug stays stable through ownership changes; initial scope has no slug rename.
+Slug stays stable through ownership changes; initial scope has no slug rename. Legacy pages receive `artist-<UUID>` on
+cutover; empty legacy names remain draft until an authorized editor supplies one.
 
 `artist_memberships` is the sole page-management authority. Its only role is
 `owner`. A partial unique database index on artist_id where revoked_at IS NULL
@@ -87,7 +89,9 @@ distinct operations, neither deletes page content.
 Ownership, page publication (`draft`, `published`, `suspended`) and official
 verification are independent. Admin can create, prepare and publish an unassigned
 page; a published unassigned DTO computes `curated_by_shadify: true`. This field
-is not persisted or accepted in writes. Verification means an explicit admin
+is not persisted or accepted in writes. An inactive identity with an unrevoked
+membership remains assigned but cannot manage; curated status is not inferred
+from identity inactivity. Verification means an explicit admin
 decision, never ownership, payment, publication or a user-editable badge.
 
 Owner may edit ordinary metadata/drafts while suspended, but cannot publish
@@ -117,8 +121,7 @@ revocation must not reverse this lock order by acquiring artist rows afterward.
 Concurrent revocation tests cover actor, target and admin-grant validity. Authorization and commit must not be
 separate unchecked database operations. After transfer commits, old owner cannot
 read new private state or perform another write. A read authorized before commit
-may have already returned bytes; no retroactive revocation claim. Private read
-queries join current membership/admin and target scope in one database snapshot;
+may have already returned bytes; no retroactive revocation claim. Private reads use the same locked authorizer and query target scope in that transaction;
 responses are no-store. Never cache owner capability as authority.
 
 ## Data and compatibility contract
@@ -171,7 +174,9 @@ slug 3–64 ASCII lowercase letters/digits/hyphens, starting/ending alphanumeric
 name/title 1–200 trimmed characters (artist name maximum 120); bio/description/
 Moment text maximum 5,000; at most 20 distinct genres of 1–64 characters; at most
 10 social links of maximum 2,048 characters each. Reject text control characters
-except newline in long text. Pagination defaults to 20, maximum 100, using a
+except newline in long text. Private pagination defaults to 20, maximum 100; public page collections cap at
+20 per resource to bound aggregate responses. Manageable-page lists return summaries
+and capabilities rather than repeating full biographies/layouts. Pagination uses a
 stable UUID cursor. Releases contain at most 100 distinct ordered tracks. Layout
 contains at most the six supported sections, with distinct positions. Events
 require an offset-aware instant and a ZoneInfo-valid IANA timezone; city/venue
@@ -202,7 +207,7 @@ Follower counts/references also have no persisted backend implementation yet;
 never convert fixture counts into authoritative data or delete future references
 on ownership changes.
 
-## API contracts (proposed; unversioned)
+## API contracts (implemented in source; unversioned)
 
 Existing `/api/me`, artist tracks and media routes stay; integrate the shared
 page authorizer rather than creating parallel ownership endpoints. UUID parse
@@ -216,7 +221,7 @@ no-store in this initial scope; no new caching framework.
 | Method and path | Behavior |
 | --- | --- |
 | GET /api/artists/{artist_id}/public | Filtered published metadata; draft/suspended absent, no membership IDs, audit, original keys, private assets or signed URL. |
-| GET /api/artists/by-slug/{slug}/public | Same filtered projection via normalized unique slug. |
+| GET /api/artist-slugs/{slug}/public | Same filtered projection via normalized unique slug. |
 | GET /api/me/artists | All currently manageable pages; one person may own several; bounded pagination; actual actor and computed per-page capabilities. Admin scope may explicitly include unassigned pages. |
 | POST /api/admin/artists | Admin creates unassigned draft page; supplied owner/admin flags rejected. |
 | GET/PATCH /api/admin/users/{user_id}/profile | Admin reads/edits existing user's public Shadify profile fields only; no account lookup directory, contact/security access or identity creation. |
@@ -232,7 +237,7 @@ no-store in this initial scope; no new caching framework.
 | GET /api/admin/artists/{artist_id}/ownership-audit | Admin-only bounded audit history; actual actor retained. |
 | GET/POST /api/artists/{artist_id}/{resource} | Private list/create for tracks, releases, videos, moments, events; no public list of draft content. Existing track paths reused. |
 | GET/PATCH/DELETE /api/artists/{artist_id}/{resource}/{id} | Scoped private read/edit/delete; reference/dependency conflicts reject deletion, no artist cascade. |
-| PUT /api/artists/{artist_id}/{resource}/{id}/publication | Shared technical/publication checks for publishable works/Moments; events use cancellation instead. |
+| PUT /api/artists/{artist_id}/{resource}/{id}/publication | Shared technical/publication checks for tracks/releases/videos/Moments; events are validated calendar metadata following page visibility and use cancellation instead. |
 | POST /api/media/uploads; POST /api/media/uploads/{id}/complete; GET /api/media/{id} | Existing interfaces, now current page authority rather than uploader authority; no key substitution or unrelated media read. |
 
 Private DTO envelope identifies `actor_account_id`, `artist_id`, `acting_as_admin`
@@ -303,8 +308,8 @@ followers or official rails where the backend reports them unavailable.
    from source proof. R2/VM/central identity integration awaits owner setup.
 
 Prepared independent acceptance inputs live in
-`tests/fixtures/artist_access_acceptance.json`; they are expected outcomes, not
-passing implementation tests. Cases must execute against real migrated isolated
+`tests/fixtures/artist_access_acceptance.json`; they map independent expected outcomes to actual local acceptance tests.
+Those tests do not establish real cloud/VM/central identity integration. Cases must execute against real migrated isolated
 PostgreSQL for transactional assertions and the API for scope/DTO checks:
 
 - Admin creates unassigned draft, adds metadata/draft content and publishes page;
@@ -331,7 +336,7 @@ prepared; JSON parses and scoped diff whitespace checks pass. Existing source
 suite rerun with `.venv/bin/python -m unittest discover -s tests -v`: **52 passed**,
 including managed admission/replay and stubbed S3 signing/inspection. No real cloud
 or operational database was used. These are baseline regressions, not proof of
-the new artist cases. Stage 2 isolated data/authority acceptance is met; Stage 3 API integration and Stage 4 complete handoff remain pending. Remaining integration decisions: schema/package cutover handling and public
+the new artist cases. Stage 2 isolated data/authority acceptance is met; Stage 3 core API acceptance is met; Stage 4 complete regression/package handoff remains pending. Remaining integration decisions: schema/package cutover handling and public
 guest/catalog owner enrollment. The bounded verified-target rule was accepted. Real cloud, VM, admin bootstrap and central
 deletion-sync checks remain pending regardless of local test results.
 
@@ -347,3 +352,108 @@ old owner denial, actor/target/grant revocation waiting until commit, preservati
 on revocation/tombstone, and legacy row-only cutover abort followed by synthetic
 trusted-observation fixture backfill. No real identity, admin grant or operational
 database was used. Existing routes are integrated in Stage 3, not this milestone.
+
+### Stage 3 evidence (2026-10-03)
+
+Core page/profile/layout/ownership/audit APIs, scoped track/release/video/official
+Moment/event metadata operations and current-membership media issue/complete/read
+are implemented. Native catalog has **49 unambiguous routes**, all still admitting
+only Authentication. Slug lookup is `/api/artist-slugs/{slug}/public`: the earlier
+`/api/artists/by-slug/{slug}/public` overlapped content-item templates and was
+rejected by canonical catalog validation. No live catalog/guest enrollment occurred.
+
+005 adds explicit artist-scoped content/reference tables and derived-asset metadata
+eligibility. It creates no processing output or entitlement. Original constraints
+retain private/draft invariants. Current upload API remains only track-scoped WAV/
+FLAC or JPEG/PNG originals; profile/video upload and processing stay unavailable.
+Publication checks trusted metadata readiness, not real object reachability.
+Events are validated calendar metadata visible when their page is published,
+including cancellation notices; there is no independent event draft/publication
+endpoint or booking workflow. Owners can edit them under the same page authority.
+
+Canonical admission records previously observed identity provenance before private
+business dispatch. Projection/assignment cannot fabricate it. Every request still
+passes canonical admission; local tombstones stay inactive. Administrator grants
+are read-only to HTTP. Suspensions/verification use dedicated admin-only actions;
+only explicit suspension action can resume a held page, including for admins.
+
+Attachment/readiness validation locks referenced assets after artist/identity/
+grant locks until commit. Every future trusted producer must use that same order
+for page/resource writes; no producer is installed here. Public projection uses a
+single read-only repeatable-read snapshot. It omits private originals/uploader and
+owner identities, hides draft/suspended pages and private/unready children, drops
+optional links to private music/withdrawn artwork, and hides invalid featured refs.
+A request that acquired its public snapshot before suspension may complete with
+that snapshot; a new snapshot after commit cannot expose the suspended page.
+
+`test_artist_api.py`: **11 passed**, using real disposable PostgreSQL and synthetic
+admission/object storage. Covers unassigned curated page, official Moment drafts,
+multiple pages, admin/non-admin isolation, canonical observation before assignment,
+HTTP transfer/audit/old-owner denial, cross-artist content/layout/media references,
+completion and failure transitions across transfer, new-owner attachment/idempotent
+completion, suspension preserving child states, ordered releases and safe deletion,
+technical readiness, calendar/layout validation, safe public-user fields and public
+optional-reference privacy. The baseline managed crypto/replay suite also passes
+with the new catalog. Stage 4 records final combined and package evidence.
+
+### Operational cutover prerequisites
+
+This candidate targets **005_artist_content**, not the prior published artifact's
+002 schema. The latest pre-mission published build is
+`9328bb38579e90826f5869e9595cb0639f6d05fa`, source
+`715a8227d67b9805ba6508ffb3ada2fc58858400`; this is artifact history, not a claim
+about the currently selected VM installation. Old packages are incompatible with
+the removed artists.owner_id; this candidate is incompatible with 002-only schema.
+No operational cutover, partial upgrade or auto-migration is authorized here.
+
+The owner must review coordinated schema/package selection, canonical provenance
+preparation for any existing owners (003 then genuine trusted observation, never
+row-only guessed backfill), 004/005 application and rollback strategy. A legacy
+row without proof stops cutover. Empty test databases take 001..005 in order.
+Trusted admin bootstrap is separately operator-controlled: existing observed
+identity, reviewed grant/provenance, no HTTP grant path and no real grant from tests.
+New route enrollment requires Authentication/Node Agent owner review; current
+authenticated managed proof does not make guest access operational.
+
+Protected filename/interface stays unchanged: runtime owner confirms the absolute
+`CREDENTIALS_DIRECTORY`; user privately places R2 values in
+`storage.credentials.json` there (0600, regular file), with existing private bucket,
+S3 endpoint/access_key_id/secret_access_key and independent PUT/GET TTL settings.
+`database.credentials.json`, canonical profile/key/config and replay projections
+remain runtime-owner assignments. No admin list or credentials enter artist DTOs.
+Real R2 PUT/completion/CORS/privacy/expiry, processing, playback HTTP, guest ingress,
+central revocation sync and VM schema/lifecycle proof remain pending. No payment,
+Worker, bucket, tunnel, DNS, shared service or frontend implementation was changed.
+
+Native GET declarations for public page and content lists use the existing
+canonical shell's supported 8 MiB response bound; the other routes retain its
+1 MiB default. Request field/count limits and 20-per-resource public pagination
+keep responses within that bound. This is app-owned source/catalog preparation;
+the owner must review exact new endpoint declarations before live enrollment.
+
+### Stage 4 source acceptance and package evidence
+
+After final route/privacy/response-bound changes, complete source discovery:
+`env -u CREDENTIALS_DIRECTORY PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -q`
+returned **72 passed** on 2026-10-03. `pip check` is clean; scoped `git diff --check`
+passes. This includes 8 transactional database tests, 11 API/database tests,
+page-state playback denial and the retained managed crypto/replay/provider/native
+artifact tests. A former mocked SQL-string test was replaced by real isolated
+database authority/SQL-binding proof; baseline behavior changes are intentional
+404 private denials, membership authority and capability-aware draft DTOs.
+
+Native candidate qualification uses the existing 29-wheel offline hash install
+and unchanged reviewed shell0.4.6/transport0.1.9/Uvicorn0.53.0. When completed,
+exact commit/archive/manifest digests, 005 target, file inventory and measured
+packaged test count are recorded in ignored
+`.build-tools/artist-access-offline-proof.json`; absence of that receipt means
+qualification is incomplete. Candidate archive path:
+`.build-tools/shadify-api-artist-access.tar.gz`. This is a local review artifact;
+no GitHub source/build push or Node Agent installation follows automatically.
+
+Simplest next verification: independent source/candidate review, then replay the
+isolated test commands. Any operational follow-up must separately approve exact
+schema/package selection and canonical endpoint enrollment; privately supplied
+R2 configuration and a tiny real upload are later integration proof, not local
+test claims. The frontend documentation reference17f5f07 was published by its
+owner through selector commitf18c3a6; API work did not re-push/reconstruct it.

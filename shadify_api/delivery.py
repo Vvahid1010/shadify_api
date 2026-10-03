@@ -17,6 +17,7 @@ class PlaybackTarget:
     track_publish_state: str
     track_access_class: str
     asset: Asset
+    page_publish_state: str = "unknown"  # Missing adapter projection fails closed.
 
 
 class PlaybackRepository(Protocol):
@@ -34,7 +35,7 @@ class PlaybackService:
             raise MediaError(404, "Playable media not found")
         asset = target.asset
         kind, prefix = ("audio_preview", "previews/") if preview else ("audio_delivery", "delivery/")
-        if (target.track_id != track_id or asset.track_id != track_id
+        if (target.page_publish_state != "published" or target.track_id != track_id or asset.track_id != track_id
                 or target.track_publish_state != "published" or asset.publish_state != "published"
                 or asset.state != "ready" or asset.asset_type != kind or not asset.key.startswith(prefix)
                 or asset.storage_provider != "r2"):

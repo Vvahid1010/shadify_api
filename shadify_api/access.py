@@ -46,8 +46,6 @@ class ArtistAccessRepository:
         artist = None
         if artist_id is not None:
             artist = c.execute("SELECT * FROM shadify_artists WHERE id=%s FOR UPDATE", (artist_id,)).fetchone()
-            if artist is None:
-                raise MediaError(404, "Artist not found")
         identities = c.execute("SELECT * FROM shadify_users WHERE auth_account_id=ANY(%s) "
                                "ORDER BY auth_account_id FOR UPDATE", (sorted(set((account_id, *targets))),)).fetchall()
         users = {u["auth_account_id"]: u for u in identities}
@@ -60,6 +58,8 @@ class ArtistAccessRepository:
         admin = grant is not None and grant["revoked_at"] is None
         if admin_only and not admin:
             raise MediaError(403, "Application admin required")
+        if artist_id is not None and artist is None:
+            raise MediaError(404, "Artist not found")
         if artist is not None and not admin:
             owner = c.execute("SELECT 1 FROM artist_memberships WHERE artist_id=%s AND user_id=%s "
                               "AND revoked_at IS NULL", (artist_id, actor["id"])).fetchone()

@@ -105,7 +105,8 @@
           "x-forwarded-proto"
         ],
         "off_supported": true,
-        "proxy_headers": true
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
       },
       {
         "endpoint_id": "shadify_api.tracks.create",
@@ -193,6 +194,1130 @@
         ],
         "method": "GET",
         "path": "/api/media/{asset_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.mine",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/me/artists",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/admin/artists",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.public.slug",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artist-slugs/{slug}/public",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.artists.public.id",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/public",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.artists.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.layout",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/layout",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.assign",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/admin/artists/{artist_id}/owner",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.transfer",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/admin/artists/{artist_id}/owner",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.revoke",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/admin/artists/{artist_id}/owner",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.publication",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/publication",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.suspension",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/admin/artists/{artist_id}/suspension",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.verification",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/admin/artists/{artist_id}/verification",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.artists.audit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/admin/artists/{artist_id}/ownership-audit",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.users.profile.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/admin/users/{user_id}/profile",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.users.profile.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/admin/users/{user_id}/profile",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.item.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/tracks/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}/tracks/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.delete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/artists/{artist_id}/tracks/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.tracks.publication",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/tracks/{content_id}/publication",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.releases.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/artists/{artist_id}/releases",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.releases.list",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/releases",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.releases.item.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/releases/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.releases.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}/releases/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.releases.delete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/artists/{artist_id}/releases/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.releases.publication",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/releases/{content_id}/publication",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.videos.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/artists/{artist_id}/videos",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.videos.list",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/videos",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.videos.item.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/videos/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.videos.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}/videos/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.videos.delete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/artists/{artist_id}/videos/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.videos.publication",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/videos/{content_id}/publication",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.moments.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/artists/{artist_id}/moments",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.moments.list",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/moments",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.moments.item.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/moments/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.moments.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}/moments/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.moments.delete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/artists/{artist_id}/moments/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.moments.publication",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/artists/{artist_id}/moments/{content_id}/publication",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.events.create",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/artists/{artist_id}/events",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.events.list",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/events",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true,
+        "max_response_bytes": 8388608
+      },
+      {
+        "endpoint_id": "shadify_api.events.item.read",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/artists/{artist_id}/events/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.events.edit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PATCH",
+        "path": "/api/artists/{artist_id}/events/{content_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.events.delete",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/artists/{artist_id}/events/{content_id}",
         "headers": [
           "accept",
           "content-type",

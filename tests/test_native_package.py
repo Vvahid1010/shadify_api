@@ -45,6 +45,22 @@ class NativePackageTests(unittest.TestCase):
             (root/"build-info.json").write_bytes(canonical(manifest))
             with self.assertRaisesRegex(ValueError,"missing_transport_provenance"):verify(root,source)
 
+    def test_artist_target_requires_authority_and_cutover_files_while_legacy_remains_valid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source="a"*40;manifest=package(root,source)
+            verify(root,source)
+            manifest['migration_target']='005_artist_content'
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError,'incomplete_artist_package'): verify(root,source)
+            for name in ('migrations/003_identity_provenance.sql','migrations/004_artist_memberships.sql',
+                         'migrations/005_artist_content.sql','shadify_api/access.py','shadify_api/artists.py',
+                         'shadify_api/artist_models.py','shadify_api/artist_routes.py'):
+                name='source/'+name;path=root/name;path.parent.mkdir(exist_ok=True,parents=True)
+                raw=b'synthetic artifact format fixture';path.write_bytes(raw)
+                manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            self.assertEqual(verify(root,source)['migration_target'],'005_artist_content')
+
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;package(root,source)

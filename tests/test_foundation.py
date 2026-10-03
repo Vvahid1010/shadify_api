@@ -36,8 +36,14 @@ class Repository:
     def get(self, asset_id):
         return self.assets.get(asset_id)
 
-    def transition(self, asset_id, expected, target):
-        asset = self.assets[asset_id]
+    def get_for_actor(self, actor, asset_id):
+        asset = self.get(asset_id)
+        if asset is not None and not self.owns_track(actor, asset.artist_id, asset.track_id):
+            raise MediaError(404, "Asset not found")
+        return asset
+
+    def transition(self, actor, asset_id, expected, target):
+        asset = self.get_for_actor(actor, asset_id)
         if asset.state != expected:
             return False
         self.assets[asset_id] = replace(asset, state=target)
@@ -81,7 +87,7 @@ class FoundationTests(unittest.TestCase):
     def test_cross_owner_rejected_before_storage(self):
         with self.assertRaises(MediaError) as error:
             self.service.create("attacker", self.intent)
-        self.assertEqual(error.exception.status, 403)
+        self.assertEqual(error.exception.status, 404)
         self.storage.authorize_upload.assert_not_called()
 
     def test_completion_ownership_and_revocation(self):
@@ -92,7 +98,7 @@ class FoundationTests(unittest.TestCase):
         self.repo.allowed = False
         with self.assertRaises(MediaError) as error:
             self.service.complete("owner", asset.id)
-        self.assertEqual(error.exception.status, 403)
+        self.assertEqual(error.exception.status, 404)
         self.storage.inspect.assert_not_called()
 
     def test_expired_session_and_new_immutable_key(self):
@@ -206,34 +212,6 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError) as error:
                 load_storage_config(path)
             self.assertNotIn("unit-test-key", str(error.exception))
-
-
-class PostgreSQLBoundaryTests(unittest.TestCase):
-    def test_parameters_and_transactional_state_change(self):
-        from shadify_api.repository import PostgresMediaRepository
-        connection = Mock()
-        connection.__enter__ = Mock(return_value=connection)
-        connection.__exit__ = Mock(return_value=False)
-        connection.execute.return_value.fetchone.return_value = (1,)
-        connection.execute.return_value.rowcount = 1
-        repository = PostgresMediaRepository(lambda: connection)
-        artist, track = uuid4(), uuid4()
-        self.assertTrue(repository.owns_track("owner'; DROP TABLE x;--", artist, track))
-        query, params = connection.execute.call_args.args
-        self.assertNotIn("DROP TABLE", query)
-        self.assertEqual(params, (track, artist, "owner'; DROP TABLE x;--"))
-        from shadify_api.media import Asset
-        asset = Asset(uuid4(), "owner", artist, track, "originals/generated/master",
-                      "audio_original", "audio/flac", 20, datetime.now(timezone.utc))
-        repository.insert(asset)
-        query, params = connection.execute.call_args.args
-        self.assertEqual(query.count("%s"), len(params))
-        self.assertEqual(params[9], "r2")
-        self.assertTrue(repository.transition(asset.id, "upload_pending", "uploaded"))
-        query, params = connection.execute.call_args.args
-        self.assertIn("AND state=%s", query)
-        self.assertEqual(params, ("uploaded", asset.id, "upload_pending"))
-        self.assertEqual(connection.__exit__.call_count, 3)
 
 
 if __name__ == "__main__":

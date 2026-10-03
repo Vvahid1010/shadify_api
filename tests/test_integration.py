@@ -66,8 +66,9 @@ class DomainTests(unittest.TestCase):
         self.artist=uuid4()
         self.track=uuid4()
         self.repository.project_user.return_value={"user_id":str(uuid4()),"account_id":"owner","artist_ids":[]}
-        self.repository.create_track.return_value=self.track
-        self.repository.list_tracks.return_value=[]
+        self.repository.create_track.return_value={"track_id":str(self.track),"artist_id":str(self.artist),
+            "title":"Demo","publish_state":"draft"}
+        self.repository.list_tracks.return_value={"tracks":[]}
         self.client=TestClient(create_app(identity=lambda:"owner",domain=DomainService(self.repository)))
 
     def test_profile_does_not_grant_artist_capability(self):
@@ -88,8 +89,8 @@ class DomainTests(unittest.TestCase):
     def test_nonowner_cannot_create_or_read_track_drafts(self):
         self.repository.create_track.return_value=None
         self.repository.list_tracks.return_value=None
-        self.assertEqual(self.client.post(f"/api/artists/{self.artist}/tracks",json={"title":"Demo"}).status_code,403)
-        self.assertEqual(self.client.get(f"/api/artists/{self.artist}/tracks").status_code,403)
+        self.assertEqual(self.client.post(f"/api/artists/{self.artist}/tracks",json={"title":"Demo"}).status_code,404)
+        self.assertEqual(self.client.get(f"/api/artists/{self.artist}/tracks").status_code,404)
 
     def test_database_failures_return_redacted_unavailable(self):
         self.repository.project_user.side_effect=RuntimeError("SYNTHETIC_SECRET_MUST_NOT_LEAK")

@@ -19,7 +19,7 @@ class AccessRepository(ArtistAccessRepository):
         self.connect = connect
 
 
-class ArtistPostgresTests(unittest.TestCase):
+class ArtistPostgresCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cluster = IsolatedPostgres()
@@ -59,6 +59,9 @@ class ArtistPostgresTests(unittest.TestCase):
     def assign(self, artist=None, target='owner-a'):
         return self.repo.change_owner('admin', artist or self.artist, action='assign', target=target)
 
+
+
+class ArtistPostgresTests(ArtistPostgresCase):
     def test_unassigned_multiple_pages_and_no_identity_creation(self):
         self.assign()
         self.assign(self.other)

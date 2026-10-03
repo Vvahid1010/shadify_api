@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from .auth import require_account
+from .auth import observed_account
 from .config import load_protected_json, load_database_config, load_storage_config
 from .domain import DomainService
 from .media import MediaService
@@ -127,7 +127,7 @@ def create_runtime_app(directory: Path, *, binding=None):
         return ready, checks
 
     from .main import create_app
-    return create_app(service, require_account, domain=DomainService(repository) if repository else None,
+    return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
                       repository=repository, binding=binding, readiness=readiness, receiver=receiver)
 
 

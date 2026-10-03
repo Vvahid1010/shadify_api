@@ -43,8 +43,8 @@ class Asset:
 class MediaRepository(Protocol):
     def owns_track(self, owner: str, artist: UUID, track: UUID) -> bool: ...
     def insert(self, asset: Asset) -> None: ...
-    def get(self, asset_id: UUID) -> Asset | None: ...
-    def transition(self, asset_id: UUID, expected: str, target: str) -> bool: ...
+    def get_for_actor(self, actor: str, asset_id: UUID) -> Asset | None: ...
+    def transition(self, actor: str, asset_id: UUID, expected: str, target: str) -> bool: ...
 
 
 def valid_signature(mime, data):
@@ -63,7 +63,7 @@ class MediaService:
 
     def create(self, owner: str, intent: UploadIntent):
         if not self.repository.owns_track(owner, intent.artist_id, intent.track_id):
-            raise MediaError(403, "Artist/track ownership required")
+            raise MediaError(404, "Artist/track not found")
         allowed = {"audio_original": {"audio/wav", "audio/flac"},
                    "artwork_original": {"image/jpeg", "image/png"}}
         if intent.mime not in allowed[intent.asset_type] or intent.size > self.max_size:
@@ -78,11 +78,11 @@ class MediaService:
         return asset, authorization
 
     def complete(self, owner: str, asset_id: UUID):
-        asset = self.repository.get(asset_id)
-        if asset is None or asset.owner_id != owner:
+        asset = self.repository.get_for_actor(owner, asset_id)
+        if asset is None:
             raise MediaError(404, "Asset not found")
         if not self.repository.owns_track(owner, asset.artist_id, asset.track_id):
-            raise MediaError(403, "Artist/track ownership required")
+            raise MediaError(404, "Artist/track not found")
         if asset.state == "uploaded":
             return asset
         if asset.state != "upload_pending":
@@ -92,8 +92,9 @@ class MediaService:
         info = self.storage.inspect(asset.key)
         if (info.size != asset.size or info.content_type != asset.mime
                 or not valid_signature(asset.mime, info.prefix)):
-            self.repository.transition(asset.id, "upload_pending", "failed")
+            if not self.repository.transition(owner, asset.id, "upload_pending", "failed"):
+                raise MediaError(409, "Upload state or authorization changed; retry")
             raise MediaError(422, "Object size, MIME or container signature mismatch")
-        if not self.repository.transition(asset.id, "upload_pending", "uploaded"):
+        if not self.repository.transition(owner, asset.id, "upload_pending", "uploaded"):
             raise MediaError(409, "Upload state changed; retry")
         return replace(asset, state="uploaded")

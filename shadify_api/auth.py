@@ -86,3 +86,13 @@ def require_account(request: Request) -> str:
     identity = identity_from_admitted_authentication(request)
     request.state.auth_identity = identity
     return identity.account_id
+
+
+def observed_account(repository):
+    """Server-owned provenance hook. No request body/header can supply proof."""
+    def admitted_account(request: Request):
+        account = require_account(request)
+        if repository is not None:
+            repository.observe_identity(request.state.auth_identity)
+        return account
+    return admitted_account

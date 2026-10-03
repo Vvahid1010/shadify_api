@@ -1,4 +1,4 @@
-"""Small private domain projection; artist eligibility remains an existing relationship."""
+"""Small private domain projection; artist authority is repository-owned and membership-scoped."""
 from typing import Protocol
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -20,8 +20,8 @@ class TrackDraft(BaseModel):
 
 class DomainRepository(Protocol):
     def project_user(self, account_id: str) -> dict: ...
-    def create_track(self, account_id: str, artist_id: UUID, title: str) -> UUID | None: ...
-    def list_tracks(self, account_id: str, artist_id: UUID) -> list[dict] | None: ...
+    def create_track(self, account_id: str, artist_id: UUID, title: str) -> dict | None: ...
+    def list_tracks(self, account_id: str, artist_id: UUID, limit: int = 20, cursor: UUID | None = None) -> dict | None: ...
 
 
 class DomainService:
@@ -32,14 +32,13 @@ class DomainService:
         return self.repository.project_user(account_id)
 
     def create_track(self, account_id: str, artist_id: UUID, draft: TrackDraft):
-        track_id = self.repository.create_track(account_id, artist_id, draft.title)
-        if track_id is None:
-            raise MediaError(403, "Artist ownership required")
-        return {"track_id": str(track_id), "artist_id": str(artist_id),
-                "title": draft.title, "publish_state": "draft"}
+        result = self.repository.create_track(account_id, artist_id, draft.title)
+        if result is None:
+            raise MediaError(404, "Artist not found")
+        return result
 
-    def tracks(self, account_id: str, artist_id: UUID):
-        tracks = self.repository.list_tracks(account_id, artist_id)
-        if tracks is None:
-            raise MediaError(403, "Artist ownership required")
-        return {"tracks": tracks}
+    def tracks(self, account_id: str, artist_id: UUID, limit: int = 20, cursor: UUID | None = None):
+        result = self.repository.list_tracks(account_id, artist_id, limit, cursor)
+        if result is None:
+            raise MediaError(404, "Artist not found")
+        return result

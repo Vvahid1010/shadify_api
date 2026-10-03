@@ -59,18 +59,23 @@ Access-issuance responses use Cache-Control:no-store when HTTP wiring exists.
 
 | Requested media | Required proof before signing |
 | --- | --- |
-| Free full track | Authoritative published free track and ready published free derived delivery asset; guest allowed without mandatory login. |
+| Free full track | Authoritative published non-suspended artist page, published free track and ready published free derived delivery asset; guest allowed without mandatory login. |
 | Paid full track | Authentication plus existing purchase/entitlement; deny if that proof is unavailable. |
-| Paid preview | Published track and its separately selected ready published free preview asset; guest allowed. Never fall back to the full paid object. |
+| Paid preview | Published non-suspended page, published track and its separately selected ready published free preview asset; guest allowed. Never fall back to the full paid object. |
 | Original/draft/unready/private/unknown asset | Deny; upload completion is not publication or playback authorization. |
 
-Current schema permits only private draft originals. PlaybackService is a
+The artist mission schema can represent publication/derived eligibility but
+provides no processing output; originals still enforce private/draft constraints.
+See [ARTIST_PROFILES_AND_ACCESS.md](ARTIST_PROFILES_AND_ACCESS.md) for current
+membership authority, transfer-safe media and page visibility. PlaybackService is a
 prepared read-only boundary with a PlaybackRepository protocol; the live
 Postgres repository does not implement that projection and no playback HTTP
-route is registered. It checks authoritative track and asset publication,
+route is registered. It checks authoritative page, track and asset publication (missing page status
+fails closed),
 readiness, derived/preview type and free access before calling the provider.
 An authenticated account alone never authorizes paid full playback. Purchase,
-entitlement, payment execution and artist/publication grants are not implemented.
+entitlement and payment execution remain unavailable. Artist authority/publication
+APIs are implemented in source, without operational grants or guest enrollment.
 
 When public/free HTTP wiring is approved, it must accept guests and load
 publication/free status server-side. Do not route it through a mandatory-login

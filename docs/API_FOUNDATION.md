@@ -7,32 +7,21 @@ R2 S3 adapter. Native code/package readiness is separate from live Authenticatio
 database/schema, R2 or Cloudflare delivery proof. No service, database, migration,
 cloud resource or credential was activated by this implementation.
 
-## Current private API
+## Current source API and artist authority
 
-All business routes use the existing Authentication peer through canonical
-`app-security-shell==0.4.6`. All responses use Cache-Control: no-store.
+[ARTIST_PROFILES_AND_ACCESS.md](ARTIST_PROFILES_AND_ACCESS.md) is the single source
+for artist data, exact APIs, permissions, staged tests and operational gaps.
+Current app-owned catalog has 49 routes. Managed admission still permits only the
+existing Authentication peer; public source-ASGI metadata routes do not imply
+operational guest access. All responses are no-store.
 
-| Method/path | Behavior |
-| --- | --- |
-| GET /api/me | Project a stable Shadify user from the admitted Authentication account; return existing owned artist IDs. |
-| POST /api/artists/{artist_id}/tracks | Create a server-generated draft track under an already-owned artist; accepts only title. |
-| GET /api/artists/{artist_id}/tracks | List that owner's draft tracks. |
-| POST /api/media/uploads | Authorize direct private original upload after ownership/type/size checks. |
-| POST /api/media/uploads/{asset_id}/complete | Verify object metadata/container signature and mark uploaded, private, draft. |
-| GET /api/media/{asset_id} | Return owned asset metadata/state without storage keys or download URLs. |
-
-Artist eligibility is not specified in the approved product docs. The API therefore
-does not create an artist, infer artist capability from Authentication roles, or
-grant ownership from request data. An approved existing artist/owner relationship
-is required. No release publishing, payment, entitlement, analytics or worker
-framework is added. There is no independent Shadify login/session system.
-
-`migrations/001_media_foundation.sql` and `002_user_profile_track_drafts.sql` define
-four small PostgreSQL tables: users, artists, tracks and media assets. User IDs,
-track IDs and asset IDs are server-generated. The existing artists.owner_id remains
-the canonical Authentication account ID. No binary media enters PostgreSQL.
-Apply both migrations explicitly in order only to the assigned Shadify database;
-they are never run during startup. No migration was run here.
+Canonical admitted requests record identity provenance; artist memberships are
+the sole page authority and uploader IDs are audit only. Separate trusted admin
+grants govern unassigned pages, ownership lifecycle, suspension and verification.
+Migrations 001..005 are explicit and were exercised only in disposable isolated
+PostgreSQL. No operational schema/grant was activated. Candidate readiness targets
+005; legacy owner cutover fails on absent canonical provenance and must be paired
+with a matching package. Never run migrations at startup or guess old owners.
 
 ## Authentication boundary
 
@@ -71,10 +60,12 @@ defaults to 100 MiB and can be lowered in Shadify's storage settings. Large vide
 multipart/resume remains deferred; it must be added before accepting large video.
 No upload body passes through the application process or durable local disk.
 
-Completion rechecks owner, track relationship and session expiry; HEAD plus a
+Completion rechecks current membership/admin, track relationship and session expiry; HEAD plus a
 bounded GET reads at most 4096 bytes for the container signature. Wrong size,
-MIME or magic marks failed. Upload metadata insertion also checks current ownership
-atomically in SQL. Uploaded never means processed, published or publicly playable.
+MIME or magic marks failed only after another locked current-authority check.
+Upload insertion, completion and attachment serialize with ownership/identity/grant
+revocation. A transfer during inspection denies the old actor's final state write;
+new owner/admin may finish the same valid upload without copying objects. Uploaded never means processed, published or publicly playable.
 Magic checks are basic container identification, not full decoding/safety proof.
 Originals remain private/draft; current HTTP routes emit no playback URLs. A
 separate internal signed GET provider/read-only authorization boundary is prepared
@@ -160,14 +151,16 @@ claim is added. The player treats URLs as opaque; stable keys stay server metada
 Track/Playlist/PostgreSQL never persist presigned URLs; Playlist stores track_id.
 
 delivery.py prepares a provider-independent PlaybackService/PlaybackRepository
-boundary. Its authoritative track+asset projection must prove publication,
+boundary. Its authoritative page+track+asset projection must prove a published non-suspended
+page, publication,
 readiness, free access and derived/preview identity. Published free full tracks
 allow guests without Authentication. A paid track can expose only a separately
 selected free preview; full paid playback fails closed even with an account until
 existing purchase/entitlement proof is implemented in an approved future phase.
-No HTTP playback route/catalog, DB schema/publication, purchase/entitlement or
-payment/Worker integration is activated. Current schema supports only private
-draft originals, so no live repository projection is inferred or fabricated.
+No playback HTTP route, purchase/entitlement, producer or payment/Worker is
+activated. Artist schema includes publication/readiness metadata; the live
+Postgres repository still does not implement the playback projection. Missing
+page status in PlaybackTarget denies before signing.
 
 Existing uploads remain direct Presigned PUT with prior ownership/size/type/TTL
 checks. User configures exact-origin browser CORS for PUT/GET/range as applicable,
@@ -198,8 +191,8 @@ file validation and native artifact integrity. They establish code/package behav
 not actual Authentication session, PostgreSQL migrations, R2 upload or edge delivery.
 
 Next: finalize DB assignment and canonical identity boundary with runtime owner;
-install the verified package/transport/profiles, explicitly apply the two migrations,
-and map an approved owned artist. User privately supplies R2 settings in the
+review matching package/schema selection, exact native route enrollment and
+provenance/admin bootstrap prerequisites in ARTIST_PROFILES_AND_ACCESS.md. User privately supplies R2 settings in the
 confirmed protected route. Only then run one tiny supported upload and prove CORS,
 signature/type/length enforcement, overwrite rejection, expiry, ownership and
 private/draft completion. Private signed-playback/expiry/CORS/range and guest/published/free checks await
