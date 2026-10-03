@@ -137,7 +137,9 @@ operations stay pending. Invalid supplied protected config is rejected. Configur
 startup performs no migration, listener binding, DB connection or R2 request.
 GET /health is process liveness. GET /health/ready performs a read-only schema check and canonical disposable
 replay reservation/recovery check, then reports binding/bounds and storage
-configured_unverified or missing. It never probes live R2. Overall readiness stays 503 if DB/schema, binding or R2 config is missing;
+configured_unverified or missing. It never probes live R2. Profile/database readiness stays 503 if DB/schema, canonical binding or replay is
+missing; R2 configuration is optional for this initial slice. Media stays503
+without storage and checks.scope=profile_database makes the readiness scope explicit;
 configured_unverified is expressly not R2/network/bucket/CORS proof. No media worker
 or payment dependency is invented as a readiness gate.
 
@@ -242,8 +244,8 @@ no service, queue, background observer or Node Agent business gate is added.
 
 Lifespan initializes canonical policy without DB/R2/Redis contact. Readiness
 requires Active policy, current installed local adapter, healthy bounds,
-successful canonical disposable replay reservation, PostgreSQL schema and
-storage configuration. The readiness reservation touches only the app replay
+successful canonical disposable replay reservation and PostgreSQL schema.
+Storage configuration is optional for the initial profile/database slice. The readiness reservation touches only the app replay
 namespace and expires normally (at most62seconds); no business dispatch occurs.
 Canonical151-second recovery remains enforced and returns readiness503 while
 recovering. Configured storage remains explicitly configured_unverified; this

@@ -88,7 +88,10 @@ class CombinedIngressTests(unittest.TestCase):
     def test_readiness_first_eviction_change_preserved_marker_lost_reservations(self):
         asyncio.run(self.run_combined(epoch_change="evicted_keys"))
 
-    async def run_combined(self, epoch_change=None):
+    def test_profile_database_ready_without_r2_and_media_closed(self):
+        asyncio.run(self.run_combined(profile_only=True))
+
+    async def run_combined(self, epoch_change=None, profile_only=False):
         with tempfile.TemporaryDirectory() as temporary,patch("node_agent_local_shell_transport.local_uds.pwd.getpwnam",return_value=Mock(pw_uid=1001)), \
              patch("socket.socket.connect",side_effect=AssertionError("network prohibited")), \
              patch("socket.socket.bind",side_effect=AssertionError("listener prohibited")), \
@@ -133,7 +136,8 @@ class CombinedIngressTests(unittest.TestCase):
                 path=directory/name;path.write_bytes(canonical(value));path.chmod(0o600)
             with patch("shadify_api.replay_bounds.LocalReplayBounds",return_value=bounds), \
                  patch("shadify_api.runtime.replay_factory",return_value=factory), \
-                 patch("shadify_api.runtime.PostgresMediaRepository",return_value=repo):
+                 patch("shadify_api.runtime.PostgresMediaRepository",return_value=repo), \
+                 patch("shadify_api.runtime.R2Storage",side_effect=AssertionError("R2 client prohibited")):
                 app=create_runtime_app(directory)
             binding=app.state.app_security;receiver=app.state.managed_receiver
             config=uvicorn.Config(app,log_config=None);config.load()
@@ -164,9 +168,25 @@ class CombinedIngressTests(unittest.TestCase):
                     self.assertEqual(json.loads(base64.b64decode(decoded["body_b64"]))["account_id"],"owner")
                     repo.project_user.assert_called_once_with("owner")
                     checked=await http.get("http://fixture/health/ready")
-                    self.assertEqual(checked.status_code,503) # R2 deliberately absent.
+                    self.assertEqual(checked.status_code,200) # Profile/DB slice needs no R2.
+                    self.assertEqual(checked.json()["checks"]["scope"],"profile_database")
                     self.assertEqual(checked.json()["checks"]["replay_admission"],"ready")
                     self.assertEqual(checked.json()["checks"]["storage"],"missing")
+                    if profile_only:
+                        upload_body=body|dict(method="POST",path="/api/media/uploads",
+                            headers=body["headers"]+[dict(name="content-type",value_b64=base64.b64encode(b"application/json").decode())],
+                            body_b64=base64.b64encode(canonical(dict(artist_id=str(uuid4()),track_id=str(uuid4()),
+                                asset_type="audio_original",mime="audio/flac",size=20))).decode())
+                        upload=sender.begin(connection,"shadify_api.media.upload.create",canonical(upload_body),int(time.time()))
+                        denied=await call(http,upload.wire())
+                        result=json.loads(upload.complete(denied.content,int(time.time())))
+                        self.assertEqual(result["status"],503) # Canonically admitted, storage unavailable.
+                        self.assertEqual(repo.project_user.call_count,1)
+                        repo.ready.side_effect=RuntimeError("synthetic missing schema")
+                        failed=await http.get("http://fixture/health/ready")
+                        self.assertEqual(failed.status_code,503)
+                        self.assertEqual(failed.json()["checks"]["database"],"unavailable")
+                        return
                     if epoch_change is not None:
                         # Lose reservations but keep the real canonical marker token.
                         markers={key:value for key,value in redis.values.items() if key.endswith(":continuity")}

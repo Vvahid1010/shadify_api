@@ -96,7 +96,7 @@ def create_runtime_app(directory: Path, *, binding=None):
             raise RuntimeError("Shadify storage configuration invalid; values redacted") from None
 
     async def readiness():
-        checks = {"authentication": binding.status().get("state"),
+        checks = {"scope": "profile_database", "authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
                   "storage": "configured_unverified" if service else "missing"}
         checks["replay_admission"] = "unavailable"
@@ -118,11 +118,12 @@ def create_runtime_app(directory: Path, *, binding=None):
             except Exception:
                 pass
         ready = (checks["authentication"] == "Active" and checks["database"] == "schema_ready"
-                 and service is not None and checks["managed_ingress"] == "installed"
+                 and checks["managed_ingress"] == "installed"
                  and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
                  and checks["replay_admission"] == "ready")
-        # Metadata can be served independently while overall upload readiness is
-        # pending. Configured storage remains explicitly unverified cloud access.
+        # Initial profile/database readiness is independent of optional media.
+        # Missing storage keeps media operations closed; configured storage is
+        # explicitly unverified cloud access, never a real R2 readiness claim.
         return ready, checks
 
     from .main import create_app
