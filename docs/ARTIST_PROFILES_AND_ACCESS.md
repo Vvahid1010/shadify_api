@@ -892,3 +892,43 @@ self-summary cases; **111 full source tests passed** with actual disposable
 PostgreSQL and retained native admission coverage. Whitespace checks passed.
 Frozen524e5803 archive/manifest hashes were rechecked and unchanged; no new
 package, migration, catalog, dependency, grant or operational effect was made.
+
+
+### Self-authority exact package qualification
+
+Astra PASS applies to self-rights source
+`9a76cacab6369dad9da87cfec4056dab2bd84296`. Parent authorized a separate local
+package qualification, preserving524e5803 and the parent-controlled node B
+qualification pin. The new artifact is for future UI integration, not an
+automatic replacement of that pin:
+
+- Archive: `.build-tools/self-authority-qualification/shadify-api-self-authority-9a76caca.tar.gz`
+- Archive SHA256: `a16ea70254eaa3e137f3735345268f7170944ee12c3cd9a0b06d1822cb6aa471`
+- Manifest SHA256: `1114f3e0a829aeb1fd21ee50ec5df4127a21633866233a578e11b3b33dfa232d`
+- Receipt: `.build-tools/self-authority-qualification/self-authority-offline-proof.json`
+- Target: **006_app_admin**, unchanged; 59 manifest files; 29 production wheels.
+
+Every packaged source/SQL file matches Git9a76caca. Relative to frozen524e5803,
+only access.py, admin.py and repository.py changed in the runtime inventory;
+all migrations, catalog, dependencies, wheels and runtime table privileges remain
+byte-for-byte unchanged. Fresh Python3.14 offline hash installation succeeded;
+dependency checks are clean before and after the same hashed test extras.
+
+**64 targeted packaged tests passed**:24 app-admin/self-summary tests,7 identity
+tests,5 native managed-ingress tests,11 artist transactional SQL tests and17
+artist API/media tests. The import-origin log proves execution from the extracted
+package; tests/tooling come from exact9a76caca and the harness uses its verified
+packaged SQL. This includes all six new /api/me cases and the existing strict
+table privileges, actor/target validation, escalation denial, expiry/lock/audit
+rollback, IDOR, provider revocation and canonical crypto/admission tests. The
+previously run111-test full source result remains separate; no111-test packaged
+PASS is claimed for this scoped qualification.
+
+The receipt explicitly references the prior524e5803 proof and its hashes for
+unchanged exact Auth2c94e5ca issuer/native compatibility and rollback behavior;
+those earlier105-package-test and compatibility results remain pinned to that
+older artifact. Frozen524e5803 archive/manifest hashes were reverified unchanged
+after this new qualification. The parent-controlled node B qualification pin was
+not changed. No publication, enrollment, live DB/grant, installation or deployment
+occurred. Any future selection of the new UI-integration package remains parent/
+runtime-owner coordinated; bootstrap/recovery remains internal and unselected.
