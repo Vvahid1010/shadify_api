@@ -932,3 +932,126 @@ after this new qualification. The parent-controlled node B qualification pin was
 not changed. No publication, enrollment, live DB/grant, installation or deployment
 occurred. Any future selection of the new UI-integration package remains parent/
 runtime-owner coordinated; bootstrap/recovery remains internal and unselected.
+
+
+### Web-owner admin completion contract and protected setup plan
+
+This handoff is based on runtime/source9a76caca and its separately qualified
+local package; documentation headba1c24e1 introduced no runtime changes. Parent
+assigned only Shadify API contract/setup preparation for the four-app admin
+mission. Web owner01a10381 owns UI integration. These are logical downstream API
+paths: browser code must reuse the established Authentication proxy/session flow,
+not call a raw receiver or supply Authentication-owned identity headers.
+
+The exact permission union has no other roles/capabilities:
+
+```ts
+type AppPermission =
+  | 'create_artist' | 'edit_profile' | 'manage_content' | 'publish_content'
+  | 'change_owner' | 'suspend' | 'verify' | 'edit_user_profile';
+type AccountId = string; // exact stable canonical Auth ID, 1..36 characters
+type UUID = string;      // local user/page/event/resource IDs
+type DelegatePolicy = 'retain' | 'revoke';
+type Me = {
+  user_id: UUID; account_id: AccountId; artist_ids: UUID[];
+  app_admin: {is_primary: boolean; permissions: AppPermission[]; can_manage_admin: boolean};
+};
+type AuthorityDetails = {
+  primary_account_id: AccountId; revision: number;
+  delegates: {auth_account_id: AccountId; permissions: AppPermission[]; active: boolean}[];
+};
+type SetDelegate = {permissions: AppPermission[]};
+type DelegateResult = {actor_account_id: AccountId; target_account_id: AccountId; permissions: AppPermission[]};
+type TransferPrimary = {account_id: AccountId; expected_primary_account_id: AccountId; delegates: DelegatePolicy};
+type TransferPrimaryResult = {primary_account_id: AccountId; delegates: DelegatePolicy};
+type AppAdminAuditEvent = {
+  id: UUID; actor_user_id: UUID | null; actor_account_id: AccountId | null;
+  target_account_id: AccountId | null; artist_id: UUID | null;
+  action: string; details: Record<string, unknown>; occurred_at: string; // ISO UTC
+};
+type AppAdminAudit = {events: AppAdminAuditEvent[]; next_cursor: UUID | null};
+```
+
+| Logical route | Input | Response/access |
+| --- | --- | --- |
+| GET /api/me | None | Me; current active canonically admitted user. No other primary/delegate disclosure. |
+| GET /api/admin/authority | None | AuthorityDetails; primary only. Delegate rows can include active=false. |
+| PUT /api/admin/delegates/{account_id} | SetDelegate | DelegateResult; primary only. Replace the full subset; sorted output. Empty array revokes. |
+| DELETE /api/admin/delegates/{account_id} | No body | DelegateResult with permissions=[]; primary only. Revoking an inactive existing delegate is allowed. |
+| PUT /api/admin/primary | TransferPrimary | TransferPrimaryResult; primary only. Incoming primary's delegate row is removed; old primary gets no automatic grant. |
+| GET /api/admin/authority/audit | limit1..100(default20), cursor UUID | AppAdminAudit; primary only, opaque stable ascending-UUID pagination, not chronological ordering. |
+
+Use is_primary/can_manage_admin for authority controls and permissions for the
+eight app-operation controls. A delegate with all eight permissions is still not
+primary. Artist ownership does not appear in that permission union; use artist_ids
+and the selected page's capabilities for owner operations. Selected-page DTO
+capabilities merge independent current ownership with the app subset. Suspension
+still blocks ordinary publication; an explicit suspension operation resuming to
+published also requires publish_content. Public-user profile uses the *local*
+user_id UUID; grant/owner/primary targets use canonical account_id, not that UUID
+or an email/display name. There is no cross-account directory endpoint.
+
+Targets must already have active canonical-admission provenance in this same app
+database. Unknown/unproven/inactive grant or transfer targets fail422 and create
+no identity. Duplicate/unknown permissions, extra body fields, omitted expected
+primary or omitted delegate policy fail422. An invalid/stale expected primary or
+self-transfer fails409 when the actor is still primary; a former-primary actor
+fails403. Account/session/admission/expiry failures remain401/503; an inactive
+self projection fails404.403 is always permission denial, never an unconfigured
+state. Empty self permissions likewise cannot prove configuration state.503 is
+unavailable, never an empty roster. Responses are no-store and every operation
+reauthorizes; refresh /api/me and applicable primary roster after success or403.
+
+Grant writes and audit are atomic. set_delegate audit details contain before/after
+permission arrays; transfer_primary details contain old_primary, the explicit
+delegate policy and previous_delegates. Artist-admin mutation events contain
+actual actor/action/page context; ownership assign/transfer/revoke additionally
+keep the independent old/new-owner audit. Read events by the returned cursor;
+occurred_at is display information, not the current page/authority state or a
+cursor substitute. No audit record contains credentials or tokens. Existing
+bootstrap_primary audit can have null actor fields and an operator_reference;
+that reference is audit metadata, not authorization evidence or a public setup API.
+
+#### Concrete first-primary/recovery plan; not an implemented operational route
+
+Keep first-primary/recovery outside the ordinary browser authority controls until
+the owner selects the real protected operator mechanism. The smallest app-owned
+interface takes an explicit operation (`initialize_primary` or `recover_primary`),
+environment (`WSL` or node B, with its exact independently assigned Shadify DB),
+and exact target_account_id obtained from a successful canonical authenticated
+request in that environment. Initialization also explicitly expects no current
+primary. Recovery explicitly names the expected current primary and a mandatory
+retain/revoke delegate policy. A non-secret operator reference/reason is for audit
+only. There is no email lookup, first-user appointment, environment default,
+machine-identity appointment or implicit Auth admin/assurance promotion.
+
+Before implementation/use, the owner selects and verifies a protected operator
+authorization for that exact app/environment/operation/target selection. Node
+Agent owns lifecycle/DB delivery; owning a node must not itself appoint its
+operator as app primary. A caller-supplied operator_reference is insufficient.
+Do not manufacture an Identity/session from an account ID, load Authentication's
+private DB, or turn the synthetic bootstrap helper into a browser endpoint.
+The existing helper remains internal/unexposed; a real wrapper must enforce the
+selected operator authorization separately and use genuine admission/provenance.
+
+On the selected app DB, reuse app-state FOR UPDATE then sorted identity locks,
+validate that target is active and canonically observed, verify the expected
+primary state, and atomically set the sole primary plus append a distinct setup/
+recovery audit event. Initialize only if still unconfigured; a changed expected
+state fails409. Recovery replaces the expected primary without clearing/deleting
+it, applies the explicit delegate decision, removes the incoming primary's
+delegate row and never automatically grants the outgoing account rights. Preserve
+artist ownership/content, local identity tombstones, immutable audit and migration
+history. A disabled/lost primary can be recovered only by that separately
+authorized operator procedure; delegates cannot recover or promote themselves.
+
+Source acceptance for that future operational wrapper must use only disposable
+DBs/synthetic operator/admission inputs: unknown/unproven/inactive identity denial,
+unconfigured-only initialization, wrong environment/actor/expected state denial,
+concurrent initialize/recover single winner, explicit delegate-policy handling,
+audit failure rollback and no owner/content/history change. These are concrete
+planned checks, not a claim that recovery is already implemented or tested. The
+current verified API already covers normal primary transfer and grant management.
+No real operator, target account, runtime DB, bootstrap, grant or credential was
+selected by this plan. There is no additional runtime/code/package change for
+this documentation handoff; qualified9a76caca and frozen524e5803 remain unchanged.
