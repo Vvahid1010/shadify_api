@@ -168,6 +168,11 @@ class Witness(FrozenModel):
     body_sha256: str=Field(pattern=r'^[a-f0-9]{64}$')
     expires_at: Epoch
     _ids=field_validator('operation_id','nomination_id')(canonical_uuid)
+    @field_validator('schema_version',mode='before')
+    @classmethod
+    def version(cls,value):
+        if type(value) is not int or value!=1:raise ValueError('Strict witness version required')
+        return value
     @field_validator('actor_account_id','actor_session_id')
     @classmethod
     def identity(cls,value):
@@ -249,3 +254,36 @@ def optional_contacts(request,actor,scope):
         if proof.scope!=scope or proof.account_id!=actor.account_id:return None
         return proof
     except Exception:return None
+
+
+class ControlReceipt(FrozenModel):
+    operation_id: str
+    nomination_id: str
+    status: Literal['pending','revoked']
+    revision: Annotated[int,Field(strict=True,ge=1,le=2147483647)]
+    _ids=field_validator('operation_id','nomination_id')(canonical_uuid)
+
+
+class OperationResultV1(FrozenModel):
+    schema_version: Literal[1]=1
+    scope: Scope
+    operation_id: str
+    outcome: Literal['committed','not_found','unknown']
+    operation: Literal['register','renew','revoke','replace']|None
+    receipt: ControlReceipt|None
+    _id=field_validator('operation_id')(canonical_uuid)
+    @field_validator('schema_version',mode='before')
+    @classmethod
+    def version(cls,value):
+        if type(value) is not int or value!=1:raise ValueError('Strict result version required')
+        return value
+    @model_validator(mode='after')
+    def result_shape(self):
+        if self.outcome=='committed':
+            if self.operation is None or self.receipt is None or self.receipt.operation_id!=self.operation_id:
+                raise ValueError('Exact committed receipt required')
+            expected='revoked' if self.operation=='revoke' else 'pending'
+            if self.receipt.status!=expected:raise ValueError('Receipt lifecycle mismatch')
+        elif self.operation is not None or self.receipt is not None:
+            raise ValueError('Unresolved result has no receipt')
+        return self

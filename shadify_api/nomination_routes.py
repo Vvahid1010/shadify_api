@@ -1,6 +1,7 @@
 """Finite Auth-admitted nomination controls and own-identity context metadata."""
 import hashlib
 from fastapi import Depends,Request
+from starlette.concurrency import run_in_threadpool
 from .auth import require_fresh_actor
 from .media import MediaError
 from .nomination_contract import parse_operation,registration_evidence,optional_contacts
@@ -25,9 +26,10 @@ def install_nomination_routes(app,identity,control):
         raw=await request.body()
         require_fresh_actor(actor)
         command=parse_operation(raw)
-        owner=configured();scope=owner.scope();witness=owner.witness_reader.read()
+        owner=configured();scope=owner.scope()
+        witness=await run_in_threadpool(owner.read_verified_witness,scope,command.operation_id)
+        require_fresh_actor(actor)
         projection,evidence=registration_evidence(request,actor,raw,command,scope,witness)
-        from starlette.concurrency import run_in_threadpool
         return await run_in_threadpool(owner.apply,command,projection,evidence,hashlib.sha256(raw).hexdigest())
 
 

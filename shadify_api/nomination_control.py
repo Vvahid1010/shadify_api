@@ -3,24 +3,29 @@ import hashlib
 import time
 from dataclasses import dataclass
 from datetime import datetime,timezone
-from pathlib import Path
 from uuid import UUID,uuid4
+from typing import Protocol
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg.errors import UniqueViolation
 from .admin import AppAdminRepository,active_identity
 from .auth import require_fresh_actor
-from .config import load_protected_json
 from .media import MediaError
-from .nomination_contract import Scope,Witness,Approval,MAX_LEASE
+from .nomination_contract import Scope,Witness,Approval,MAX_LEASE,ControlReceipt,OperationResultV1,valid_identity_id
 
 
-class WitnessReader:
-    filename='admin-nomination-witness.json'
-    def __init__(self,directory):self.path=Path(directory)/self.filename
-    def read(self):
-        try:return Witness.model_validate(load_protected_json(self.path))
-        except Exception:raise MediaError(503,'Protected nomination witness unavailable') from None
+class NominationProvider(Protocol):
+    """Installed Node verifier supplies evidence; API supplies SQL status reads."""
+    def read_verified_witness(self,installed_scope:Scope,operation_id:str)->Witness: ...
+    def require_current(self,installed_selection:Scope,witness:Witness|None=None)->None: ...
+
+
+class UnavailableNominationProvider:
+    """No protected Node transport is implicitly authenticated by a file."""
+    def read_verified_witness(self,installed_scope,operation_id):
+        raise MediaError(503,'Protected nomination provider unavailable')
+    def require_current(self,installed_selection,witness=None):
+        raise MediaError(503,'Protected nomination provider unavailable')
 
 
 @dataclass(frozen=True)
@@ -30,24 +35,53 @@ class AuditActor:
 
 
 class NominationControl(AppAdminRepository):
-    def __init__(self,connect,scope_provider,witness_reader):
-        self.connect,self.scope_provider,self.witness_reader=connect,scope_provider,witness_reader
+    def __init__(self,connect,scope_provider,provider:NominationProvider|None=None):
+        self.connect,self.scope_provider=connect,scope_provider
+        self.provider=provider if provider is not None else UnavailableNominationProvider()
     def scope(self):
         scope=self.scope_provider()
         if type(scope) is not Scope:raise MediaError(503,'Installed nomination scope unavailable')
         return scope
+    def require_current(self,installed_selection,witness=None):
+        if type(installed_selection) is not Scope or installed_selection!=self.scope():
+            raise MediaError(403,'Nomination scope mismatch')
+        if witness is not None and (type(witness) is not Witness or witness.scope!=installed_selection):
+            raise MediaError(401,'Verified nomination witness required')
+        # Provider owns protected producer verification, not browser callbacks.
+        if self.provider.require_current(installed_selection,witness) is not None:
+            raise MediaError(503,'Protected nomination provider contract invalid')
+        if installed_selection!=self.scope():
+            raise MediaError(409,'Installed nomination selection changed')
+
+    def read_verified_witness(self,installed_scope,operation_id):
+        from .nomination_contract import canonical_uuid
+        try:canonical_uuid(operation_id)
+        except (ValueError,TypeError,AttributeError):raise MediaError(422,'Canonical operation UUID required') from None
+        self.require_current(installed_scope)
+        witness=self.provider.read_verified_witness(installed_scope,operation_id)
+        if (type(witness) is not Witness or witness.scope!=installed_scope
+                or witness.operation_id!=operation_id or witness.expires_at<=int(time.time())):
+            raise MediaError(401,'Verified nomination witness unavailable')
+        self.require_current(installed_scope,witness)
+        if witness.expires_at<=int(time.time()):raise MediaError(401,'Verified nomination witness expired')
+        return witness
+
     def ready(self):
+        self.require_current(self.scope())
         with self.connect() as c:
             if c.execute('SELECT nomination_id FROM shadify_nomination_control WHERE singleton').fetchone() is None:
                 raise MediaError(503,'Nomination schema unavailable')
             c.execute('SELECT scope,email_tags,phone_tags,existing_account_id FROM shadify_admin_nomination_v1 LIMIT 0')
             c.execute('SELECT operation_id,approval_fingerprint FROM shadify_nomination_operations LIMIT 0')
+            c.execute('SELECT operation_id,scope,result,revision,state,expires_at FROM shadify_nomination_operation_status LIMIT 0')
     def _fresh(self,evidence):
         require_fresh_actor(evidence.actor)
-        if evidence.scope!=self.scope() or evidence.expires_at<=int(time.time()):
-            raise MediaError(401,'Nomination confirmation expired or scope changed')
-        if self.witness_reader.read()!=evidence.witness:
+        self.require_current(evidence.scope,evidence.witness)
+        if self.read_verified_witness(evidence.scope,evidence.operation_id)!=evidence.witness:
             raise MediaError(409,'Protected nomination witness changed')
+        require_fresh_actor(evidence.actor)
+        if evidence.expires_at<=int(time.time()):
+            raise MediaError(401,'Nomination confirmation expired')
     def _lease(self,expiry):
         now=int(time.time())
         if not now<expiry<=now+MAX_LEASE:raise MediaError(422,'Nomination expiry outside24hour bound')
@@ -148,6 +182,8 @@ class NominationControl(AppAdminRepository):
         if contacts is None:return False
         require_fresh_actor(actor)
         scope=self.scope()
+        self.require_current(scope)
+        require_fresh_actor(actor)
         if contacts.scope!=scope or contacts.account_id!=actor.account_id:return False
         with self.connect() as connection:
             with connection.cursor(row_factory=dict_row) as c:
@@ -164,14 +200,16 @@ class NominationControl(AppAdminRepository):
                 user=c.execute('SELECT * FROM shadify_users WHERE auth_account_id=%s FOR UPDATE',(actor.account_id,)).fetchone()
                 if not active_identity(user):return False
                 require_fresh_actor(actor)
-                if scope!=self.scope():raise MediaError(401,'Installed nomination scope changed')
+                self.require_current(scope)
+                require_fresh_actor(actor)
                 audit_actor=AuditActor(actor.account_id,user['id'])
                 try:self._prestate(c,state,row['expected_admin_revision'],row['expected_primary_account_id'])
                 except MediaError:
                     c.execute("UPDATE shadify_admin_nomination_v1 SET state='blocked',revision=revision+1 WHERE id=%s",(row['id'],))
                     self._admin_audit(c,audit_actor,'nomination_v1_blocked',details={'nomination_id':str(row['id'])})
                     require_fresh_actor(actor)
-                    if scope!=self.scope():raise MediaError(401,'Installed nomination scope changed before commit')
+                    self.require_current(scope)
+                    require_fresh_actor(actor)
                     return False
                 previous=c.execute('SELECT u.auth_account_id,d.permissions FROM shadify_app_admin_delegates d '
                                    'JOIN shadify_users u ON u.id=d.user_id ORDER BY u.auth_account_id').fetchall()
@@ -188,15 +226,72 @@ class NominationControl(AppAdminRepository):
                                            'old_primary':row['expected_primary_account_id'],'delegate_policy':row['delegate_policy'],
                                            'previous_delegates':previous})
                 require_fresh_actor(actor)
-                if row['expires_at']<=datetime.now(timezone.utc) or scope!=self.scope():
+                self.require_current(scope)
+                require_fresh_actor(actor)
+                if row['expires_at']<=datetime.now(timezone.utc):
                     raise MediaError(401,'Nomination evidence expired or scope changed before commit')
                 return True
-    def operation_result(self,operation_id):
-        # Internal Node protected-status seam; never a browser/open HTTP route.
-        # Node may SELECT only the matching scope/UUID from the metadata-only view.
+    def read_committed_operation(self,installed_scope,operation_id):
+        """Immutable original control receipt, never current rights/state."""
+        import re
+        from .nomination_contract import canonical_uuid
+        try:canonical_uuid(operation_id)
+        except (ValueError,TypeError,AttributeError):raise MediaError(422,'Canonical operation UUID required') from None
+        self.require_current(installed_scope)
+        result=OperationResultV1(scope=installed_scope,operation_id=operation_id,
+                                 outcome='unknown',operation=None,receipt=None)
+        try:
+            with self.connect() as connection:
+                connection.execute('SET TRANSACTION READ ONLY')
+                with connection.cursor(row_factory=dict_row) as c:
+                    row=c.execute(
+                        "SELECT o.*, (SELECT count(*) FROM shadify_app_admin_audit a "
+                        "WHERE a.action='nomination_v1_'||o.operation "
+                        "AND a.actor_account_id=o.actor_account_id "
+                        "AND a.details->>'operation_id'=o.operation_id::text "
+                        "AND a.details->>'nomination_id'=o.nomination_id::text) AS audit_count "
+                        "FROM shadify_nomination_operations o WHERE o.operation_id=%s AND o.scope=%s",
+                        (UUID(operation_id),Jsonb(installed_scope.model_dump()))).fetchone()
+                    if row is None:
+                        result=OperationResultV1(scope=installed_scope,operation_id=operation_id,
+                                                 outcome='not_found',operation=None,receipt=None)
+                    else:
+                        stored=row['result']
+                        if (row['audit_count']!=1 or not valid_identity_id(row['actor_account_id'])
+                                or not re.fullmatch(r'[a-f0-9]{64}',row['approval_fingerprint'])
+                                or not re.fullmatch(r'[a-f0-9]{64}',row['body_sha256'])
+                                or type(stored) is not dict
+                                or set(stored)!={'operation_id','operation','nomination_id','revision','state','intent','expires_at'}
+                                or stored['operation_id']!=operation_id or str(row['operation_id'])!=operation_id
+                                or stored['nomination_id']!=str(row['nomination_id'])
+                                or stored['operation']!=row['operation']
+                                or stored['intent'] not in ('initialize','recover')):
+                            raise ValueError('Unproven committed operation')
+                        receipt=ControlReceipt(operation_id=operation_id,nomination_id=stored['nomination_id'],
+                                               status=stored['state'],revision=stored['revision'])
+                        result=OperationResultV1(scope=installed_scope,operation_id=operation_id,
+                                                 outcome='committed',operation=row['operation'],receipt=receipt)
+        except Exception:
+            # Read/format/cleanup failure cannot manufacture committed success.
+            result=OperationResultV1(scope=installed_scope,operation_id=operation_id,
+                                     outcome='unknown',operation=None,receipt=None)
+        self.require_current(installed_scope)
+        return result
+
+    def read_operation_result(self,installed_scope,operation_id):
+        """Current nomination metadata only; NOT the immutable Node receipt."""
+        from .nomination_contract import canonical_uuid
+        try:canonical_uuid(operation_id)
+        except (ValueError,TypeError,AttributeError):raise MediaError(422,'Canonical operation UUID required') from None
+        self.require_current(installed_scope)
         with self.connect() as connection:
             with connection.cursor(row_factory=dict_row) as c:
                 row=c.execute('SELECT * FROM shadify_nomination_operation_status WHERE operation_id=%s AND scope=%s',
-                              (UUID(operation_id),Jsonb(self.scope().model_dump()))).fetchone()
-                if row is None:return None
-                return {**row['result'],'revision':row['revision'],'state':row['state'],'expires_at':row['expires_at'].isoformat()}
+                              (UUID(operation_id),Jsonb(installed_scope.model_dump()))).fetchone()
+        self.require_current(installed_scope)
+        if row is None:return None
+        return {**row['result'],'revision':row['revision'],'state':row['state'],'expires_at':row['expires_at'].isoformat()}
+
+    def operation_result(self,operation_id):
+        # Existing app-owned internal call, still no public HTTP status route.
+        return self.read_operation_result(self.scope(),operation_id)

@@ -13,8 +13,13 @@ from shadify_api.nomination_contract import Scope,Witness,Approval,Contacts,Sele
 
 TAG='v1:'+('a'*64)
 class Reader:
+    """Explicit synthetic verified provider; no real Node transport claim."""
     witness=None
-    def read(self):return self.witness
+    def __init__(self,scope):self.scope=scope
+    def read_verified_witness(self,installed_scope,operation_id):return self.witness
+    def require_current(self,installed_selection,witness=None):
+        if installed_selection!=self.scope:raise MediaError(409,'Synthetic protected selection changed')
+        if witness is not None and witness!=self.witness:raise MediaError(409,'Synthetic protected witness changed')
 
 class NominationControlCase(ArtistPostgresCase):
     def setUp(self):
@@ -24,7 +29,7 @@ class NominationControlCase(ArtistPostgresCase):
             c.execute('DROP FUNCTION protect_shadify_primary()')
         self.apply('006_app_admin.sql','007_admin_nomination.sql','008_nomination_control.sql')
         self.scope=Scope(app_id='shadify_api',app_instance_id=str(uuid4()),domain_app='shadify',deployment_id='synthetic')
-        self.reader=Reader();self.nom=NominationControl(self.connect,lambda:self.scope,self.reader)
+        self.reader=Reader(self.scope);self.nom=NominationControl(self.connect,lambda:self.scope,self.reader)
         now=int(time.time());self.actor=admitted_actor('admin',issued=now,expires=now+60)
         self.target=admitted_actor('owner-a',issued=now,expires=now+60)
     def command(self,**changes):

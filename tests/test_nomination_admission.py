@@ -41,13 +41,17 @@ class NominationAdmissionTests(fixture.NominationControlCase):
             config=dict(app_security=bp,app_security_binding=dict(schema_version=1,destinations=[],outbound_endpoints=[]),
                         app_security_transport=dict(profile='local_unix_v1',role='receiver',channels={connection:channel}),nomination_scope=self.scope.model_dump())
             directory=root/'shadify_api'
+            self.reader=fixture.Reader(self.scope)
             def write(name,value):
+                if name=='admin-nomination-witness.json':
+                    from shadify_api.nomination_contract import Witness
+                    self.reader.witness=Witness.model_validate(value)  # Explicit synthetic verified provider.
                 p=directory/name;p.write_bytes(canonical(value));p.chmod(0o600)
             for name,value in {'shadify_api.config.json':config,'app_profile.json':{'schema_version':1,'app':'shadify_api'},
                'replay.credentials.json':{'url':'redis://:synthetic@127.0.0.1:6379/0'},
                'database.credentials.json':{'host':'127.0.0.1','dbname':'synthetic','user':'synthetic','password':'synthetic','sslmode':'disable'}}.items():write(name,value)
             repo=PostgresMediaRepository(self.connect)
-            with patch('shadify_api.replay_bounds.LocalReplayBounds',return_value=bounds),patch('shadify_api.runtime.replay_factory',return_value=factory),patch('shadify_api.runtime.PostgresMediaRepository',return_value=repo),patch('shadify_api.runtime.load_database_config',return_value=Mock(connect=self.connect)):app=create_runtime_app(directory)
+            with patch('shadify_api.replay_bounds.LocalReplayBounds',return_value=bounds),patch('shadify_api.runtime.replay_factory',return_value=factory),patch('shadify_api.runtime.PostgresMediaRepository',return_value=repo),patch('shadify_api.runtime.load_database_config',return_value=Mock(connect=self.connect)):app=create_runtime_app(directory,nomination_provider=self.reader)
             binding=app.state.app_security;receiver=app.state.managed_receiver
             config=uvicorn.Config(app,log_config=None);config.load()
             protocol=receiver.http_protocol(config=config,server_state=__import__('uvicorn.server',fromlist=['ServerState']).ServerState(),app_state={})

@@ -16,7 +16,7 @@ from .repository import PostgresMediaRepository
 from .security import create_binding, ManagedReceiver
 from .storage import R2Storage
 from .nomination_contract import Scope
-from .nomination_control import NominationControl, WitnessReader
+from .nomination_control import NominationControl
 from .media import MediaError
 
 
@@ -57,7 +57,7 @@ def replay_factory(directory, address=None):
     return factory
 
 
-def create_runtime_app(directory: Path, *, binding=None):
+def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None):
     directory = Path(directory)
     receiver = None
     try:
@@ -109,7 +109,7 @@ def create_runtime_app(directory: Path, *, binding=None):
             if native.status()[:2] != ('shadify_api',selected_scope.app_instance_id):
                 raise MediaError(503,'Installed nomination instance mismatch')
             return selected_scope
-        nomination = NominationControl(database.connect,scope_provider,WitnessReader(directory))
+        nomination = NominationControl(database.connect,scope_provider,nomination_provider)
 
     async def readiness():
         checks = {"scope": "profile_database", "authentication": binding.status().get("state"),

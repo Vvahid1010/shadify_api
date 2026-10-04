@@ -1314,3 +1314,129 @@ failure, failure after claim/audit writes, real nomination-row lock timeout and
 identity expiry during failure. The existing real native ON round trip also
 injects claim audit failure: ordinary profile succeeds without grant, followed
 by a separately valid successful claim. Qualified Local94143222 stays unchanged.
+
+## Verified Node provider and immutable operation receipt contract
+
+Shadify app-owned nomination provider/status contract v2
+Source-only. Node protected transport/provider/persistence/popup remains unimplemented.
+This contract selects no key, endpoint, operator, account, credential, scope or grant.
+Other apps remain with their owners; this file supplies Shadify only.
+
+Owning sources
+  shadify_api.nomination_control.NominationProvider (explicit startup Protocol)
+  shadify_api.nomination_control.NominationControl (app-owned adapter and SQL)
+  shadify_api.nomination_contract.Scope / Witness (frozen strict owner models)
+  shadify_api.runtime.create_runtime_app(directory, *, binding=None,
+                                       nomination_provider=None)
+Node reference: node.admin-nomination-provider.v1
+Auth reference: 92a4e07b681aaf9964084ebf0741331acf3cfcab
+
+Startup and trust
+  A trusted installed server composition may pass nomination_provider explicitly.
+  Provider input is a server-owned object, never browser JSON/headers or a callback
+  selected by a request. There is no configurable module, verifier URL or key.
+  Without a provider, nomination witness reads, mutations, claims and protected
+  status reads fail503. Merely having admin-nomination-witness.json, including a
+  valid owner-only file, never authenticates a witness. app_factory supplies no
+  default transport. Configured nomination readiness also stays unavailable.
+  Auth-admitted context metadata is still read from the actual installed scope;
+  optional /me claim failure preserves ordinary fresh identity/profile access.
+
+Node-owned producer object (synchronous methods; throw on failure)
+  read_verified_witness(installed_scope: Scope, operation_id: str) -> Witness
+  require_current(installed_selection: Scope, witness: Witness | None = None) -> None
+  require_current must return exactly None after successful verification, not True.
+  Scope must be the actual protected installed selection, including canonical API
+  instance; not caller-selected scope. Node verifies protected producer provenance,
+  current installed binding and immutable exact reviewed witness/deadline using its
+  selected official operations/custody transport. That implementation is pending.
+  API independently checks its current canonical receiver binding via scope_provider.
+
+Witness mapping from common Node WitnessV1
+  All owner fields are copied verbatim:
+  schema_version (strict integer1), scope, operation, operation_id, nomination_id,
+  actor_account_id, actor_session_id, body_sha256, expires_at.
+  Node additionally verifies issued_at: positive integer, not future, before expiry;
+  expiry is current and bounded by the ORIGINAL reviewed deadline. It then omits
+  issued_at when constructing the strict owner Witness model (extra fields reject).
+  UUIDs are canonical lowercase36; Auth account/session IDs stay ASCII1..36 unchanged.
+  For replace, nomination_id is the predecessor; the replacement ID and full review
+  are bound by SHA256 of exact original UTF8 body bytes, never model serialization.
+  No raw contacts, approval tokens, operation_state or session secrets are supplied.
+
+API-owned adapter (same provider protocol; no public HTTP status route)
+  NominationControl.read_verified_witness(installed_scope, operation_id) -> Witness
+    Calls Node current verifier before read and after read with the returned Witness.
+    Requires exact frozen owner type, scope, operation UUID and current expiry.
+    POST offloads this synchronous read, then revalidates admitted actor freshness.
+  NominationControl.require_current(installed_selection, witness=None) -> None
+    Checks actual API scope before/after Node current verification. A supplied witness
+    must be the exact owner Witness type/scope. No permissive default exists.
+  NominationControl.read_committed_operation(installed_scope, operation_id)
+    -> shadify_api.nomination_contract.OperationResultV1 (frozen strict model).
+    This is the common Node immutable receipt reader. Scope and canonical operation
+    UUID are exact; current provider/native selection is checked before read and
+    after transaction cleanup. The transaction is explicitly READ ONLY.
+    Node serializes model_dump(mode='json') through its selected protected transport.
+
+Exact OperationResultV1 JSON envelope
+  schema_version: strict integer1
+  scope: exact installed {app_id, app_instance_id, domain_app, deployment_id}
+  operation_id: exact requested canonical lowercase UUID string
+  outcome: committed | not_found | unknown
+  operation: register | renew | revoke | replace when committed, null otherwise
+  receipt: when committed exactly:
+    operation_id: exact requested canonical operation UUID
+    nomination_id: canonical resulting nomination UUID (replacement ID for replace)
+    status: pending for register/renew/replace; revoked for revoke
+    revision: strict positive integer1..2147483647 AT THE ORIGINAL CONTROL COMMIT
+  receipt is null for not_found/unknown. No current rights/state/expiry is in this
+  receipt. Pending never means grant. Later claim, renewal, revocation, expiration
+  or replacement does not rewrite the original receipt. Returned models are frozen.
+
+App-owned evidence and outcomes
+  The reader selects only the exact scope/UUID from shadify_nomination_operations,
+  using its immutable stored result. It requires the finalized approval fingerprint,
+  original body SHA256, matching actor, result IDs/operation and one matching
+  immutable nomination_v1_<operation> app audit. No historical007 nomination/grant
+  rows are read or converted. It does not join current nomination/primary state.
+  No row in this scoped finalized ledger => not_found, null operation/receipt.
+  DB/read/format/cleanup failure or missing/conflicting proof/audit => unknown,
+  null operation/receipt. Missing protected provider or current-binding drift fails
+  closed. not_found/unknown never authorizes an execute replay or implies success.
+  No raw contacts, proof/token bytes, session secrets or grants are returned.
+
+Distinct existing current-state metadata helper
+  NominationControl.read_operation_result(installed_scope, operation_id) -> dict|None
+  and operation_result(operation_id) remain internal CURRENT nomination metadata.
+  They return live revision/state/expiry and are NOT common Node control receipts.
+  shadify_nomination_operation_status is this current-state view. Neither its
+  claimed/expired state nor revision may be translated into an original receipt.
+  Node's completion/status UI must call read_committed_operation for the envelope.
+
+Runtime privileges for the finite immutable reader
+  CONNECT/USAGE plus SELECT on shadify_nomination_operations and
+  shadify_app_admin_audit. No admin/nomination UPDATE, INSERT, DELETE, DDL, Auth DB,
+  historical grants or current-primary read is used. This callable and its explicit
+  READ ONLY transaction do not allocate roles/credentials or choose a transport.
+  The existing current-state view alone is insufficient for this new receipt.
+  No migration change is needed; finalized operation result/audit already commit
+  atomically. External Node source transport remains its owner's pending work.
+
+Before commit
+  Every lifecycle revalidates provider selection and exact verified witness after
+  waits/audit, then admitted identity and witness/approval expiry after provider IO.
+  Claim revalidates current installed selection and fresh identity before commit;
+  stored approved pending nomination plus fresh signed matching contacts remains
+  required. Provider alone, raw file alone, Auth proof alone and browser messages
+  never grant. Approval/operation/audit/nomination changes commit atomically.
+  Claim failure rolls back before the optional /me hook continues; expired identity
+  still denies. No claim-success field is invented.
+
+Node integration still pending
+  Actual protected producer/current verifier and chosen source transport; exact
+  origin/window/random-state popup; same signed Auth actor/session; protected
+  operation-result lookup; actual paired producer/API tests and independent review.
+  A popup wake-up is only a lookup trigger; timeout/disconnect is unknown status,
+  never an automatic execute retry. No live nomination deployment is authorized.
+  Qualified Local94143222 media package remains separate and unchanged.
