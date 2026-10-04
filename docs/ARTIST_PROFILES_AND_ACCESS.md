@@ -1108,3 +1108,42 @@ with no TCP/public TLS or actual Node-generated projection proof. Node's exact
 unit/nginx pairing remains its owner's integration task. Frozen7a625c11 archive
 and9a76 baseline remain unchanged; this is a source correction, not a requalified
 combined package, installation or cloud/Worker validation.
+
+### Exact reviewed-media package qualification and Node source pairing
+
+Exact runtime/source `63e19536bc09e075b341a75db361b73b225be95d` is frozen separately at
+`.build-tools/media-review-qualification/shadify-api-media-review-63e19536.tar.gz`.
+Archive SHA256 `19b13b7530075c167513b5cc642c4fcc377a7a53aefa69592b6ff139ee75aae5`; manifest SHA256
+`c20f4449d8f33773d7bffc5b7c3b66fc1f19e50cd95519f9a548f012e73be720`. Manifest inventories63 files,29 production
+wheels and schema target006_app_admin; no provisional nomination code/migration
+is included. Every packaged source/SQL byte matches the exact commit. Only
+artists.py,media_routes.py,storage.py differ from frozen7a625c11 runtime; schema,
+catalog56, dependencies, wheels and locks remain unchanged. Frozen7a625c11 and
+9a76caca archive/manifest hashes were checked unchanged before and after proof.
+
+A fresh Python3.14 environment installed production and test extras offline
+with required hashes, both pip checks passed, and packaged import origin was
+verified.103 targeted tests passed without skips:23 local/config/delivery,
+1 actual packaged nginx/Unix factory test,8 signing/policy,7 artifact verifier,
+24 app-admin,7 identity,5 canonical managed ingress,11 PostgreSQL artist access
+and17 ordinary artist/API tests. This is a scoped exact-package proof, not a
+repeat of the older127-test full package suite. Receipt and log hashes are in
+`.build-tools/media-review-qualification/media-review-offline-proof.json`.
+
+The Node owner's source pairing is now passed, superseding the earlier pending
+stage: actual generated nginx/ExecStart -> Unix Uvicorn media_runtime factory ->
+exact API63 -> disposable PostgreSQL/local bytes. Its receipt/log were verified
+and copied into this qualification; the receipt identifies the exact Node route/
+unit/fixture hashes. It proves streamed PUT, immutable overwrite, actual app
+completion, private/range/expiry/privacy checks, guest free issuance/paid denial,
+transfer revocation, exact host/method/path, restart persistence, socket0660 and
+redaction. UID/fixed paths/systemd custody were remapped, identities/signing were
+synthetic, and completion was direct app-service invocation rather than canonical
+Auth HTTP. The Node proof is source-pairing evidence reused with exact packaged
+source equality; it was not rerun against a full installed Node+API bundle.
+
+This qualification does not publish anything or select a new installation pin.
+Live Node custody/systemd/public TLS/browser behavior and real R2/Worker/CDN
+remain unproved. Auth nomination contracts/core are separate and unwired,
+awaiting independent PASS; their branches have not been merged. No live key,
+grant, media root, database migration, cloud call, push or deployment occurred.

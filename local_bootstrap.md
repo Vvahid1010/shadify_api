@@ -152,3 +152,9 @@ no full body buffering, no access-query logs, existing bounded body/timeout
 controls; no /api bypass or upload through Authentication. The GET access route
 performs real DB free/preview checks, never invents a guest Authentication identity.
 This resolves the source contract, not live installation or transport proof.
+
+Exact media source63e19536 now has a separate offline-qualified native archive
+and the Node owner's generated nginx/ExecStart source pairing proof. See
+ARTIST_PROFILES_AND_ACCESS.md for hashes,103 targeted packaged tests and precise
+synthetic/remapped limits. This supersedes the earlier pending source-pairing
+note, not the separate live custody/installation/public TLS/browser/cloud gates.
