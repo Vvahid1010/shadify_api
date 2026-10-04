@@ -77,7 +77,7 @@ class ArtistApiTests(ArtistPostgresCase):
             self.repo.insert(admitted_actor('admin'),replace(asset,id=uuid4(),owner_id='listener'))
         self.assertEqual(error.exception.status,422)
         self.repo.transfer_primary(admitted_actor('admin'), 'listener', expected_primary='admin', delegates='revoke')
-        denied=admitted_actor('admin',admin=False)
+        denied=admitted_actor('admin')
         with self.assertRaises(MediaError) as error: self.media.complete(denied,asset.id)
         self.assertEqual(error.exception.status,404)
         with self.assertRaises(MediaError): self.repo.insert(denied,replace(asset,id=uuid4()))

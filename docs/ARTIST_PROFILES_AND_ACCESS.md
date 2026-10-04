@@ -185,8 +185,8 @@ append audit before commit. Unique-index enforcement also protects direct races.
 A stale expected owner returns 409. Audit records immutable event ID, artist ID,
 actual actor, action, old/new owner account IDs and UTC timestamp. Persistent
 ownership audit rows cover assign/transfer/revoke only. Unassigned page creation
-identifies the actual actor in its response but does not persist a creation audit
-row; response actor context is not persistent audit evidence. No credentials,
+identifies the actor in its response and now writes a separate app admin creation
+audit event; it does not add an ownership-audit event. No credentials,
 tokens or contact/security fields in audit. Failure rolls back the whole change.
 Preserve IDs, slug, works, follower references and object keys. No payout, purchase
 history, copyright or entitlement changes are implied by a transfer.
@@ -435,8 +435,8 @@ pending. The bounded previously-observed-identity rule was accepted.
 
 ### Stage 2 evidence (2026-10-03)
 
-Historical local-grant implementation below is superseded by the central-admin
-consumer; its original evidence remains bound to the reviewed earlier source.
+Historical local-grant implementation below is superseded by the app-owned
+primary/delegate foundation (and the intervening central consumer); its original evidence remains bound to the reviewed earlier source.
 
 Migrations 003/004 and `access.py` implement trusted admission provenance,
 non-reactivating local tombstones, single active owner, separate trusted admin
@@ -505,7 +505,8 @@ No operational cutover, partial upgrade or auto-migration is authorized here.
 
 The owner must review coordinated schema/package selection, canonical provenance
 preparation for any existing owners (003 then genuine trusted observation, never
-row-only guessed backfill) and 004/005 application with matching schema005 package.
+row-only guessed backfill) and ordered 004/005/006 application with the matching
+schema006 package. Historical schema005 evidence is not a current deployment pin.
 Before any live cutover, require a validated database backup and an explicitly
 reviewed restore/rollback procedure, including a matching old package and schema.
 004 drops `artists.owner_id`; reverting application code alone cannot restore
@@ -572,7 +573,7 @@ test claims. The frontend documentation reference17f5f07 was published by its
 owner through selector commitf18c3a6; API work did not re-push/reconstruct it.
 
 
-### Exact readiness and audit limits
+### Historical exact readiness and audit limits (schema005 source)
 
 `/health/ready` retains `scope=profile_database`: structural schema005 compatibility
 plus the current canonical receiver, clock/replay bounds and admission/recovery
@@ -589,7 +590,7 @@ creation audit event. No new audit, readiness, feature or endpoint was added by
 this documentation correction.
 
 
-### Bounded frontend capability follow-up
+### Historical bounded frontend capability follow-up
 
 Parent-requested correction adds top-level admin context and create_artist
 capability to the existing manageable-page response. No page-list filter or
@@ -721,3 +722,52 @@ and truncating delegates. Parent/runtime owner must coordinate consumer manifest
 and per-table grants for **006_app_admin**, not older 002/005 pins. SQL migration
 logic remains solely in this API repository. Inventory found no allocated Shadify
 database/role on WSL or node B; no allocation or copying app data occurred here.
+
+
+### App-owned source evidence and review handoff
+
+Runtime/schema/catalog implementation commit:
+`0f280a0d06b10fcbc7a943e8228bd24e5981d3ed`, derived from the preserved original
+`d6ee352c2a756ccf0e5da8b4daa72b0b48c520d7`. Isolated clone:
+`/tmp/shadify-app-admin-20261004`, branch `app-owned-admin`; it has its own Git
+objects/index and no source-directory watcher or linked-worktree metadata write.
+The follow-up removes obsolete admin flags from synthetic identity fixtures and
+records current evidence; it does not change the runtime implementation above.
+
+Full discovery passed **105 tests** in disposable local PostgreSQL/source ASGI and
+real managed shell ingress. Current `test_app_admin.py`: **18 tests**, covering the
+first verify-only proof plus authority mutation, concurrency, permissions and
+restricted-runtime-role checks. Tests apply unchanged 001..005 then additive006 in
+order; unconfigured schema006 readiness is also true without selecting a primary.
+The retained API/SQL suite proves ordinary owners, IDOR/page isolation, provenance,
+membership/identity revocation, identity expiry during locks/provider work, and
+public filtering. Prior central-claim tests were replaced by identity-only and
+old-claim-no-power cases rather than retaining superseded lifetime expectations.
+
+Reproduction (no external DSN, live database or cloud credentials):
+
+```bash
+cd /tmp/shadify-app-admin-20261004
+env -u CREDENTIALS_DIRECTORY PYTHONDONTWRITEBYTECODE=1 /srv/Coding_space/shadify_api/.venv/bin/python -m unittest discover -s tests -q
+/srv/Coding_space/shadify_api/.venv/bin/python -m pip check
+git diff --check
+```
+
+Python3.14 uses the existing installed reviewed dependency environment without
+installation/modification. Dependency consistency and diff whitespace checks
+passed. Original checkout remains clean at d6ee352c; migrations001..005 are byte-
+unchanged. Native-format tests require006/admin.py for new manifests and retain
+verification of historical002/005 formats; no production archive was rebuilt.
+Catalog is **54 routes**, all still canonical Authentication peers; new declarations
+need coordinated enrollment at rollout. Any later issuer transition must follow
+consumer selection; the source accepts identity-only assertions and old central
+claims convey no power. Auth's independently reviewed identity-only forward change
+is owner-coordinated; this work did not change Authentication or shared libraries.
+
+Remaining owner choices: exact real database/role/protected projection allocation
+on WSL and node; approved consumer manifest/schema006/per-table grants and endpoint
+enrollment; exact deployment package; explicit real primary account, protected
+operator bootstrap/recovery and coordinated backup/restore. No real authority,
+credential/security setting, allocation, live migration, installation, push or
+build-feed publication was made. Independent Astra review of these exact local
+commits is the next source check, not a claim of deployed operation.

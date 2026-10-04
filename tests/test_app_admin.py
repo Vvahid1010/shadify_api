@@ -333,6 +333,7 @@ class UnconfiguredAdminTests(ArtistPostgresCase):
             with self.assertRaises(MediaError):self.repo.change_owner(admitted_actor(actor),self.artist,action='assign',target='owner-a')
         with self.assertRaises(MediaError):self.repo.bootstrap_primary(admitted_actor('unknown'),operator_reference='isolated')
         with self.connect() as c:self.assertIsNone(c.execute('SELECT primary_user_id FROM shadify_app_admin').fetchone()[0])
+        self.assertTrue(PostgresMediaRepository(self.connect).ready())
         self.repo.bootstrap_primary(admitted_actor('listener'),operator_reference='explicit-synthetic-operator')
         with self.assertRaises(MediaError):self.repo.bootstrap_primary(admitted_actor('admin'),operator_reference='isolated')
         self.repo.change_owner(admitted_actor('listener'),self.artist,action='assign',target='owner-a')
