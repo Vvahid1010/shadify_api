@@ -25,8 +25,9 @@ disabled on the dedicated listener. No public filesystem mount, directory list,
 cache rule, Worker, DNS, Cloudflare or public bucket is configured. Root is
 owner-only outside source/build, with descriptor-relative no-symlink opens.
 Public playback never authorizes originals/drafts or full paid tracks without
-entitlement. Guest issuance ingress and real edge behavior remain operational
-gaps, even though DB projection and byte delivery now have isolated proofs.
+entitlement. Anonymous issuance is now the exact media GET access route, authorizing only
+published free/separate preview via actual DB state, without a fabricated Auth
+identity. Real Node/nginx/socket/edge proof remains separately coordinated.
 
 ## Retained R2 preparation contract
 
@@ -154,3 +155,13 @@ with a warm object, private/draft/paid denial, separate preview eligibility,
 GET/HEAD/Range hit/miss behavior, request quotas and redaction. Provider migration
 still requires explicit full-byte copy/checksum verification and per-object
 cutover/rollback; an environment flag is insufficient.
+
+### Reviewed source follow-up
+
+Initial byte authorization precedes every response. Expiry is checked for each
+streaming chunk; authority is checked before the next chunk after a fixed
+two-second interval, avoiding one SQL/locking round trip per 64KiB. This is a
+per-response time bound, not a shared permission cache or exact instant recall.
+R2 gets an absolute grant deadline, computes a conservative TTL inside the
+signing worker after queue delay, and rejects expired or deadline-overshooting
+SDK URLs before returning any Location. No max(1) revival is used.

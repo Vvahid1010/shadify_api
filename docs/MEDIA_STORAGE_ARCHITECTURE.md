@@ -38,14 +38,19 @@ is introduced. Source fixtures deliberately create ready derived rows only for
 testing; no runtime producer exists. Normal upload completion remains private/draft.
 
 The separate `shadify_api.media_runtime:app_factory` listener exposes only
-PUT/GET/HEAD `/media/{UUID}`. Node ownership must route that exact path to the
-listener, never `/api` or other methods; it must disable/redact URL query and
+PUT/GET/HEAD `/media/{UUID}` and GET `/media/v1/tracks/{UUID}/access`.
+The agreed Node-owned Unix socket is `/run/node-agent-shadify-media/receiver.sock`,
+with a small Shadify unit under the same API UID and only DB/storage/media-signing
+custody (no canonical transport keys). Node routes these exact paths/methods,
+never `/api`; it must disable/redact URL query and
 authorization logs and apply its existing request/timeout/disk controls. All
 business/issuance routes remain on canonical GuardedASGI (catalog 56 routes,
 Authentication peer only). Large media bodies do not traverse Authentication.
-Operational guest free-playback issuance remains pending explicit Node/Auth
-guest ingress: source policy allows free guests, but no admitted guest request
-is invented and the existing issuance HTTP dependency still requires identity.
+Anonymous GET `/media/v1/tracks/{UUID}/access` on the same media handler issues
+only real-DB-authorized published free full/separate free preview access. Its only
+optional query is `preview=true|false`. It creates no Authentication identity and
+cannot authorize originals/drafts/private/unentitled paid full. Private access,
+upload creation/completion and the canonical API issuance remain Auth-guarded.
 
 Local root is explicitly protected, runtime-owned, owner-only, absolute, outside
 source/build and already present; startup never provisions it. Linux xattrs
@@ -63,14 +68,14 @@ failure removes a newly installed file. Completion retains existing bounded
 inspection, container validation, locked transition and final identity checks.
 Local GET/HEAD supports single bounded/open/suffix byte ranges, 206/416 and
 Content-Range/Accept-Ranges; reads recheck current authority/publication and TTL,
-including between streaming chunks. Initial denial precedes bytes; expiry or
+with expiry per chunk and authority checks before the next chunk after a fixed two-second per-response interval. Initial authorization precedes all bytes; there is no shared permission cache. Initial denial precedes bytes; expiry or
 revocation during a response truncates it against its declared Content-Length.
 SHA256 can be computed locally for migration verification. This is parity with
 the supported R2 contract, not full S3 emulation; multi-range, resumable video,
 ETag conditions, transcoding and entitlement remain outside this slice.
 
 R2 remains optional and disabled in local mode. A capability-valid request uses
-307 to a private SDK-presigned PUT/GET bounded by remaining capability TTL;
+307 to a private SDK-presigned PUT/GET/HEAD bounded by an absolute capability deadline, recomputed inside the signing worker and checked against the SDK signature timestamp; expired grants never revive with a one-second fallback;
 PUT retains size/MIME/If-None-Match and optional SHA256. Browser replay/Range
 within TTL remains supported. After redirect, R2 bearer access lasts until expiry;
 application revocation cannot recall an already issued provider URL. Real R2

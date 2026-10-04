@@ -16,7 +16,11 @@ from uuid import UUID
 from .auth import require_fresh_actor
 from .local_storage import LocalAdapter
 from .media import MediaError
-from .storage import StorageUnavailable
+from .storage import StorageUnavailable, StorageAuthorizationExpired
+
+# Per-response clock only; no shared permission cache. Check before the next
+# chunk after two seconds. Initial authorization always precedes any bytes.
+AUTHORITY_RECHECK_SECONDS = 2.0
 
 
 def byte_range(header, size):
@@ -48,6 +52,10 @@ def create_media_app(storage):
     async def error(request, error):
         return JSONResponse({'detail': error.detail}, status_code=error.status)
 
+    @app.exception_handler(StorageAuthorizationExpired)
+    async def expired(request, error):
+        return JSONResponse({'detail': 'Media authorization expired'}, status_code=403)
+
     @app.exception_handler(StorageUnavailable)
     async def unavailable(request, error):
         return JSONResponse({'detail': 'Storage operation unavailable'}, status_code=503)
@@ -77,7 +85,7 @@ def create_media_app(storage):
                 # A bounded R2 authorization is created only after current app
                 # checks; 307 preserves PUT and its immutable headers.
                 url = await run_in_threadpool(adapter.authorize_upload, asset.key, asset.mime, asset.size,
-                                              ttl=max(1, claims['exp'] - int(time.time())), checksum=checksum)
+                                              deadline=claims['exp'], checksum=checksum)
                 return RedirectResponse(url.url, status_code=307)
             installed = False
             try:
@@ -119,7 +127,7 @@ def create_media_app(storage):
         if not isinstance(adapter, LocalAdapter):
             # Do not extend the app capability by a fresh full provider TTL.
             access = await run_in_threadpool(adapter.create_playback_access, asset.key,
-                                            ttl=max(1, claims['exp'] - int(time.time())), method=request.method)
+                                            deadline=claims['exp'], method=request.method)
             return RedirectResponse(access.url, status_code=307)
         fd = await run_in_threadpool(adapter.open, asset.key)
         try:
@@ -134,13 +142,18 @@ def create_media_app(storage):
             if request.method == 'HEAD': return Response(status_code=status, headers=headers)
             os.lseek(fd, start, os.SEEK_SET)
             stream_fd = fd
+            last_authority_check = time.monotonic()
             async def chunks():
+                nonlocal last_authority_check
                 try:
                     remaining = end - start + 1
                     while remaining:
                         # TTL and authority are rechecked during delivery too.
                         if claims['exp'] <= int(time.time()): return
-                        await run_in_threadpool(storage.authorize_read, claims, actor, asset)
+                        now = time.monotonic()
+                        if now - last_authority_check >= AUTHORITY_RECHECK_SECONDS:
+                            await run_in_threadpool(storage.authorize_read, claims, actor, asset)
+                            last_authority_check = time.monotonic()
                         block = await run_in_threadpool(os.read, stream_fd, min(65536, remaining))
                         if not block: return
                         remaining -= len(block)
@@ -153,5 +166,15 @@ def create_media_app(storage):
             return response
         finally:
             if fd is not None: os.close(fd)
+
+    @app.get('/media/v1/tracks/{track_id}/access')
+    async def guest_access(track_id: UUID, request: Request):
+        # Public product authorization only; no synthetic Authentication identity.
+        # This cannot issue private originals or unentitled paid full access.
+        values = request.query_params.getlist('preview')
+        if set(request.query_params) - {'preview'} or len(values) > 1 or (values and values[0] not in ('true', 'false')):
+            raise MediaError(422, 'Only preview=true|false is supported')
+        access = await run_in_threadpool(storage.playback_access, track_id, preview=values == ['true'])
+        return {'url': access.url, 'expires_at': access.expires_at.isoformat()}
 
     return app

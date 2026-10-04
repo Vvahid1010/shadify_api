@@ -23,7 +23,7 @@ from shadify_api.main import create_app
 from shadify_api.media import Asset, MediaError, MediaService
 from shadify_api.media_routes import create_media_app, byte_range
 from shadify_api.repository import PostgresMediaRepository
-from shadify_api.storage import R2Storage, StorageUnavailable
+from shadify_api.storage import R2Storage, StorageUnavailable, StorageAuthorizationExpired
 from shadify_api.storage_service import StorageService
 from test_artist_postgres import ArtistPostgresCase
 from test_sdk_startup import test_config
@@ -200,6 +200,100 @@ class LocalStorageTests(ArtistPostgresCase):
         self.assertEqual(response.status_code, 403)
         self.assertFalse((self.root/asset.key).exists()); self.assertFalse(list(self.root.rglob('.upload-*')))
 
+    def test_anonymous_projection_issuance_real_database_and_query_denials(self):
+        asset = self.derived()
+        path = '/media/v1/tracks/' + str(self.track) + '/access'
+        response = self.bytes.get(path)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.headers['cache-control'], 'private, no-store')
+        self.assertEqual(self.bytes.get(response.json()['url'], headers={'Range': 'bytes=4-7'}).content, self.body[4:8])
+        for query in ('?preview=1','?preview=true&preview=false','?account_id=owner-a','?token=forged'):
+            self.assertEqual(self.bytes.get(path+query).status_code, 422)
+        self.assertEqual(self.bytes.post(path).status_code, 405)
+        with self.connect() as c:c.execute("UPDATE shadify_tracks SET access_class='paid' WHERE id=%s", (self.track,))
+        self.assertEqual(self.bytes.get(path).status_code, 403)
+        preview=self.derived(access='paid',preview=True)
+        self.assertEqual(self.bytes.get(path+'?preview=true').status_code, 200)
+        with self.connect() as c:c.execute("UPDATE shadify_artists SET publish_state='suspended' WHERE id=%s", (self.artist,))
+        self.assertEqual(self.bytes.get(path+'?preview=true').status_code, 404)
+        self.assertEqual(self.bytes.get('/api/me').status_code, 404)
+
+    def test_anonymous_original_and_draft_denied_without_identity(self):
+        asset, upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        path='/media/v1/tracks/'+str(self.track)+'/access'
+        self.assertEqual(self.bytes.get(path).status_code,404)
+        self.derived()
+        with self.connect() as c:c.execute("UPDATE shadify_tracks SET publish_state='draft' WHERE id=%s",(self.track,))
+        self.assertEqual(self.bytes.get(path).status_code,404)
+
+    def test_stream_authority_rechecks_time_bound_not_every_chunk(self):
+        self.body=b'fLaC'+b'x'*(65536*4-4)
+        asset, upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        url=self.access(asset)
+        with patch.object(self.storage,'authorize_read',wraps=self.storage.authorize_read) as authorize:
+            self.assertEqual(self.bytes.get(url).content,self.body)
+            self.assertEqual(authorize.call_count,1)
+
+    def test_stream_revocation_rechecked_before_next_chunk_at_two_seconds(self):
+        self.body=b'fLaC'+b'x'*(65536*4-4)
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['manage_content']);self.actor='listener'
+        asset, upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        url=self.access(asset);clock=[0.0];read=os.read;calls=[0]
+        def advancing_read(fd,size):
+            value=read(fd,size);calls[0]+=1;clock[0]+=1.0
+            if calls[0]==1:self.repo.set_delegate(admitted_actor('admin'),'listener',[])
+            return value
+        with patch('shadify_api.media_routes.time.monotonic',side_effect=lambda:clock[0]), \
+             patch('shadify_api.media_routes.os.read',side_effect=advancing_read), \
+             patch.object(self.storage,'authorize_read',wraps=self.storage.authorize_read) as authorize:
+            response=self.bytes.get(url)
+        self.assertEqual(len(response.content),65536*2)
+        self.assertEqual(response.headers['content-length'],str(len(self.body)))
+        self.assertEqual(authorize.call_count,2)
+
+    def test_r2_queue_delay_and_sdk_delay_never_revive_deadline(self):
+        client=Mock()
+        adapter=R2Storage(test_config(),client)
+        now=int(time.time());deadline=now+10
+        for operation in (lambda:adapter.authorize_upload('server/key','audio/flac',20,deadline=deadline),
+                          lambda:adapter.create_playback_access('server/key',deadline=deadline)):
+            with patch('shadify_api.storage.time.time',return_value=deadline+1):
+                with self.assertRaises(StorageAuthorizationExpired):operation()
+            client.generate_presigned_url.assert_not_called()
+        def delayed_url(*args,**kwargs):
+            timestamp=datetime.fromtimestamp(deadline,timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            return 'https://private-r2.invalid/key?X-Amz-Date='+timestamp+'&X-Amz-Expires='+str(kwargs['ExpiresIn'])
+        client.generate_presigned_url.side_effect=delayed_url
+        with self.assertRaises(StorageAuthorizationExpired):adapter.create_playback_access('server/key',deadline=deadline)
+
+    def test_r2_queued_route_returns_expired_denial_before_sdk_signing(self):
+        import shadify_api.media_routes as routes
+        client=Mock();self.storage.adapters['r2']=R2Storage(test_config(),client);self.storage.provider='r2'
+        asset,upload=self.upload_unchecked();now=int(time.time());clock=[now]
+        original=routes.run_in_threadpool
+        async def queued(function,*args,**kwargs):
+            if getattr(function,'__name__','')=='authorize_upload':clock[0]=now+10000
+            return await original(function,*args,**kwargs)
+        with patch('shadify_api.storage.time.time',side_effect=lambda:clock[0]),patch.object(routes,'run_in_threadpool',side_effect=queued):
+            response=self.put(upload)
+        self.assertEqual(response.status_code,403,response.text)
+        client.generate_presigned_url.assert_not_called()
+
+    def test_real_sdk_deadlines_are_bounded_without_network(self):
+        from urllib.parse import parse_qs
+        import socket
+        deadline=int(time.time())+60
+        with patch('botocore.httpsession.URLLib3Session.send',side_effect=AssertionError('Network prohibited')), \
+             patch.object(socket.socket,'connect',side_effect=AssertionError('Network prohibited')):
+            adapter=R2Storage(test_config())
+            results=[adapter.authorize_upload('server/immutable/key','audio/flac',20,deadline=deadline),
+                     adapter.create_playback_access('server/immutable/key',deadline=deadline),
+                     adapter.create_playback_access('server/immutable/key',method='HEAD',deadline=deadline)]
+        for result in results:
+            query=parse_qs(urlsplit(result.url).query)
+            signed=datetime.strptime(query['X-Amz-Date'][0],'%Y%m%dT%H%M%SZ').replace(tzinfo=timezone.utc)
+            self.assertLessEqual(int(signed.timestamp())+int(query['X-Amz-Expires'][0]),deadline)
+
     def test_shared_local_r2_metadata_range_checksum_immutable_contract(self):
         import io
         asset, upload = self.upload()
@@ -294,7 +388,11 @@ class LocalStorageTests(ArtistPostgresCase):
         return self.repo.get(UUID(response.json()['asset_id'])), response.json()['upload']
 
     def test_r2_synthetic_redirect_uses_same_opaque_contract_and_expiry_bound(self):
-        client = Mock(); client.generate_presigned_url.return_value='https://private-r2.invalid/synthetic'
+        client = Mock()
+        def signed_url(*args, **kwargs):
+            stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            return 'https://private-r2.invalid/synthetic?X-Amz-Date=' + stamp + '&X-Amz-Expires=' + str(kwargs['ExpiresIn'])
+        client.generate_presigned_url.side_effect = signed_url
         self.storage.adapters['r2'] = R2Storage(test_config(), client); self.storage.provider='r2'
         asset, upload = self.upload_unchecked()
         response = self.bytes.put(upload['url'], content=self.body, headers=upload['headers'], follow_redirects=False)
