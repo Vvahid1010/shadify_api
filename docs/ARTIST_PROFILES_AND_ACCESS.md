@@ -1080,3 +1080,35 @@ proofs. Schema001..006, production wheels and locks match the preserved9a76
 artifact; its archive is unchanged. Receipt is `.build-tools/local-storage-qualification/local-storage-offline-proof.json`.
 No operational guest/native byte ingress, real R2/Worker/CDN behavior, root/key
 custody, installation or live activation is established by this proof.
+
+## Unwired nomination core checkpoint (2026-10-04)
+
+Branch `app-owned-nomination-core` starts from storage documentation189a6306.
+`nomination.py` and additive `007_admin_nomination.sql` are isolated preparation,
+not production routes, /api/me fields or an operational grant mechanism. Current
+runtime readiness/package target stays006; frozen7a625c11/9a76 archives are intact.
+No prior/applied migration is rewritten. No Node/Auth/UI source is changed.
+
+Internal scoped commands support register/renew/replace/revoke and one atomic
+claim with nomination/admin revision CAS. Expired/revoked/claimed history never
+grants automatically. Both opaque verified-contact tags must match one exact
+active canonically observed account; the primary binds that account's stable
+local user ID. Recovery names the expected primary and explicitly retain/revoke
+delegates, including when the old primary is security-inactive. Independent
+artist ownership/content history remains untouched. Audit, state/target updates
+and final identity/contact/nomination expiry checks share the existing transaction
+and app-state lock order. Duplicate operation UUIDs cannot mutate twice.
+
+The mandatory NominationTrust seam has no production implementation. It awaits
+Authentication's exact app/deployment-scoped contact assertion and same-human
+confirmation/canonical-digest contract. Internal dataclasses/opaque tag strings
+are deliberately not advertised as admin_nomination/v1 wire formats. Shadify
+does not normalize/hash emails/phones, infer an operator from node ownership or
+operator_reference, or manufacture an identity. This seam is tested only using
+explicit synthetic trust; no actual nomination/grant/operator/contact is chosen.
+The deployment TTL policy is mandatory injection, with no guessed wire default.
+Sixteen disposable PostgreSQL tests cover CAS/concurrent registration+claim,
+AND/same-account/scope/verified proof, renewal/replacement/revocation/expiry,
+inactive-primary recovery policies, stable ID, audit/expiry rollback and ordinary
+API/canonical catalog invariance. Exact Auth adapter and final combined package
+qualification remain pending owner coordination. No standalone CLI workflow.
