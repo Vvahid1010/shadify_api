@@ -71,7 +71,7 @@ class AppAdminRepository:
                 raise MediaError(422, 'Target must be an existing active canonically observed identity')
         require_fresh_actor(actor)
         from .access import Authority
-        return Authority(actor.account_id, user['id'], None, PERMISSIONS, False, 'draft', True), users
+        return Authority(actor.account_id, user['id'], None, PERMISSIONS, False, 'draft', True, True), users
 
     def set_delegate(self, actor, target, permissions):
         if (type(permissions) is not list or any(type(p) is not str for p in permissions)

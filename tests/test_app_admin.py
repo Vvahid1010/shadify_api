@@ -314,6 +314,69 @@ class AppAdminTests(ArtistPostgresCase):
         self.assertEqual(client.put('/api/admin/artists/'+str(self.artist)+'/verification',json={'verified':True}).status_code,403)
         self.assertFalse(client.get('/api/me/artists').json()['acting_as_admin'])
 
+    def me_client(self, account):
+        return TestClient(create_app(identity=lambda:admitted_actor(account),
+            repository=self.repo,domain=DomainService(self.repo)))
+
+    def test_me_primary_summary_adds_only_self_authority(self):
+        self.assign(target='admin')
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'])
+        response=self.me_client('admin').get('/api/me')
+        self.assertEqual(response.status_code,200,response.text)
+        body=response.json()
+        self.assertEqual(set(body),{'user_id','account_id','artist_ids','app_admin'})
+        self.assertEqual(body['account_id'],'admin')
+        self.assertEqual(body['artist_ids'],[str(self.artist)])
+        self.assertEqual(body['app_admin'],{'is_primary':True,'permissions':sorted(PERMISSIONS),'can_manage_admin':True})
+        for field in ('delegates','primary_account_id','revision','listener'):
+            self.assertNotIn(field,response.text)
+        self.assertEqual(response.headers['cache-control'],'no-store')
+
+    def test_me_delegate_reports_exact_permissions_without_primary_controls(self):
+        primary=admitted_actor('admin')
+        client=self.me_client('listener')
+        for permissions in (['verify'],sorted(PERMISSIONS)):
+            self.repo.set_delegate(primary,'listener',permissions)
+            response=client.get('/api/me')
+            self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':sorted(permissions),'can_manage_admin':False})
+            self.assertEqual(response.json()['artist_ids'],[])
+            for field in ('primary_account_id','delegates','revision','owner-a','owner-b'):
+                self.assertNotIn(field,response.text)
+            forbidden=client.get('/api/admin/authority')
+            self.assertEqual(forbidden.status_code,403)
+            self.assertNotIn('configured',forbidden.json())
+
+    def test_me_ordinary_owner_keeps_memberships_separate_from_app_permissions(self):
+        self.assign(target='owner-a')
+        client=self.me_client('owner-a')
+        response=client.get('/api/me')
+        self.assertEqual(response.status_code,200,response.text)
+        body=response.json()
+        self.assertEqual(body['artist_ids'],[str(self.artist)])
+        self.assertEqual(body['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
+        self.assertEqual(client.get('/api/admin/authority').status_code,403)
+        self.assertEqual(client.patch('/api/artists/'+str(self.artist),json={'bio':'Owner edit still allowed'}).status_code,200)
+
+    def test_me_revoked_delegate_and_former_primary_refresh_immediately(self):
+        primary=admitted_actor('admin')
+        self.assign(target='listener')
+        self.repo.set_delegate(primary,'listener',['verify'])
+        client=self.me_client('listener')
+        self.assertEqual(client.get('/api/me').json()['app_admin']['permissions'],['verify'])
+        self.repo.set_delegate(primary,'listener',[])
+        response=client.get('/api/me')
+        self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
+        self.assertEqual(response.json()['artist_ids'],[str(self.artist)])
+        self.repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='retain')
+        former=self.me_client('admin')
+        self.assertEqual(former.get('/api/me').json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
+        self.assertEqual(former.get('/api/admin/authority').status_code,403)
+        with self.connect() as c:c.execute("UPDATE shadify_users SET active=false WHERE auth_account_id='listener'")
+        inactive=client.get('/api/me')
+        self.assertEqual(inactive.status_code,404)
+        self.assertNotIn('app_admin',inactive.json())
+
 
 class UnconfiguredAdminTests(ArtistPostgresCase):
     def setUp(self):
@@ -337,3 +400,23 @@ class UnconfiguredAdminTests(ArtistPostgresCase):
         self.repo.bootstrap_primary(admitted_actor('listener'),operator_reference='explicit-synthetic-operator')
         with self.assertRaises(MediaError):self.repo.bootstrap_primary(admitted_actor('admin'),operator_reference='isolated')
         self.repo.change_owner(admitted_actor('listener'),self.artist,action='assign',target='owner-a')
+
+    def test_me_unconfigured_returns_no_authority_and_no_bootstrap_control(self):
+        repo=PostgresMediaRepository(self.connect)
+        client=TestClient(create_app(identity=lambda:admitted_actor('listener'),repository=repo,domain=DomainService(repo)))
+        response=client.get('/api/me')
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
+        self.assertNotIn('configured',response.json()['app_admin'])
+        self.assertEqual(client.get('/api/admin/authority').status_code,403)
+        self.assertEqual(client.put('/api/admin/delegates/owner-a',json={'permissions':['verify']}).status_code,403)
+        with self.connect() as c:self.assertIsNone(c.execute('SELECT primary_user_id FROM shadify_app_admin').fetchone()[0])
+
+    def test_me_schema_unavailable_stays_error_not_an_unconfigured_summary(self):
+        repo=PostgresMediaRepository(self.connect)
+        client=TestClient(create_app(identity=lambda:admitted_actor('listener'),repository=repo,domain=DomainService(repo)))
+        with patch.object(repo,'_admin_state',side_effect=MediaError(503,'Application admin schema unavailable')):
+            response=client.get('/api/me')
+        self.assertEqual(response.status_code,503)
+        self.assertNotIn('app_admin',response.json())
+        self.assertNotIn('configured',response.json())

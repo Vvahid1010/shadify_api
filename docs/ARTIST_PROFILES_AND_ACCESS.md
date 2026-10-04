@@ -850,3 +850,45 @@ package and 54-endpoint enrollment; explicit operator/primary/bootstrap/recovery
 selection and backup/restore. Deploy the compatible consumer before the
 identity-only issuer transition. This qualification establishes local package
 behavior only; the artifact/receipt can now receive independent Astra review.
+
+
+### Current-user admin summary for settings integration
+
+Parent authorized the bounded API gap identified by Astra review01a10610.
+GET `/api/me` preserves its existing user_id, account_id and artist_ids and adds
+only the current user's app-owned authority summary:
+
+```json
+{"app_admin":{"is_primary":false,"permissions":["verify"],"can_manage_admin":false}}
+```
+
+permissions is the sorted effective app-admin subset from the existing locked
+authorizer; it excludes independent artist-owner permissions. is_primary is
+the actual current primary relation, never inferred from assurance or possessing
+all eight capabilities. can_manage_admin enables the established primary-only
+delegation/revocation, primary transfer and authority roster/audit actions. It is
+false for delegates, ordinary users, former/revoked admins and an unconfigured
+app; it never authorizes bootstrap/recovery. No primary identity, other delegate,
+roster, global configuration state or revision is disclosed by this summary.
+
+Use /api/me for current-user controls. A403 from `/api/admin/authority` remains a
+permission denial and must never be interpreted as “unconfigured,” a bootstrap
+invitation or a reason to fabricate an empty authority roster. Empty self
+permissions likewise do not prove the app is unconfigured. Invalid/inactive
+identity or unavailable authority schema remains an error; no false summary is
+substituted. These responses are no-store hints, not durable authority: every
+mutation reauthorizes server-side and the next self read reflects revocation.
+
+The summary reuses the existing app-state/identity locks and expiry checks in
+the /api/me transaction. No new endpoint, query framework, migration, role,
+permission or table privilege is introduced. Artist ownership and ordinary
+profile projection stay independent. This source change does not enter the
+previously qualified524e5803 archive; that frozen schema006 package/manifest and
+its105-test receipt remain unchanged for node B consumer tests. A later package
+containing this additive response needs its own exact-source qualification.
+
+Follow-up validation: **24 focused app-admin tests passed**, including six new
+self-summary cases; **111 full source tests passed** with actual disposable
+PostgreSQL and retained native admission coverage. Whitespace checks passed.
+Frozen524e5803 archive/manifest hashes were rechecked and unchanged; no new
+package, migration, catalog, dependency, grant or operational effect was made.

@@ -23,6 +23,7 @@ class Authority:
     owner: bool
     publish_state: str
     acting_admin: bool = False
+    primary: bool = False
 
     @property
     def admin(self):
@@ -72,7 +73,8 @@ class ArtistAccessRepository(AppAdminRepository):
             raise MediaError(403 if admin_only else 404, "Management access unavailable")
         require_fresh_actor(actor_context)
         permissions = frozenset()
-        if state['primary_user_id'] == actor['id']:
+        primary = state['primary_user_id'] == actor['id']
+        if primary:
             permissions = PERMISSIONS
         elif state['primary_user_id'] is not None:
             grant = c.execute('SELECT permissions FROM shadify_app_admin_delegates WHERE user_id=%s', (actor['id'],)).fetchone()
@@ -105,7 +107,7 @@ class ArtistAccessRepository(AppAdminRepository):
                 raise MediaError(422, "Target must be an existing active canonically observed identity")
         require_fresh_actor(actor_context)
         return Authority(account_id, actor['id'], artist_id, permissions, owner,
-                         artist['publish_state'] if artist else 'draft', admin_access), artist, users
+                         artist['publish_state'] if artist else 'draft', admin_access, primary), artist, users
 
     @contextmanager
     def authorized(self, actor: Identity, artist_id=None, *, targets=(), admin_only=False, operation=None, audit=True):

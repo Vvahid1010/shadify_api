@@ -74,7 +74,10 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         with self.authorized(account_id) as (c,auth,_,_):
             artists=c.execute('SELECT artist_id FROM artist_memberships WHERE user_id=%s AND revoked_at IS NULL ORDER BY artist_id',
                               (auth.user_id,)).fetchall()
-            return {'user_id':str(auth.user_id),'account_id':auth.account_id,'artist_ids':[str(r['artist_id']) for r in artists]}
+            return {'user_id':str(auth.user_id),'account_id':auth.account_id,
+                    'artist_ids':[str(r['artist_id']) for r in artists],
+                    'app_admin':{'is_primary':auth.primary,'permissions':sorted(auth.permissions),
+                                 'can_manage_admin':auth.primary}}
 
     def create_track(self,account_id,artist_id,title):
         result=self.content_write(account_id,artist_id,'tracks',{'title':title})
