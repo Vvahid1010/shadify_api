@@ -125,7 +125,7 @@ class NominationControl(AppAdminRepository):
                             # Fresh review binds the replacement's current admin prestate;
                             # predecessor revision remains exact even when blocked by drift.
                             if status=='pending':
-                                c.execute("UPDATE shadify_admin_nomination_v1 SET state='replaced',revision=revision+1 WHERE id=%s",(before['id'],))
+                                c.execute("UPDATE shadify_admin_nomination_v1 SET state='replaced',revision=revision+1 WHERE id=%s AND expires_at>clock_timestamp()",(before['id'],))
                             row=self._insert(c,operation,projection,operation.replacement_nomination_id,before['id'])
                             c.execute('UPDATE shadify_nomination_control SET nomination_id=%s WHERE singleton',(row['id'],))
                     result={'operation_id':operation.operation_id,'operation':operation.operation,**self._dto(row)}
@@ -171,6 +171,7 @@ class NominationControl(AppAdminRepository):
                     c.execute("UPDATE shadify_admin_nomination_v1 SET state='blocked',revision=revision+1 WHERE id=%s",(row['id'],))
                     self._admin_audit(c,audit_actor,'nomination_v1_blocked',details={'nomination_id':str(row['id'])})
                     require_fresh_actor(actor)
+                    if scope!=self.scope():raise MediaError(401,'Installed nomination scope changed before commit')
                     return False
                 previous=c.execute('SELECT u.auth_account_id,d.permissions FROM shadify_app_admin_delegates d '
                                    'JOIN shadify_users u ON u.id=d.user_id ORDER BY u.auth_account_id').fetchall()

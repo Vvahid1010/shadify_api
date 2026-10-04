@@ -1272,7 +1272,7 @@ No DELETE, TRUNCATE, DDL or historical007/grant access is required. A Node statu
 consumer needs only scoped SELECT on the metadata view; role allocation/grants
 remain a deployment-owner decision, with no live grant issued here.
 
-Source proof includes16 finalized SQL tests and one real native ON→runtime→disposable
+Source proof includes17 finalized SQL tests and one real native ON→runtime→disposable
 PostgreSQL round trip. It covers pending/claim, each-kind intersection/version
 rotation/pin, strict shapes, expiry-only renewal/no expired revival, fresh replacement
 and recovery, delegate policy, audit/single-use rollback, claim/revoke race and real

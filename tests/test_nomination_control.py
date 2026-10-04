@@ -187,3 +187,15 @@ class NominationControlTests(NominationControlCase):
                     self.assertTrue(entered.wait(2));self.assertFalse(future.done());clock[0]=self.actor.expires_at
                 with self.assertRaises(MediaError):future.result(5)
         with self.connect() as c:self.assertEqual(c.execute('SELECT count(*) FROM shadify_nomination_operations').fetchone()[0],0)
+
+    def test_scope_change_after_blocked_audit_rolls_back(self):
+        cmd=self.command();self.apply_command(cmd)
+        self.repo.bootstrap_primary(self.actor,operator_reference='synthetic-test')
+        original=self.nom._admin_audit
+        def changed(*args,**kwargs):
+            original(*args,**kwargs)
+            self.scope=self.scope.model_copy(update={'deployment_id':'changed-after-audit'})
+        with patch.object(self.nom,'_admin_audit',side_effect=changed):
+            with self.assertRaises(MediaError):self.nom.finalize(self.target,self.contacts())
+        self.assertEqual(self.row(cmd.nomination_id)['state'],'pending')
+        self.assertEqual(self.row(cmd.nomination_id)['revision'],1)
