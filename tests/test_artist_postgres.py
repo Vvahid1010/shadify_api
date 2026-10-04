@@ -37,11 +37,12 @@ class ArtistPostgresCase(unittest.TestCase):
             c.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(self.schema)))
         self.connect = lambda: psycopg.connect(**self.server.connection, options='-c search_path=' + self.schema)
         self.apply('001_media_foundation.sql', '002_user_profile_track_drafts.sql', '003_identity_provenance.sql',
-                   '004_artist_memberships.sql')
+                   '004_artist_memberships.sql', '005_artist_content.sql', '006_app_admin.sql')
         self.repo = AccessRepository(self.connect)
         # Direct synthetic test setup, not a claim of actual Authentication admission.
         for account in ('admin', 'owner-a', 'owner-b', 'listener'):
             self.repo.observe_identity(admitted_actor(account))
+        self.repo.bootstrap_primary(admitted_actor('admin'), operator_reference='isolated-synthetic-test')
         with self.connect() as c:
             self.artist, self.other = uuid4(), uuid4()
             for artist in (self.artist, self.other):
@@ -62,7 +63,7 @@ class ArtistPostgresCase(unittest.TestCase):
 
 
 class ArtistPostgresTests(ArtistPostgresCase):
-    def test_old_local_admin_grant_inert_and_central_admin_without_grant(self):
+    def test_historical_grant_inert_and_explicit_primary_without_legacy_grant(self):
         with self.connect() as c:
             c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) "
                       "SELECT id,'inert-isolated-fixture' FROM shadify_users WHERE auth_account_id='listener'")

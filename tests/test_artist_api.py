@@ -23,22 +23,20 @@ from test_integration import identity_request
 class ArtistApiTests(ArtistPostgresCase):
     def setUp(self):
         super().setUp()
-        self.apply('005_artist_content.sql')
         self.repo=PostgresMediaRepository(self.connect)
         self.storage=Mock()
         self.storage.authorize_upload.return_value=UploadAuthorization('https://unit-test.invalid/put',{'If-None-Match':'*'},300)
         self.storage.inspect.return_value=ObjectInfo(20,'audio/flac',b'fLaC'+b'0'*16)
         self.media=MediaService(self.repo,self.storage,100,300)
         self.actor='admin'
-        self.admin=True
-        self.client=TestClient(create_app(self.media,lambda:admitted_actor(self.actor,admin=self.admin if self.actor=='admin' else False),domain=DomainService(self.repo),repository=self.repo))
+        self.client=TestClient(create_app(self.media,lambda:admitted_actor(self.actor),domain=DomainService(self.repo),repository=self.repo))
 
-    def test_revoked_central_admin_has_no_local_fallback_but_keeps_ownership(self):
+    def test_former_primary_has_no_legacy_fallback_but_keeps_ownership(self):
         self.assign(target='admin')
         with self.connect() as c:
             c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) "
                       "SELECT id,'inert-isolated-fixture' FROM shadify_users WHERE auth_account_id='admin'")
-        self.admin=False
+        self.repo.transfer_primary(admitted_actor('admin'), 'listener', expected_primary='admin', delegates='revoke')
         response=self.client.get('/api/me/artists')
         self.assertFalse(response.json()['acting_as_admin'])
         self.assertFalse(response.json()['capabilities']['create_artist'])
@@ -48,13 +46,13 @@ class ArtistApiTests(ArtistPostgresCase):
                                         json={'verified':True}).status_code,403)
         self.assertEqual(self.client.post('/api/admin/artists',json={'name':'Denied','slug':'denied-new'}).status_code,403)
 
-    def test_previously_issued_admin_claim_is_bounded_not_immediately_revoked(self):
+    def test_previous_identity_does_not_cache_app_admin_authority(self):
         now=int(time.time());clock=[now]
         previous=admitted_actor('admin',issued=now,expires=now+1)
-        self.admin=False  # Simulates newly issued no-admin evidence, not a remote DB.
+        self.repo.transfer_primary(previous,'listener',expected_primary='admin',delegates='revoke')
         with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]):
             self.assertFalse(self.client.get('/api/me/artists').json()['acting_as_admin'])
-            self.assertTrue(self.repo.manageable_pages(previous,20)['acting_as_admin'])
+            self.assertFalse(self.repo.manageable_pages(previous,20)['acting_as_admin'])
             clock[0]=previous.expires_at
             with self.assertRaises(MediaError) as error: self.repo.manageable_pages(previous,20)
             self.assertEqual(error.exception.status,401)
@@ -78,7 +76,7 @@ class ArtistApiTests(ArtistPostgresCase):
         with self.assertRaises(MediaError) as error:
             self.repo.insert(admitted_actor('admin'),replace(asset,id=uuid4(),owner_id='listener'))
         self.assertEqual(error.exception.status,422)
-        self.admin=False
+        self.repo.transfer_primary(admitted_actor('admin'), 'listener', expected_primary='admin', delegates='revoke')
         denied=admitted_actor('admin',admin=False)
         with self.assertRaises(MediaError) as error: self.media.complete(denied,asset.id)
         self.assertEqual(error.exception.status,404)
@@ -88,7 +86,7 @@ class ArtistApiTests(ArtistPostgresCase):
         with self.assertRaises(MediaError) as error: self.repo.media_metadata('admin',asset.id)
         self.assertEqual(error.exception.status,401)
         self.assertEqual(self.repo.get(asset.id).state,'upload_pending')
-        self.assertEqual(self.media.complete(admitted_actor('admin'),asset.id).state,'uploaded')
+        self.assertEqual(self.media.complete(admitted_actor('listener'),asset.id).state,'uploaded')
 
     def page_path(self,artist=None): return '/api/artists/'+str(artist or self.artist)
     def track(self,artist=None,title='Track'):
@@ -116,7 +114,7 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertEqual(r.status_code,200,r.text)
         return track,asset
     def upload(self,track):
-        return self.media.create(admitted_actor(self.actor,admin=self.admin if self.actor=='admin' else False),UploadIntent(artist_id=self.artist,track_id=track,
+        return self.media.create(admitted_actor(self.actor),UploadIntent(artist_id=self.artist,track_id=track,
                 asset_type='audio_original',mime='audio/flac',size=20))[0]
 
     def test_admin_unassigned_curated_page_and_official_moments(self):
@@ -162,7 +160,7 @@ class ArtistApiTests(ArtistPostgresCase):
             self.assertEqual(self.client.patch(self.page_path(),json=patch).status_code,422)
 
     def test_empty_artist_list_reports_current_admin_creation_capability(self):
-        # Synthetic admitted central claims only; no operational grants.
+        # Explicit synthetic primary only; no operational grants.
         with self.connect() as c:
             c.execute('DELETE FROM shadify_artists')
         self.actor='admin'
@@ -177,8 +175,8 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertEqual(response.json()['pages'],[])
         self.assertFalse(response.json()['acting_as_admin'])
         self.assertEqual(response.json()['capabilities'],{'create_artist':False})
-        # Revocation must also remove the top-level ability on the next request.
-        self.admin=False
+        # Transfer removes the old primary's capability on the next request.
+        self.repo.transfer_primary(admitted_actor('admin'), 'listener', expected_primary='admin', delegates='revoke')
         self.actor='admin'
         response=self.client.get('/api/me/artists')
         self.assertEqual(response.status_code,200,response.text)
@@ -386,3 +384,31 @@ class ArtistApiTests(ArtistPostgresCase):
         self.assertIsNone(body['tracks'][0]['artwork_asset_id'])
         self.assertNotIn(str(artwork.id),public.text)
         self.assertNotIn(str(track),public.text)
+
+
+    def test_delegate_revocation_during_provider_work_denies_every_write(self):
+        primary=admitted_actor('admin');delegate=admitted_actor('listener')
+        track=self.track()
+        self.repo.set_delegate(primary,'listener',['manage_content'])
+        self.actor='listener'
+        def authorize(*args):
+            self.repo.set_delegate(primary,'listener',[])
+            return UploadAuthorization('https://unit-test.invalid/put',{},300)
+        self.storage.authorize_upload.side_effect=authorize
+        with self.assertRaises(MediaError):self.upload(track)
+        with self.connect() as c:self.assertEqual(c.execute('SELECT count(*) FROM shadify_media_assets').fetchone()[0],0)
+        self.storage.authorize_upload.side_effect=None
+        for bad in (False,True):
+            self.repo.set_delegate(primary,'listener',['manage_content'])
+            asset=self.upload(track)
+            def inspect(key):
+                self.repo.set_delegate(primary,'listener',[])
+                return ObjectInfo(21 if bad else 20,'audio/flac',b'fLaC'+b'0'*16)
+            self.storage.inspect.side_effect=inspect
+            with self.assertRaises(MediaError):self.media.complete(delegate,asset.id)
+            self.assertEqual(self.repo.get(asset.id).state,'upload_pending')
+            self.storage.inspect.side_effect=None
+            self.repo.set_delegate(primary,'listener',['manage_content'])
+            self.assertEqual(self.media.complete(delegate,asset.id).state,'uploaded')
+            self.repo.set_delegate(primary,'listener',[])
+            with self.assertRaises(MediaError):self.media.complete(delegate,asset.id)

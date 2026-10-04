@@ -61,95 +61,48 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code,401)
 
 
-class CentralAuthorityTests(unittest.TestCase):
-    authority = {"version":1,"domain_app":"shadify","proxy_app":"shadify_api","roles":["admin"]}
-
-    def test_exact_claim_and_immutable_complete_context(self):
+class IdentityBoundaryTests(unittest.TestCase):
+    def test_identity_only_immutable_context_ignores_central_admin_claims(self):
         from dataclasses import FrozenInstanceError
-        identity=identity_from_admitted_authentication(identity_request(changes={"app_authority":self.authority}))
-        self.assertTrue(identity.admin)
-        self.assertEqual((identity.account_id,identity.session_id,identity.domain_app,identity.proxy_app),
-                         ("owner","session","shadify","shadify_api"))
-        self.assertLess(identity.issued_at,identity.expires_at)
-        with self.assertRaises(FrozenInstanceError): identity.admin=False
-        for changes in ({},{"app_authority":self.authority|{"roles":[]}}):
-            self.assertFalse(identity_from_admitted_authentication(identity_request(changes=changes)).admin)
+        for claim in (None,False,{}, {'version':1,'domain_app':'shadify','proxy_app':'shadify_api','roles':['admin']}):
+            identity=identity_from_admitted_authentication(identity_request(changes={'app_authority':claim}))
+            self.assertFalse(hasattr(identity,'admin'))
+            self.assertEqual((identity.account_id,identity.session_id,identity.domain_app,identity.proxy_app),
+                             ('owner','session','shadify','shadify_api'))
+            with self.assertRaises(FrozenInstanceError): identity.account_id='forged'
 
-    def test_admin_admission_lifetime_60_accepts_61_and_600_reject(self):
-        now=int(time.time())
-        with patch('shadify_api.auth.time.time',return_value=now):
-            accepted=identity_from_admitted_authentication(identity_request(changes={
-                "app_authority":self.authority,"iat":now,"exp":now+60}))
-            self.assertTrue(accepted.admin)
-            for lifetime in (0,-1,61,600):
-                with self.subTest(lifetime=lifetime),self.assertRaises(HTTPException) as error:
-                    identity_from_admitted_authentication(identity_request(changes={
-                        "app_authority":self.authority,"iat":now,"exp":now+lifetime}))
-                self.assertEqual(error.exception.status_code,401)
-            for lifetime in (61,600):
-                for authority in ({},{"app_authority":self.authority|{"roles":[]}}):
-                    identity=identity_from_admitted_authentication(identity_request(changes={
-                        **authority,"iat":now,"exp":now+lifetime}))
-                    self.assertFalse(identity.admin)
-                    self.assertEqual(identity.expires_at,now+lifetime)
-
-    def test_admin_context_lifetime_rechecked_and_nonadmin_unchanged(self):
+    def test_valid_identity_lifetimes_and_rechecks_do_not_depend_on_admin_claim(self):
         from shadify_api.media import MediaError
         now=int(time.time())
         with patch('shadify_api.auth.time.time',return_value=now):
-            context=admitted_actor('admin',issued=now,expires=now+60)
-            self.assertIs(require_fresh_actor(context),context)
-            for lifetime in (0,-1,61,600):
-                with self.subTest(lifetime=lifetime),self.assertRaises(MediaError) as error:
+            for lifetime in (60,61,600):
+                identity=identity_from_admitted_authentication(identity_request(changes={'iat':now,'exp':now+lifetime}))
+                self.assertIs(require_fresh_actor(identity),identity)
+            for lifetime in (0,-1):
+                with self.assertRaises(HTTPException):
+                    identity_from_admitted_authentication(identity_request(changes={'iat':now,'exp':now+lifetime}))
+                with self.assertRaises(MediaError):
                     require_fresh_actor(admitted_actor('admin',issued=now,expires=now+lifetime))
-                self.assertEqual(error.exception.status,401)
-            for lifetime in (61,600):
-                context=admitted_actor('owner',issued=now,expires=now+lifetime)
-                self.assertIs(require_fresh_actor(context),context)
-
-    def test_malformed_and_wrong_app_authority_rejected(self):
-        values=[None,False,[],{},self.authority|{"version":True},self.authority|{"version":1.0},
-                self.authority|{"version":2},self.authority|{"domain_app":"mizfood_com"},
-                self.authority|{"proxy_app":"mizfood_api"},self.authority|{"roles":"admin"},
-                self.authority|{"roles":["owner"]},self.authority|{"roles":["admin","admin"]},
-                self.authority|{"roles":["admin","owner"]},self.authority|{"roles":[True]},
-                self.authority|{"extra":True}]
-        for value in values:
-            with self.subTest(value=value),self.assertRaises(HTTPException) as error:
-                identity_from_admitted_authentication(identity_request(changes={"app_authority":value}))
-            self.assertEqual(error.exception.status_code,401)
-
-    def test_forged_headers_unadmitted_and_expired_admin_rejected(self):
-        extra=[(b"x-authenticated-admin",b"true"),(b"x-app-authority",b"admin")]
-        self.assertFalse(identity_from_admitted_authentication(identity_request(extra_headers=extra)).admin)
-        for admitted,changes,status in (
-                (False,{"app_authority":self.authority},503),
-                (True,{"app_authority":self.authority,"exp":int(time.time())-1},401),
-                (True,{"app_authority":self.authority,"session_id":"other"},401)):
-            with self.subTest(changes=changes),self.assertRaises(HTTPException) as error:
-                identity_from_admitted_authentication(identity_request(admitted=admitted,changes=changes))
-            self.assertEqual(error.exception.status_code,status)
-
-    def test_duplicate_nested_authority_keys_rejected(self):
-        request=identity_request(changes={"app_authority":self.authority})
-        headers=request.scope["headers"]
-        version,payload,signature=headers[0][1].decode().split(".")
-        raw=base64.urlsafe_b64decode(payload+"="*(-len(payload)%4)).decode()
-        raw=raw.replace('"roles": ["admin"]','"roles": [], "roles": ["admin"]')
-        encoded=base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
-        headers[0]=(b"x-auth-assertion",(version+"."+encoded+"."+signature).encode())
-        with self.assertRaises(HTTPException) as error: identity_from_admitted_authentication(request)
-        self.assertEqual(error.exception.status_code,401)
 
     def test_lost_context_never_reconstructed_from_account_string(self):
         from shadify_api.media import MediaError
-        for value in ("admin",{"account_id":"admin","admin":True},None):
+        for value in ('admin',{'account_id':'admin','admin':True},None):
             with self.subTest(value=value),self.assertRaises(MediaError) as error: require_fresh_actor(value)
             self.assertEqual(error.exception.status,401)
         repo=Mock()
-        response=TestClient(create_app(identity=lambda:"admin",domain=DomainService(repo))).get("/api/me")
+        response=TestClient(create_app(identity=lambda:'admin',domain=DomainService(repo))).get('/api/me')
         self.assertEqual(response.status_code,401)
         repo.project_user.assert_not_called()
+
+    def test_duplicate_json_keys_remain_rejected(self):
+        request=identity_request()
+        headers=request.scope['headers']
+        version,payload,signature=headers[0][1].decode().split('.')
+        raw=base64.urlsafe_b64decode(payload+'='*(-len(payload)%4)).decode()
+        raw=raw.replace('"account_id": "owner"', '"account_id": "owner", "account_id": "owner"')
+        encoded=base64.urlsafe_b64encode(raw.encode()).decode().rstrip('=')
+        headers[0]=(b'x-auth-assertion',(version+'.'+encoded+'.'+signature).encode())
+        with self.assertRaises(HTTPException): identity_from_admitted_authentication(request)
 
 
 class DomainTests(unittest.TestCase):

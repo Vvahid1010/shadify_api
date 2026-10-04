@@ -3,13 +3,33 @@ from uuid import UUID
 from .auth import Identity
 from fastapi import Body, Depends, HTTPException, Query
 from .artist_models import (ArtistCreate, Layout, AssignOwner, TransferOwner, RevokeOwner,
-                            Publication, Suspension, Verification, RESOURCE_MODELS)
+                            Publication, Suspension, Verification, RESOURCE_MODELS, DelegatePermissions, PrimaryTransfer)
 
 
 def install_artist_routes(app, identity, repository):
     def repo():
         if repository is None: raise HTTPException(503,'Artist persistence integration pending')
         return repository
+
+    @app.get('/api/admin/authority')
+    def authority(actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.admin_details(actor)
+
+    @app.get('/api/admin/authority/audit')
+    def authority_audit(actor:Identity=Depends(identity),data=Depends(repo),limit:int=Query(20,ge=1,le=100),cursor:UUID|None=None):
+        return data.admin_audit(actor,limit,cursor)
+
+    @app.put('/api/admin/delegates/{account_id}')
+    def delegate(account_id:str,body:DelegatePermissions,actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.set_delegate(actor,account_id,body.permissions)
+
+    @app.delete('/api/admin/delegates/{account_id}')
+    def revoke_delegate(account_id:str,actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.set_delegate(actor,account_id,[])
+
+    @app.put('/api/admin/primary')
+    def primary(body:PrimaryTransfer,actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.transfer_primary(actor,body.account_id,expected_primary=body.expected_primary_account_id,delegates=body.delegates)
 
     @app.get('/api/me/artists')
     def manageable(actor:Identity=Depends(identity), data=Depends(repo),limit:int=Query(20,ge=1,le=100),cursor:UUID|None=None):

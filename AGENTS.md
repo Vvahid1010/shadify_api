@@ -114,10 +114,10 @@ use native Python 3.14 and the isolated source-local .venv. No managed WSL API
 service, database, migration or cloud resource has been activated.
 
 Current source scope includes canonical shell-admitted identity/provenance,
-artist memberships, central admitted app-scoped admin, artist/profile/content lifecycle,
+artist memberships, app-owned primary/delegated admin, artist/profile/content lifecycle,
 private original uploads and signed GET provider preparation. Artist authority
-and status are defined in docs/ARTIST_PROFILES_AND_ACCESS.md. Central admin grants
-are Auth-owned; local grant rows are inert. No live grant/schema activation occurred. Playback HTTP,
+and status are defined in docs/ARTIST_PROFILES_AND_ACCESS.md. Shadify owns the new primary/delegate rows and admin audit; historical
+full-admin grant rows remain inert. No live grant/schema activation occurred. Playback HTTP,
 processing, purchases/entitlements/payments and Worker deployment remain pending.
 
 Node Agent owns installation/update/lifecycle on selected Node B, catalog
@@ -153,14 +153,18 @@ changes require separately coordinated authority. Frontend work is limited to
 documentation references; the other owner retains UI/session integration.
 
 
-## Current continuation boundary (2026-10-03)
+## Current continuation boundary (2026-10-04)
 
-The operator approved central Authentication app-scoped admin architecture, and
-the parent authorized local consumer implementation after Astra accepted the exact
-app_authority contract. Carry immutable admitted identity/admin context through
-every authority and media operation; never use local grants as a fallback. Page
-ownership stays local. Recheck expiry after locks/provider work and before commit;
-do not claim globally atomic remote grant revocation. Keep Auth/shared changes with
-their owners. Local scoped commits, isolated tests and exact-source package proof
-are preparation for independent review; no push or live migration/grant/deployment
-is authorized. Earlier PASS/artifact evidence remains pinned to its original source.
+The operator approved app-owned administration after staged Astra review
+01a105a1-7d4c-754c-9eda-1d1c71a52948, superseding the intervening central
+app_authority design. Authentication supplies immutable admitted identity/session/
+assurance only. Shadify owns one configured primary, explicit delegated existing-
+operation capabilities and append-only admin audit. Follow
+docs/ARTIST_PROFILES_AND_ACCESS.md for exact permissions, locking and rollout.
+Never import historical full-admin rows or guess authority from email/first user.
+Recheck identity after waits/provider work and audit writes before commit.
+Keep Auth, Node Agent, shared libraries and UI with their owners. Use an isolated
+checkout for this work; no live source reload, push, build feed, installation,
+credential, grant or live migration is authorized. Each app has independent DB
+and access on the existing cluster; WSL and node data stay separate. Exact roles,
+protected bootstrap/recovery and deployment remain owner decisions.

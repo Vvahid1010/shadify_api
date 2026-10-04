@@ -213,6 +213,136 @@
         "proxy_headers": true
       },
       {
+        "endpoint_id": "shadify_api.admin.authority",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/admin/authority",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.admin.audit",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "GET",
+        "path": "/api/admin/authority/audit",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.admin.delegate",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/admin/delegates/{account_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.admin.delegate.revoke",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "DELETE",
+        "path": "/api/admin/delegates/{account_id}",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.admin.primary",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "PUT",
+        "path": "/api/admin/primary",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
         "endpoint_id": "shadify_api.artists.mine",
         "receiver_app": "shadify_api",
         "permitted_peer_apps": [

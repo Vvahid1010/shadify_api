@@ -189,3 +189,16 @@ class Layout(Input):
 
 
 RESOURCE_MODELS = {'tracks': Track, 'releases': Release, 'videos': Video, 'moments': Moment, 'events': Event}
+
+
+class DelegatePermissions(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    permissions: list[Literal['create_artist','edit_profile','manage_content','publish_content',
+        'change_owner','suspend','verify','edit_user_profile']] = Field(max_length=8)
+
+
+class PrimaryTransfer(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    account_id: str = Field(min_length=1,max_length=36)
+    expected_primary_account_id: str = Field(min_length=1,max_length=36)
+    delegates: Literal['retain','revoke']

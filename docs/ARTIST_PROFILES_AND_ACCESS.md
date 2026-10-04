@@ -6,10 +6,12 @@ This is the single source of truth for the authorized artist-page backend missio
 Stages 2–4 have met local source/package acceptance at reviewed implementation
 commit `053d93bc9b145871fae4895d6bcbadf4dd565bef`. Independent Astra limited PASS
 applies to that exact implementation, not operational activation or the later
-central-admin consumer. The operator subsequently approved centrally managed
-app-scoped admin authority; the parent authorized local consumer implementation
-after Astra accepted the exact contract. Independent review of this new source
-is pending. No source/build publication or live activation is authorized here.
+central-admin consumer. The operator subsequently approved app-owned administration after staged Astra
+review `01a105a1-7d4c-754c-9eda-1d1c71a52948`. This supersedes the intervening
+central-admin consumer architecture. Authentication provides identity, session
+and assurance; Shadify owns primary/delegated permissions and admin audit.
+This continuation is source/local commits/isolated tests only; no source/build
+publication, live migration, installation or real authority selection is authorized.
 The implementation ledger distinguishes tested source behavior from operational integration.
 
 ## Evidence and scope
@@ -56,33 +58,62 @@ Account deletion/revocation must never cascade pages, works or media. Preserve
 the local identity tombstone and end access; removing a membership preserves
 the page and its content. No browser-provided role grants access.
 
-Admin authority is owned centrally by Authentication and is scoped to this
-exact app pair. Only after canonical admission and account/session/audience/expiry
-validation does the consumer read the signed assertion member:
+Admin authority belongs to this Shadify database. Canonical Authentication
+admission still supplies immutable account/session/assurance, exact Shadify
+audience and issued/expiry times. The Identity has no admin field. Central
+`app_authority` members are ignored for app permissions; forged headers, ordinary
+user fields, auth_level, emails and display names cannot grant authority.
+Duplicate assertion JSON keys still fail admission. Recheck identity after SQL
+locks/provider work and after audit writes before commit. The historical central
+admin-only 60-second lifetime cap no longer applies: identity follows existing
+identity expiry rules; permissions are read freshly from Shadify under SQL locks.
 
-```json
-{"app_authority":{"version":1,"domain_app":"shadify","proxy_app":"shadify_api","roles":["admin"]}}
-```
+Additive **006_app_admin** creates one fixed app-state row, initially without a
+primary, explicit delegate rows and append-only app admin audit. A configured app
+has exactly one primary; an unconfigured app can have none. No legacy
+`shadify_admin_grants` row or central claim is imported or used as fallback.
+Those historical full-admin rows stay inactive and untouched. Migration does not
+select an operator/account and cannot promote the first user. Current actor and
+grant/transfer targets must be active previously canonically observed identities.
 
-The member must have exactly these four fields. Version is integer 1, never a
-boolean or float; roles is exactly [] or ["admin"]. Wrong app, malformed/duplicate
-fields, unknown roles or expired evidence reject the request. An absent member
-means no admin authority while ordinary membership permissions remain available.
-For admin evidence, both admission and every context-freshness recheck enforce
-0 < exp - iat <= 60 seconds, matching the issuer's absolute expiry cap captured
-before the grant read. 60 seconds is valid; 61 or 600 seconds is rejected even
-if otherwise canonically admitted and unexpired. Ordinary non-admin lifetimes
-retain their existing validity rules and are not capped by this admin-only bound.
-An immutable per-request Identity carries account, session, auth level, exact
-audience, issued/expiry times and admin through routes/services/repositories.
-Lost context fails closed; authority is never reconstructed from an account
-string, browser header/body, auth_level, environment flag or cached projection.
-The legacy shadify_admin_grants table is inert historical schema and has no
-runtime authorization/readiness dependency, OR fallback or bootstrap interface.
-Page ownership remains local. Admin acts as themselves; management results identify
-actual actor, target page and whether admin authority was used. No impersonation.
-Central grant-management/issuance changes belong exclusively to the Auth owner;
-this consumer neither reads the Auth database nor creates operational grants.
+The primary can delegate any subset of the eight actual-operation capabilities
+below, replace/revoke a delegate's subset, and transfer the primary to an explicit
+valid target. Delegates cannot change grants, redelegate, promote themselves or
+replace the primary, even if given every operation capability. Grant replacement
+uses explicit arrays (empty means revoke); unknown/duplicate permissions fail.
+Primary transfer requires expected current primary and a mandatory `retain` or
+`revoke` delegate decision. The incoming primary's delegate row is removed; the
+former primary receives no automatic delegate grant. State/grant changes and
+audit commit together. There is no delete-primary operation; a database trigger
+rejects clearing/deleting configured primary state. Local account security
+deactivation is still allowed and denies access without deleting primary state.
+
+Authority mutation locks app state FOR UPDATE, then actor/target identity rows in
+account order. Artist operations lock artist, app state FOR SHARE, sorted
+identities, then referenced resources. Grant/primary changes serialize with
+transactions already holding SHARE: a change waits for that operation to commit;
+operations obtaining the state after revocation deny. Provider work holds no SQL
+transaction; its later insert/transition reauthorizes freshly, so revocation while
+the provider runs prevents success and failure writes. This is local transaction
+ordering, not instant central account/session revocation or cloud URL cancellation.
+
+Only a protected local, unwired `bootstrap_primary` preparation seam exists. It
+requires explicit fresh target identity, recorded provenance and operator
+reference, fails if already configured, and audits atomically. Tests use synthetic
+accounts only. No HTTP bootstrap, recovery endpoint, real grant, credential,
+operator-authority selection or automatic recovery was added. Recovery for a
+deactivated/lost primary requires a separately selected protected owner procedure.
+
+New primary-only routes: GET `/api/admin/authority`, GET
+`/api/admin/authority/audit`, PUT/DELETE `/api/admin/delegates/{account_id}` and PUT
+`/api/admin/primary`. They are app-owned catalog declarations, not live endpoint
+enrollment. Delegates cannot read the authority roster/audit. Page capability DTOs
+combine independent ownership with the actual permission subset; acting_as_admin
+identifies the authority used for the operation. Admin operations record actor,
+action and page/target context in append-only app audit. Grant events preserve
+before/after subsets; transfer records old/new primary and delegate policy/history.
+Existing ownership audit remains independent and transactional. Ordinary content
+author/uploader identities remain audit fields, never permission sources.
 
 Assignment accepts an existing verified canonical identity ID, never an email,
 display name or arbitrary new account. The current Auth API exports self-account
@@ -110,7 +141,26 @@ distinct operations, neither deletes page content.
 | Guest/listener without membership | Filtered metadata | No | No | No | No | No |
 | Active owner of this page | Filtered metadata | Yes | Yes | If ready and page not suspended | No | No |
 | Owner of another page | Filtered metadata | No | No | No | No | No |
-| Active app admin | Filtered metadata | Yes, including unassigned | Yes | If ready; explicit unsuspend required | Yes | Yes |
+| Primary admin (delegates only within their subset) | Filtered metadata | Yes, including unassigned | Yes | If ready; explicit unsuspend required | Yes | Yes |
+
+| App capability | Existing operations covered |
+| --- | --- |
+| create_artist | Create an unassigned artist draft |
+| edit_profile | Artist profile and layout edits |
+| manage_content | Track/release/video/Moment/event metadata create/edit/delete and existing private original upload issue/complete |
+| publish_content | Page and track/release/video/Moment publish/unpublish, with existing readiness/suspension rules |
+| change_owner | Artist assignment/transfer/revocation and ownership audit read |
+| suspend | Explicit page suspension/resumption; resuming as published additionally requires publish_content |
+| verify | Explicit page verification/unverification |
+| edit_user_profile | Existing public-user profile read/edit; no account/security fields |
+
+Any page capability permits page metadata/capability inspection, including
+unassigned pages. Private content/media metadata reads require manage_content or
+publish_content (or independent page ownership). Existing upload mutation requires
+manage_content. create_artist/edit_user_profile alone do not enumerate/manage other
+pages. Event edits retain the existing calendar-metadata visibility contract;
+there is no separate event publication permission/endpoint. No generic role graph,
+financial capability, processing permission or new media pipeline is introduced.
 
 Ownership, page publication (`draft`, `published`, `suspended`) and official
 verification are independent. Admin can create, prepare and publish an unassigned
@@ -149,11 +199,11 @@ insufficient. Local identity revocation must not reverse this order by acquiring
 artist rows afterward. Request freshness is rechecked after blocking authority
 locks, after external media inspection and immediately before transaction commit;
 expiry causes rollback, including ownership audit. Authorization and commit are
-not separate unchecked database operations. Remote central grant revocation is
-not globally atomic with a local commit: already issued admitted evidence remains
-valid until its issuer-bounded expiry. A freshly issued assertion after revocation
-has no admin authority. Existing storage URLs retain their own bounded validity;
-the consumer does not invalidate them or claim instant remote revocation. After transfer commits, old owner cannot
+not separate unchecked database operations. App grant/primary revocation is
+ordered by the local state lock; canonical identity/session revocation remains
+dependent on admitted expiry and trusted central synchronization. Existing
+storage URLs retain their bounded validity and are not invalidated by grants.
+After transfer commits, old owner cannot
 read new private state or perform another write. A read authorized before commit
 may have already returned bytes; no retroactive revocation claim. Private reads use the same locked authorizer and query target scope in that transaction;
 responses are no-store. Never cache owner capability as authority.
@@ -277,11 +327,10 @@ no-store in this initial scope; no new caching framework.
 | POST /api/media/uploads; POST /api/media/uploads/{id}/complete; GET /api/media/{id} | Existing interfaces, now current page authority rather than uploader authority; no key substitution or unrelated media read. |
 
 `GET /api/me/artists` additionally returns top-level `acting_as_admin` and
-`capabilities: {"create_artist": <boolean>}` from the same current admitted app-admin
+`capabilities: {"create_artist": <boolean>}` from the same freshly read app-owned primary/delegate
 authority. These remain present when `pages` is empty, allowing an authorized
 admin to discover page creation without an existing page. Listener/owner-only or
-revoked admin identities receive false. No new endpoint, directory, grant or
-role inference is added; POST /api/admin/artists independently reauthorizes.
+revoked admin identities receive false. No authority is inferred from the response; POST /api/admin/artists independently reauthorizes.
 
 Private DTO envelope identifies `actor_account_id`, `artist_id`, `acting_as_admin`
 and computed capabilities such as edit_profile, manage_content, publish_content,
@@ -421,8 +470,8 @@ endpoint or booking workflow. Owners can edit them under the same page authority
 Canonical admission records previously observed identity provenance before private
 business dispatch. Projection/assignment cannot fabricate it. Every request still
 passes canonical admission; local tombstones stay inactive. Current administrator
-authority comes only from the admitted central app claim, never the old local
-grants. Suspensions/verification use dedicated admin-only actions;
+authority comes only from the new app-owned state/delegates; the old local
+full-admin grants remain inert. The original Stage 3 result predates this change. Suspensions/verification use dedicated admin-only actions;
 only explicit suspension action can resume a held page, including for admins.
 
 Attachment/readiness validation locks referenced assets after artist/identity
@@ -446,7 +495,7 @@ with the new catalog. Stage 4 records final combined and package evidence.
 
 ### Operational cutover prerequisites
 
-This candidate targets **005_artist_content**, not the prior published artifact's
+This continuation targets **006_app_admin**, additive after 005. The earlier artist candidate targeted **005_artist_content**, not the prior published artifact's
 002 schema. The latest pre-mission published build is
 `9328bb38579e90826f5869e9595cb0639f6d05fa`, source
 `715a8227d67b9805ba6508ffb3ada2fc58858400`; this is artifact history, not a claim
@@ -464,9 +513,10 @@ compatibility with the old package. The restore plan must cover the schema/data
 boundary and post-backup writes; do not imply lossless automatic rollback. No
 live backup, migration, restore or code rollback was performed or authorized here.
 A legacy row without proof stops cutover. Empty test databases take 001..005 in order.
-Central admin management/issuance is Auth-owned and separately coordinated.
-The API requires valid admitted evidence plus an active canonically observed
-local actor; it has no local grant bootstrap or operational grant from tests.
+Primary/delegate management is now Shadify-owned. The API requires valid admitted
+identity plus an active canonically observed local actor. The protected local
+bootstrap seam is tested only with synthetic identities; operational bootstrap
+and recovery remain unselected. No real grant was created.
 New route enrollment requires Authentication/Node Agent owner review; current
 authenticated managed proof does not make guest access operational.
 
@@ -556,11 +606,11 @@ operational grant/account/bootstrap tool was added. The earlier full source and
 packaged 72-test evidence remains bound to053d93bc, not this later runtime change.
 
 
-### Central-admin consumer continuation (2026-10-03)
+### Historical central-admin consumer continuation (2026-10-03; superseded)
 
-The approved central Auth architecture replaces local grant authority. Exact
-claim shape and request-context/expiry behavior above supersede the historical
-local-grant ledger. No migrations were changed or auto-applied; the old table
+At that historical source, central Auth architecture replaced local full-admin
+grants. This intervening architecture is superseded by the 2026-10-04 app-owned
+primary/delegate foundation; only its original-source evidence below is retained. No migrations were changed or auto-applied; the old table
 remains inert. Page ownership, identity tombstones, suspension/publication,
 verification, public privacy and immutable ownership audit remain independent.
 No new endpoint, header, native catalog, dependency or protected configuration
@@ -590,7 +640,7 @@ No operational release, migration, central grant or real R2 acceptance follows
 from these source/package checks.
 
 
-### Bounded admin lifetime review correction (2026-10-03)
+### Historical bounded admin lifetime correction (2026-10-03; superseded)
 
 Independent review accepted context/media/freshness, no local fallback and
 ownership/tombstone/audit behavior, but found that the consumer accepted otherwise
@@ -607,3 +657,67 @@ Revised source discovery: **88 passed**, clean pip check and scoped whitespace
 check, 2026-10-03. The two added tests exercise admission and immutable-context
 lifetime boundaries with synthetic admitted evidence; existing real native
 crypto/admission tests are retained. Real Auth issuer/VM/R2 proof remains pending.
+
+
+### App-owned admin foundation (2026-10-04)
+
+1. **First proof:** isolated native PostgreSQL, explicitly provisioned synthetic
+   primary, verify-only delegate, successful verification, owner assignment denied,
+   revocation and next verification denied. Historical rows remain inactive.
+2. **Existing operation wiring:** eight explicit capabilities above; primary-only
+   grant/transfer/roster/audit routes; immutable admitted identity and additive 006.
+3. **Local validation:** `test_app_admin.py` covers permission matrix through actual
+   ASGI endpoints, primary transfer retain/revoke/explicit decision, delegate
+   escalation denial, canonical actor/target provenance, unconfigured bootstrap,
+   inactive identities, audit rollback/immutability, last-primary protection,
+   simultaneous transfers and grant/operation lock ordering. `test_artist_api.py`
+   retains cross-user/page privacy/IDOR, ordinary owner flows and tests revoked
+   delegates during upload signing and both inspection outcomes, including
+   idempotent completion. Identity tests retain audience/session/expiry/admission
+   checks and prove central claims confer no permissions. Post-audit expiry rolls
+   back writes, authority state and audit together.
+4. **Handoff:** independent Astra review of exact local source remains pending;
+   test counts and commits are recorded with the final local evidence. No package
+   rebuild, push, feed publication, installation or live migration was performed.
+
+Each app has its own independent database and access. Node deployments use the
+existing central PostgreSQL cluster; WSL uses the existing WSL PostgreSQL cluster.
+Development and node data remain separate. Cluster sharing does not imply shared
+app tables, roles, credentials or cross-app access. Isolated tests use disposable
+native PostgreSQL with a private Unix socket and no TCP listener; they neither
+create live app databases nor move existing data. Exact app database/role names,
+protected credentials and live migration selection remain runtime-owner decisions.
+
+006 changes are additive and do not rewrite 001..005 or applied history. Existing
+artist membership/content/ownership audit stays intact; no old full-admin grants
+are activated. New source requires schema006 (readiness checks structural schema,
+not presence of a primary). A source rollback alone could restore the old central
+authority policy and must not be presented as a safe automatic rollback. Before
+live use, select coordinated package/schema, backup/restore and endpoint enrollment,
+and explicit operator bootstrap/recovery. No real account IDs or authority choices
+were inferred. Central account deletion/session revocation sync remains an
+Authentication/runtime integration gap; no private Auth database is queried.
+
+
+Runtime table access for schema006 (app database only; no live grants issued):
+
+| Tables | Runtime privileges used |
+| --- | --- |
+| shadify_users, shadify_artists, shadify_media_assets, artist_memberships | SELECT, INSERT, UPDATE |
+| shadify_tracks, shadify_releases, shadify_videos, shadify_moments, shadify_events, shadify_app_admin_delegates | SELECT, INSERT, UPDATE, DELETE |
+| shadify_release_tracks | SELECT, INSERT, DELETE |
+| artist_ownership_audit, shadify_app_admin_audit | SELECT, INSERT only |
+| shadify_app_admin | SELECT, UPDATE (also required for row locks); singleton inserted by migration owner |
+| shadify_admin_grants (historical) | None |
+
+Runtime also needs database CONNECT and schema USAGE, not schema ownership/CREATE,
+DDL/TRUNCATE, sequence grants (UUID keys), authority-state DELETE or audit
+UPDATE/DELETE. Migration/backup/security-maintenance ownership stays separate.
+`test_documented_runtime_table_privileges_suffice_and_legacy_grants_unreadable`
+uses a NOLOGIN synthetic role in disposable PostgreSQL to exercise ready,
+observation, delegation, verification, artist assignment and primary transfer
+with this table set; it denies reading historical grants, deleting audits/state
+and truncating delegates. Parent/runtime owner must coordinate consumer manifests
+and per-table grants for **006_app_admin**, not older 002/005 pins. SQL migration
+logic remains solely in this API repository. Inventory found no allocated Shadify
+database/role on WSL or node B; no allocation or copying app data occurred here.

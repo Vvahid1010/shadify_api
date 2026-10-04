@@ -91,9 +91,10 @@ class ArtistOperations:
         if body.avatar_asset_id or body.header_asset_id:
             raise MediaError(409,'Create page before attaching same-page ready media')
         try:
-            with self.authorized(actor,admin_only=True) as (c,auth,_,_):
+            with self.authorized(actor,admin_only=True,operation='create_artist',audit=False) as (c,auth,_,_):
                 row=c.execute('INSERT INTO shadify_artists(id,slug,name,bio,genres,socials) VALUES (%s,%s,%s,%s,%s,%s) RETURNING *',
                     (artist_id,body.slug,body.name,body.bio,Jsonb(body.genres),Jsonb(body.socials))).fetchone()
+                self._admin_audit(c,auth,'create_artist',artist=artist_id)
                 from dataclasses import replace
                 return {**replace(auth,artist_id=artist_id).dto(),'page':self._page(row),'availability':AVAILABILITY}
         except IntegrityError: raise MediaError(409,'Slug unavailable') from None
@@ -106,22 +107,28 @@ class ArtistOperations:
                     'availability':AVAILABILITY}
 
     def manageable_pages(self,actor,limit,cursor=None):
+        from dataclasses import replace
+        from .admin import PAGE_PERMISSIONS
         with self.authorized(actor) as (c,auth,_,_):
-            if auth.admin:
+            owned = {r['artist_id'] for r in c.execute('SELECT artist_id FROM artist_memberships '
+                     'WHERE user_id=%s AND revoked_at IS NULL', (auth.user_id,)).fetchall()}
+            page_admin = bool(auth.permissions & PAGE_PERMISSIONS)
+            if page_admin:
                 rows=c.execute('SELECT * FROM shadify_artists WHERE (%s::uuid IS NULL OR id>%s) ORDER BY id LIMIT %s',
                                (cursor,cursor,limit+1)).fetchall()
             else:
                 rows=c.execute('SELECT a.* FROM shadify_artists a JOIN artist_memberships m ON m.artist_id=a.id '
                                'WHERE m.user_id=%s AND m.revoked_at IS NULL AND (%s::uuid IS NULL OR a.id>%s) '
                                'ORDER BY a.id LIMIT %s',(auth.user_id,cursor,cursor,limit+1)).fetchall()
-            from dataclasses import replace
-            return {'actor_account_id':auth.account_id,'acting_as_admin':auth.admin,'capabilities':{'create_artist':auth.admin},
+            return {'actor_account_id':auth.account_id,'acting_as_admin':auth.admin,
+                'capabilities':{'create_artist':'create_artist' in auth.permissions},
                 'pages':[{'page':{k:self._page(row)[k] for k in ('id','name','slug','publish_state','verified')},
-                **replace(auth,artist_id=row['id'],publish_state=row['publish_state']).dto()} for row in rows[:limit]],
+                **replace(auth,artist_id=row['id'],publish_state=row['publish_state'],
+                          owner=row['id'] in owned,acting_admin=page_admin).dto()} for row in rows[:limit]],
                 'next_cursor':str(rows[limit-1]['id']) if len(rows)>limit else None,'availability':AVAILABILITY}
 
     def edit_page(self,actor,artist,patch):
-        with self.authorized(actor,artist) as (c,auth,page,_):
+        with self.authorized(actor,artist,operation='edit_profile') as (c,auth,page,_):
             fields=ArtistProfile.model_fields
             model=validate(ArtistProfile,{**{k:page[k] for k in fields},**patch})
             for key in ('avatar_asset_id','header_asset_id'):
@@ -132,7 +139,7 @@ class ArtistOperations:
             return {**auth.dto(),'page':self._page(row),'availability':AVAILABILITY}
 
     def edit_layout(self,actor,artist,layout):
-        with self.authorized(actor,artist) as (c,auth,_,_):
+        with self.authorized(actor,artist,operation='edit_profile') as (c,auth,_,_):
             if layout.featured_work:
                 self._content_row(c,artist,layout.featured_work.kind+'s',layout.featured_work.id)
             for resource,reference in (('videos',layout.featured_video_id),('moments',layout.pinned_moment_id)):
@@ -142,10 +149,12 @@ class ArtistOperations:
             return {**auth.dto(),'layout':data,'availability':AVAILABILITY}
 
     def page_state(self,actor,artist,state,*,admin_only=False,verification=None):
-        with self.authorized(actor,artist,admin_only=admin_only) as (c,auth,page,_):
+        with self.authorized(actor,artist,admin_only=admin_only, operation='verify' if verification is not None else ('suspend' if admin_only else 'publish_content')) as (c,auth,page,_):
             if verification is not None:
                 c.execute('UPDATE shadify_artists SET verified=%s WHERE id=%s',(verification,artist))
             else:
+                if admin_only and state == 'published' and not auth.allows('publish_content'):
+                    raise MediaError(403,'Publication permission required to resume published page')
                 if page['publish_state']=='suspended' and not admin_only:
                     raise MediaError(409,'Explicit admin suspension action required')
                 if state=='published' and not page['name'].strip():
@@ -156,7 +165,7 @@ class ArtistOperations:
             return {**replace(auth,publish_state=page['publish_state']).dto(),'page':self._page(page)}
 
     def audit(self,actor,artist,limit,cursor=None):
-        with self.authorized(actor,artist,admin_only=True) as (c,auth,_,_):
+        with self.authorized(actor,artist,admin_only=True,operation='change_owner',audit=False) as (c,auth,_,_):
             rows=c.execute('SELECT * FROM artist_ownership_audit WHERE artist_id=%s AND (%s::uuid IS NULL OR id>%s) '
                            'ORDER BY id LIMIT %s',(artist,cursor,cursor,limit+1)).fetchall()
             return {**auth.dto(),'events':[{k:str(v) if isinstance(v,UUID) else v for k,v in r.items()} for r in rows[:limit]],
@@ -169,9 +178,9 @@ class ArtistOperations:
                 with connection.cursor(row_factory=dict_row) as c:
                     account=c.execute('SELECT auth_account_id FROM shadify_users WHERE id=%s',(user_id,)).fetchone()
                     if account is None:
-                        self._authority(c,actor,admin_only=True)
+                        self._authority(c,actor,admin_only=True,operation='edit_user_profile')
                         raise MediaError(404,'Profile not found')
-                    auth,_,users=self._authority(c,actor,targets=(account['auth_account_id'],),admin_only=True)
+                    auth,_,users=self._authority(c,actor,targets=(account['auth_account_id'],),admin_only=True,operation='edit_user_profile')
                     row=users[account['auth_account_id']]
                     if patch is not None:
                         model=validate(PublicUserProfile,{**{k:row[k] for k in PublicUserProfile.model_fields},**patch})
@@ -179,6 +188,9 @@ class ArtistOperations:
                                       (model.name,model.slug,model.bio,Jsonb(model.genres),user_id)).fetchone()
                     result={'actor_account_id':auth.account_id,'acting_as_admin':auth.admin,'profile':
                             {'user_id':str(row['id']),**{k:row[k] for k in PublicUserProfile.model_fields}}}
+                    require_fresh_actor(actor)
+                    if patch is not None:
+                        self._admin_audit(c,auth,'edit_user_profile',target=account['auth_account_id'])
                     require_fresh_actor(actor)
                     return result
         except IntegrityError: raise MediaError(409,'Profile slug unavailable') from None
@@ -230,7 +242,7 @@ class ArtistOperations:
     def content_write(self,actor,artist,resource,payload,content_id=None):
         create=content_id is None
         content_id=content_id or uuid4()
-        with self.authorized(actor,artist) as (c,auth,_,_):
+        with self.authorized(actor,artist,operation='manage_content') as (c,auth,_,_):
             if create:
                 model=validate(RESOURCE_MODELS[resource],payload)
             else:
@@ -245,7 +257,7 @@ class ArtistOperations:
             return {**auth.dto(),'content':self._content_dto(c,resource,row),'availability':AVAILABILITY}
 
     def content_read(self,actor,artist,resource,content_id=None,*,limit=20,cursor=None):
-        with self.authorized(actor,artist) as (c,auth,_,_):
+        with self.authorized(actor,artist,operation='read_content') as (c,auth,_,_):
             if content_id:
                 return {**auth.dto(),'content':self._content_dto(c,resource,self._content_row(c,artist,resource,content_id))}
             rows=c.execute(f'SELECT * FROM {TABLES[resource]} WHERE artist_id=%s AND (%s::uuid IS NULL OR id>%s) '
@@ -273,7 +285,7 @@ class ArtistOperations:
         return True
 
     def content_publication(self,actor,artist,resource,content_id,state):
-        with self.authorized(actor,artist) as (c,auth,_,_):
+        with self.authorized(actor,artist,operation='publish_content') as (c,auth,_,_):
             row=self._content_row(c,artist,resource,content_id)
             if state=='published' and (auth.publish_state=='suspended' or not self._publishable(c,artist,resource,row)):
                 raise MediaError(409,'Page suspended or content not technically ready')
@@ -283,7 +295,7 @@ class ArtistOperations:
 
     def content_delete(self,actor,artist,resource,content_id):
         try:
-            with self.authorized(actor,artist) as (c,auth,page,_):
+            with self.authorized(actor,artist,operation='manage_content') as (c,auth,page,_):
                 self._content_row(c,artist,resource,content_id)
                 layout=page['layout']
                 featured=layout.get('featured_work') or {}

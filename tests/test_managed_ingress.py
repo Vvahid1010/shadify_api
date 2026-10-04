@@ -91,7 +91,7 @@ class CombinedIngressTests(unittest.TestCase):
     def test_profile_database_ready_without_r2_and_media_closed(self):
         asyncio.run(self.run_combined(profile_only=True))
 
-    def test_real_shell_carries_exact_central_admin_context(self):
+    def test_real_shell_carries_identity_without_central_admin_authority(self):
         asyncio.run(self.run_combined(central_admin=True))
 
     async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False):
@@ -171,7 +171,7 @@ class CombinedIngressTests(unittest.TestCase):
                     self.assertEqual(decoded["status"],200)
                     self.assertEqual(json.loads(base64.b64decode(decoded["body_b64"]))["account_id"],"owner")
                     self.assertEqual(repo.project_user.call_args.args[0].account_id,"owner")
-                    self.assertEqual(repo.project_user.call_args.args[0].admin,central_admin)
+                    self.assertFalse(hasattr(repo.project_user.call_args.args[0],'admin'))
                     checked=await http.get("http://fixture/health/ready")
                     self.assertEqual(checked.status_code,200) # Profile/DB slice needs no R2.
                     self.assertEqual(checked.json()["checks"]["scope"],"profile_database")

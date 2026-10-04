@@ -61,6 +61,27 @@ class NativePackageTests(unittest.TestCase):
             (root/'build-info.json').write_bytes(canonical(manifest))
             self.assertEqual(verify(root,source)['migration_target'],'005_artist_content')
 
+    def test_app_admin_target_requires_new_schema_and_runtime_without_breaking_005(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            for name in ('migrations/003_identity_provenance.sql','migrations/004_artist_memberships.sql',
+                         'migrations/005_artist_content.sql','shadify_api/access.py','shadify_api/artists.py',
+                         'shadify_api/artist_models.py','shadify_api/artist_routes.py'):
+                name='source/'+name;path=root/name;path.parent.mkdir(exist_ok=True,parents=True)
+                raw=b'synthetic artifact format fixture';path.write_bytes(raw)
+                manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            manifest['migration_target']='005_artist_content'
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            verify(root,source)
+            manifest['migration_target']='006_app_admin'
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError,'incomplete_artist_package'):verify(root,source)
+            for name in ('source/migrations/006_app_admin.sql','source/shadify_api/admin.py'):
+                raw=b'synthetic artifact format fixture';(root/name).write_bytes(raw)
+                manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            self.assertEqual(verify(root,source)['migration_target'],'006_app_admin')
+
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;package(root,source)

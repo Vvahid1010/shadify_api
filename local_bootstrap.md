@@ -51,7 +51,7 @@ replay.credentials.json and canonical app_security.credentials.json as applicabl
 Absolute protected paths, DB, peer/transport/checkpoint and replay/clock bounds
 remain unassigned prerequisites. No startup migration or cloud probe exists.
 Health /health is liveness. /health/ready scope=profile_database checks canonical
-admission and schema005 for page/content metadata management; optional storage is
+admission and schema006 for page/content metadata management; optional storage is
 missing or configured_unverified, not real R2 proof. It does not establish playback,
 guest ingress, processing, video/profile uploads, payments or followers. Self-profile
 editing has no endpoint. Details/checklist: docs/ARTIST_PROFILES_AND_ACCESS.md.
@@ -88,8 +88,8 @@ updated compatible package is explicitly selected. Source proof:51offline tests
 pass and pip check is clean; actual HTTP/playback/publication/R2 proof is pending.
 
 
-Artist mission source/candidate targets005_artist_content. Contract and exact
-schema/enrollment/central-admin/provenance prerequisites:
+Current app-owned admin source targets006_app_admin, additive after005_artist_content. Contract and exact
+schema/enrollment/app-owned bootstrap/provenance prerequisites:
 docs/ARTIST_PROFILES_AND_ACCESS.md. Old 002 packages/schema cannot be mixed with
 this cutover. Local testing/packaging does not authorize migration, publication,
 grant or shared topology changes. Source-ASGI public metadata is tested; guest

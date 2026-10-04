@@ -13,14 +13,14 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
 
     def owns_track(self,owner,artist,track):
         try:
-            with self.authorized(owner,artist) as (c,_,_,_):
+            with self.authorized(owner,artist,operation='manage_content',audit=False) as (c,_,_,_):
                 return c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',(track,artist)).fetchone() is not None
         except MediaError as e:
             if e.status in (403,404): return False
             raise
 
     def insert(self,actor,asset):
-        with self.authorized(actor,asset.artist_id) as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
             if asset.owner_id != actor.account_id:
                 raise MediaError(422,'Uploader audit identity mismatch')
             if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',(asset.track_id,asset.artist_id)).fetchone() is None:
@@ -41,7 +41,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: return None
-        with self.authorized(actor,asset.artist_id) as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation='manage_content',audit=False) as (c,_,_,_):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             return Asset(**row) if row else None
 
@@ -51,7 +51,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             raise ValueError('Only original upload completion transitions are supported')
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
-        with self.authorized(actor,asset.artist_id) as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
             return c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
                 "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original')",
                 (target,asset_id,asset.artist_id,expected)).rowcount==1
@@ -63,7 +63,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
-        with self.authorized(actor,asset.artist_id) as (c,auth,_,_):
+        with self.authorized(actor,asset.artist_id,operation='read_content') as (c,auth,_,_):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             if row is None: raise MediaError(404,'Asset not found')
             return {**auth.dto(),**{k:(str(row[k]) if k in ('artist_id','track_id') else row[k])
@@ -87,8 +87,12 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         return result
 
     def ready(self):
-        # Read-only compatibility check for the matching 001..005 schema; no auto-migration.
+        # Read-only compatibility check for the matching 001..006 schema; no auto-migration.
         with self.connect() as c:
+            if c.execute('SELECT primary_user_id,revision FROM shadify_app_admin WHERE singleton=true').fetchone() is None:
+                raise RuntimeError('Application admin state missing')
+            c.execute('SELECT user_id,permissions FROM shadify_app_admin_delegates LIMIT 0')
+            c.execute('SELECT actor_account_id,details FROM shadify_app_admin_audit LIMIT 0')
             c.execute('SELECT u.first_admitted_at,u.active,a.slug,a.publish_state,t.delivery_asset_id,m.storage_provider, '
                       'am.revoked_at,au.actor_account_id,r.data,v.data,mo.data,e.data '
                       'FROM shadify_users u,shadify_artists a,shadify_tracks t,shadify_media_assets m, '

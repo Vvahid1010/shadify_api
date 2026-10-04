@@ -69,8 +69,9 @@ MIME or magic marks failed only after another locked current-authority check.
 Upload insertion, completion and attachment serialize with local ownership/identity
 revocation. Immutable admitted actor context is carried separately from uploader
 audit IDs; freshness is rechecked after provider inspection/locks and before commit.
-Remote central admin revocation is bounded by issued assertion expiry, not globally
-atomic with local commits, and previously issued storage URLs retain their TTL. A transfer during inspection denies the old actor's final state write;
+App-owned admin changes serialize against locked local commits and are rechecked
+after provider work; central identity/session revocation still depends on expiry
+and trusted synchronization. Previously issued storage URLs retain their TTL. A transfer during inspection denies the old actor's final state write;
 new owner/admin may finish the same valid upload without copying objects. Uploaded never means processed, published or publicly playable.
 Magic checks are basic container identification, not full decoding/safety proof.
 Originals remain private/draft; current HTTP routes emit no playback URLs. A
@@ -203,7 +204,7 @@ not actual Authentication session, PostgreSQL migrations, R2 upload or edge deli
 
 Next: finalize DB assignment and canonical identity boundary with runtime owner;
 review matching package/schema selection, exact native route enrollment and
-provenance/central-admin issuance prerequisites in ARTIST_PROFILES_AND_ACCESS.md. User privately supplies R2 settings in the
+provenance/app-owned bootstrap prerequisites in ARTIST_PROFILES_AND_ACCESS.md. User privately supplies R2 settings in the
 confirmed protected route. Only then run one tiny supported upload and prove CORS,
 signature/type/length enforcement, overwrite rejection, expiry, ownership and
 private/draft completion. Private signed-playback/expiry/CORS/range and guest/published/free checks await

@@ -1,8 +1,9 @@
-"""Central admitted admin authority with local ownership and identity serialization.
+"""App-owned admin authority with local ownership and identity serialization.
 
 Only the canonical admission adapter calls observe_identity. HTTP callers cannot
-write provenance, tombstones or admin grants. Local observation is not a central
-account directory or a promise of immediate central account deletion sync.
+write provenance or tombstones; only the primary can change app grants through
+explicit authority operations. Observation is not a central account directory
+or a promise of immediate central account deletion sync.
 """
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from uuid import uuid4
 from psycopg.rows import dict_row
 from .media import MediaError
 from .auth import Identity, require_fresh_actor
+from .admin import AppAdminRepository, PERMISSIONS, PAGE_PERMISSIONS, OWNER_PERMISSIONS, active_identity
 
 
 @dataclass(frozen=True)
@@ -17,18 +19,29 @@ class Authority:
     account_id: str
     user_id: object
     artist_id: object
-    admin: bool
+    permissions: frozenset
+    owner: bool
     publish_state: str
+    acting_admin: bool = False
+
+    @property
+    def admin(self):
+        return self.acting_admin
+
+    def allows(self, permission):
+        return permission in self.permissions or (self.owner and permission in OWNER_PERMISSIONS)
 
     def dto(self):
         return {"actor_account_id": self.account_id, "artist_id": str(self.artist_id),
                 "acting_as_admin": self.admin,
-                "capabilities": {"edit_profile": True, "manage_content": True,
-                    "publish_content": self.publish_state != "suspended",
-                    "change_owner": self.admin, "suspend": self.admin, "verify": self.admin}}
+                "capabilities": {"edit_profile": self.allows('edit_profile'),
+                    "manage_content": self.allows('manage_content'),
+                    "publish_content": self.allows('publish_content') and self.publish_state != "suspended",
+                    "change_owner": self.allows('change_owner'), "suspend": self.allows('suspend'),
+                    "verify": self.allows('verify')}}
 
 
-class ArtistAccessRepository:
+class ArtistAccessRepository(AppAdminRepository):
     def observe_identity(self, identity: Identity):
         require_fresh_actor(identity)
         # Called only after require_account's complete canonical admission check.
@@ -42,53 +55,70 @@ class ArtistAccessRepository:
                       (uuid4(), identity.account_id))
             require_fresh_actor(identity)
 
-    def _authority(self, c, actor_context: Identity, artist_id=None, *, targets=(), admin_only=False):
+    def _authority(self, c, actor_context: Identity, artist_id=None, *, targets=(), admin_only=False, operation=None):
         actor_context = require_fresh_actor(actor_context)
         account_id = actor_context.account_id
-        # Lock artist -> identities sorted by account ID -> referenced resources.
-        # Local tombstones serialize until commit. Remote admin grants do not share
-        # these locks; admitted central evidence has its own bounded expiry.
+        # Lock artist -> app admin state -> sorted identities -> resources.
+        # Grant changes and tombstones serialize against operation commit.
         artist = None
         if artist_id is not None:
             artist = c.execute("SELECT * FROM shadify_artists WHERE id=%s FOR UPDATE", (artist_id,)).fetchone()
+        state = self._admin_state(c)
         identities = c.execute("SELECT * FROM shadify_users WHERE auth_account_id=ANY(%s) "
                                "ORDER BY auth_account_id FOR UPDATE", (sorted(set((account_id, *targets))),)).fetchall()
         users = {u["auth_account_id"]: u for u in identities}
         actor = users.get(account_id)
-        if (actor is None or not actor["active"] or actor["first_admitted_at"] is None
-                or actor["admission_source"] != "canonical_shell"):
+        if not active_identity(actor):
             raise MediaError(403 if admin_only else 404, "Management access unavailable")
-        # SQL locks may have waited past assertion expiry. Legacy local grants
-        # are inert and are never an authority source or fallback.
         require_fresh_actor(actor_context)
-        admin = actor_context.admin
-        if admin_only and not admin:
-            raise MediaError(403, "Application admin required")
+        permissions = frozenset()
+        if state['primary_user_id'] == actor['id']:
+            permissions = PERMISSIONS
+        elif state['primary_user_id'] is not None:
+            grant = c.execute('SELECT permissions FROM shadify_app_admin_delegates WHERE user_id=%s', (actor['id'],)).fetchone()
+            if grant:
+                permissions = frozenset(grant['permissions'])
+        # An omitted operation with admin_only is primary-only. Production
+        # operations specify their capability; a delegate's subset is exact.
+        if admin_only and operation is None and state['primary_user_id'] != actor['id']:
+            raise MediaError(403, 'Primary application admin required')
+        if operation == 'read_content':
+            admin_access = bool(permissions & {'manage_content', 'publish_content'})
+        elif operation is not None:
+            admin_access = operation in permissions
+        else:
+            admin_access = bool(permissions & PAGE_PERMISSIONS) if artist_id is not None else bool(permissions)
+        if admin_only and not admin_access:
+            raise MediaError(403, 'Application permission required')
         if artist_id is not None and artist is None:
-            raise MediaError(404, "Artist not found")
-        if artist is not None and not admin:
-            owner = c.execute("SELECT 1 FROM artist_memberships WHERE artist_id=%s AND user_id=%s "
-                              "AND revoked_at IS NULL", (artist_id, actor["id"])).fetchone()
-            if owner is None:
-                raise MediaError(404, "Artist not found")
+            raise MediaError(404, 'Artist not found')
+        owner = False
+        if artist is not None:
+            owner = c.execute('SELECT 1 FROM artist_memberships WHERE artist_id=%s AND user_id=%s '
+                              'AND revoked_at IS NULL', (artist_id, actor['id'])).fetchone() is not None
+            owner_access = owner and (operation in OWNER_PERMISSIONS or operation in (None, 'read_content'))
+            if not admin_access and not owner_access:
+                raise MediaError(404, 'Artist not found')
         for target in targets:
             user = users.get(target)
-            if (user is None or not user["active"] or user["first_admitted_at"] is None
-                    or user["admission_source"] != "canonical_shell"):
+            if not active_identity(user):
                 raise MediaError(422, "Target must be an existing active canonically observed identity")
         require_fresh_actor(actor_context)
-        return Authority(account_id, actor["id"], artist_id, admin,
-                         artist["publish_state"] if artist else "draft"), artist, users
+        return Authority(account_id, actor['id'], artist_id, permissions, owner,
+                         artist['publish_state'] if artist else 'draft', admin_access), artist, users
 
     @contextmanager
-    def authorized(self, actor: Identity, artist_id=None, *, targets=(), admin_only=False):
+    def authorized(self, actor: Identity, artist_id=None, *, targets=(), admin_only=False, operation=None, audit=True):
         with self.connect() as connection:
             with connection.cursor(row_factory=dict_row) as c:
                 authority, artist, users = self._authority(c, actor, artist_id,
-                                                         targets=targets, admin_only=admin_only)
+                                                         targets=targets, admin_only=admin_only, operation=operation)
                 yield c, authority, artist, users
                 # Runs even when the caller returns inside the context. Expiry
                 # raises before psycopg commits and rolls the operation back.
+                require_fresh_actor(actor)
+                if audit and operation and authority.admin and operation not in ('read_content', 'read_profile', 'read_audit'):
+                    self._admin_audit(c, authority, operation, artist=artist_id)
                 require_fresh_actor(actor)
 
     def change_owner(self, actor, artist_id, *, action, target=None, expected=None):
@@ -96,7 +126,7 @@ class ArtistAccessRepository:
             raise ValueError("Invalid ownership action")
         if action != "revoke" and target is None:
             raise MediaError(422, "Target identity required")
-        with self.authorized(actor, artist_id, targets=(() if target is None else (target,)), admin_only=True) as (c, auth, artist, users):
+        with self.authorized(actor, artist_id, targets=(() if target is None else (target,)), admin_only=True, operation='change_owner') as (c, auth, artist, users):
             owner = c.execute("SELECT m.id,u.auth_account_id FROM artist_memberships m "
                               "JOIN shadify_users u ON u.id=m.user_id WHERE m.artist_id=%s "
                               "AND m.revoked_at IS NULL", (artist_id,)).fetchone()

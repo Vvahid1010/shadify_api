@@ -67,15 +67,16 @@ Auth/Node Agent own admission, mixed sender routing and exact domain projection.
 
 ## App schema and health
 
-Current source migration target is005_artist_content; prior profile candidate
+Current source migration target is006_app_admin (additive after005_artist_content); prior profile candidate
 target was002. Apply nothing operationally from this task. Coordinated owner
 selection must review 003 provenance preparation, 004 guarded owner backfill and
-005 content tables with the matching package. Missing old owner proof aborts 004;
+005 content tables and006 app-owned primary/delegates/audit with the matching
+package and per-table runtime grants documented in the owning artist contract. Missing old owner proof aborts 004;
 002-only schema keeps candidate readiness closed. App startup never migrates.
 ready() performs read-only SELECT LIMIT0 across required artist/content/authority
 columns. Exact schema/activation prerequisites have one source in the artist contract. This app DB target is not
 Node Agent's own schema version or another app's database.
-Any approved live schema005/package cutover must first have a validated database
+Any approved live schema006/package cutover must first have a validated database
 backup and reviewed restore plan covering schema/data and post-backup writes.
 004 removes artists.owner_id, so old application code alone is not a rollback.
 No live migration/backup/restore or grant is authorized by this documentation.

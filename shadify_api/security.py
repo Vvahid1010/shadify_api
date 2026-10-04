@@ -13,6 +13,11 @@ def receiver_catalog():
               ("media.upload.complete", "POST", "/api/media/uploads/{asset_id}/complete"),
               ("media.read", "GET", "/api/media/{asset_id}")]
     routes += [
+        ("admin.authority", "GET", "/api/admin/authority"),
+        ("admin.audit", "GET", "/api/admin/authority/audit"),
+        ("admin.delegate", "PUT", "/api/admin/delegates/{account_id}"),
+        ("admin.delegate.revoke", "DELETE", "/api/admin/delegates/{account_id}"),
+        ("admin.primary", "PUT", "/api/admin/primary"),
         ("artists.mine", "GET", "/api/me/artists"),
         ("artists.create", "POST", "/api/admin/artists"),
         ("artists.public.slug", "GET", "/api/artist-slugs/{slug}/public"),
