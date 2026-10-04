@@ -1071,3 +1071,12 @@ media access and track playback issuance. Actual guest issuance admission is
 pending Node/Auth ownership. See MEDIA_STORAGE_ARCHITECTURE.md for storage,
 provider parity, migration and byte-ingress details; existing admin/owner rules,
 bootstrap plan and qualified9a76 artifact remain unchanged.
+
+Local storage exact runtime source: `7a625c1164dc7f0e26200cccced15f94309eb11f`. Separate frozen
+archive SHA256 `205d64bdfc38df729105b93d5e90b3e889b67789f0d19e938400d0e8a873cb97`; manifest SHA256
+`917c76d2a939bb91c051e2b549814f9a056726066b10d1492f868819069aa73e`. Fresh offline hash-pinned environment ran all
+127 packaged tests, including 16 actual local storage/config
+proofs. Schema001..006, production wheels and locks match the preserved9a76
+artifact; its archive is unchanged. Receipt is `.build-tools/local-storage-qualification/local-storage-offline-proof.json`.
+No operational guest/native byte ingress, real R2/Worker/CDN behavior, root/key
+custody, installation or live activation is established by this proof.

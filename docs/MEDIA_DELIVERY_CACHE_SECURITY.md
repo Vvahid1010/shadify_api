@@ -112,3 +112,45 @@ Artist management and media transfer rules have one source in
 trusted admin authorizes each private operation; uploader is audit only. New
 playback issuance also requires a published non-suspended page; suspension does
 not rewrite child states or revoke existing bearer URLs before their TTL.
+
+## Future free-plan Cloudflare gateway (reviewed direction, not deployed)
+
+The user's future direction is `media.shadify.org -> Worker Free -> Cache API
+-> private R2`, using dynamic app capabilities. No Worker, DNS, bucket or paid
+feature is activated here. Native S3 presigned URLs cannot be moved to a custom
+domain and establish no CDN caching guarantee. See [R2 presigned URL docs](https://developers.cloudflare.com/r2/api/s3/presigned-urls/).
+The retained direct SDK redirect is a future noncached adapter option, not the
+selected cached Worker implementation. Local uses the same logical IDs and
+opaque expiring `url+expires_at` client contract. There is no workers.dev cache
+guarantee; actual host behavior needs later proof.
+
+A future Worker must validate capability HMAC/purpose/asset/expiry before every
+GET/HEAD/Range cache lookup, including hits. Automatic caching that skips Worker
+authorization is unsuitable. Link TTL (e.g. 3600 seconds, already configurable)
+is separate from internal immutable-object cache TTL (e.g. 24 hours); private
+grants also stay bounded by their admitted identity expiry. Only after successful
+authorization may the internal cache key omit the token; it must retain immutable
+object identity/version and all representation selectors. Keep client responses
+private,no-store and internal cache policy separate. Expiry prevents new access;
+it cannot recall downloaded bytes or promise exact interruption of an in-flight
+transfer. Local chunk rechecks are best-effort revocation/expiry enforcement.
+
+Cache API is local to a data center and has no Tiered Cache via cache.put.
+Store a full 200 response with Content-Length; cache.match can then return 206
+for Range. cache.put rejects 206, so a range miss streams that range and does not
+implicitly warm the full object. See [Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/).
+
+As checked 2026-10-04, Workers Free permits 100,000 account requests/day, 10ms
+CPU and 128MB memory; GET/HEAD/Range traffic counts, and cached object size is
+limited to 512MB. These are planning limits, not constants added to application
+logic. See [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
+R2 Standard includes 10GB-month storage, 1 million Class A and 10 million Class B
+operations monthly; egress is free, but storage/operation overages can cost money.
+See [R2 pricing](https://developers.cloudflare.com/r2/pricing/). No unconditional
+free-use promise or paid plan dependency is introduced.
+
+Future activation must prove authorization before cache hits, expired-token denial
+with a warm object, private/draft/paid denial, separate preview eligibility,
+GET/HEAD/Range hit/miss behavior, request quotas and redaction. Provider migration
+still requires explicit full-byte copy/checksum verification and per-object
+cutover/rollback; an environment flag is insufficient.

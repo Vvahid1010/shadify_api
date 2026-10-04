@@ -131,3 +131,10 @@ for copy+full-checksum verification, per-object cutover and rollback.
 
 No Node B API installation, live filesystem, key, database migration, R2 call,
 cloud resource or publishing is established by the isolated tests.
+
+The byte ASGI handler is source-implemented, but the Node owner interface request
+currently prohibits a new Node service/listener. Existing managed native HTTP
+rejects unsigned bytes before ASGI. Therefore the factory above is a concrete
+handler contract, not an approved operational unit/socket instruction. Resolve
+the narrow transport with Node ownership before any projection/installation;
+never infer approval for a second service or weaken canonical admission.

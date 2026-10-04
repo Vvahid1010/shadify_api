@@ -326,3 +326,8 @@ Artist management and media transfer rules have one source in
 trusted admin authorizes each private operation; uploader is audit only. New
 playback issuance also requires a published non-suspended page; suspension does
 not rewrite child states or revoke existing bearer URLs before their TTL.
+
+The future cached delivery direction is a capability-validating Worker Free on
+media.shadify.org with private R2, not native S3 presigned URLs on a custom domain.
+See MEDIA_DELIVERY_CACHE_SECURITY.md for checked limits, link/cache TTL separation
+and validation-before-cache invariants. No Worker or cloud activation is included.
