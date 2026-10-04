@@ -395,3 +395,30 @@ Schema006,catalog56,wheels/dependencies/signing format/logical paths remain
 unchanged. R2-specific qualification was deliberately excluded. Receipt/logs
 are in the owning qualification directory. Actual Node-generated dev routing,
 decodable browser renewal and B installed/runtime proof are not asserted.
+
+
+## Current Local playback lifetime:3600seconds (supersedes300 phase)
+
+The operator explicitly changed Local playback-link duration to one hour to
+reduce link renewal frequency. LocalStorageConfig now defaults/caps
+playback_url_ttl_seconds at3600; StorageService caps each recorded local object's
+non-upload access at3600, with shorter configured or admitted actor/session
+expiry still authoritative. Runtime composition uses that explicit Local setting.
+Upload capability default/maximum behavior is unchanged; no upload is extended
+by this playback decision. Private,no-store, fresh renewal authorization, current
+revocation/publication checks, two-second authority checks and post-await expiry
+checks remain unchanged. Link duration is not a shared-cache lifetime.
+
+The stable asset UUID/path, logical keys, signing format and per-object provider
+remain unchanged. Web must use returned expires_at rather than a fixed300second
+timer. Node owns selected protected3600 configuration and exact dev/B origin
+pairing; no live setting is written here. Dormant R2 source/defaults are unchanged,
+and R2 implementation/qualification remains suspended.
+
+Preserve the exact qualified94143222 300second archive/receipt as historical
+evidence. This is a separate narrow source/package delta on the media-only branch;
+nomination source/schema008/catalog58 stays excluded. Changed lifetime assertions
+test3600, shorter actor45seconds and raw caller attempts above the cap. Actual
+expiry/read/renewal tests use short disposable fixture lifetimes, with no hour-long
+wait or production TTL override. A new exact qualified Node/API/Web tuple and B
+activation/acceptance still require their current owner-controlled steps.

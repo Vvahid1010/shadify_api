@@ -31,7 +31,7 @@ class StorageService:
         now = int(time.time())
         lifetime = self.upload_ttl if purpose == 'put' else self.access_ttl
         if purpose != 'put' and asset.storage_provider == 'local':
-            lifetime = min(lifetime, 300)
+            lifetime = min(lifetime, 3600)
         expiry = now + lifetime
         if actor is not None:
             require_fresh_actor(actor)

@@ -37,7 +37,7 @@ class LocalStorageTests(ArtistPostgresCase):
         self.repo = PostgresMediaRepository(self.connect)
         self.adapter = LocalAdapter(self.root)
         self.storage = StorageService(self.repo, {'local': self.adapter}, 'local',
-                                      'https://testserver', b'SYNTHETIC-MEDIA-KEY-NOT-LIVE-00000')
+                                      'https://testserver', b'SYNTHETIC-MEDIA-KEY-NOT-LIVE-00000', access_ttl=3600)
         self.service = MediaService(self.repo, self.storage, 1000000, 300)
         self.actor = 'owner-a'
         self.api = TestClient(create_app(self.service, lambda: admitted_actor(self.actor),
@@ -99,14 +99,18 @@ class LocalStorageTests(ArtistPostgresCase):
     def test_local_link_cap_dev_origin_and_shorter_actor_expiry(self):
         from shadify_api.config import LocalStorageConfig
         settings=LocalStorageConfig(provider='local',local_root=str(self.root),media_base_url='https://dev.shadify.org')
-        self.assertEqual(settings.playback_url_ttl_seconds,300)
-        with self.assertRaises(ValueError):LocalStorageConfig(provider='local',local_root=str(self.root),media_base_url='https://dev.shadify.org',playback_url_ttl_seconds=301)
+        self.assertEqual(settings.playback_url_ttl_seconds,3600)
+        self.assertEqual(settings.upload_ttl_seconds,300)
+        self.assertEqual(self.storage.upload_ttl,300)
+        with self.assertRaises(ValueError):LocalStorageConfig(provider='local',local_root=str(self.root),media_base_url='https://dev.shadify.org',playback_url_ttl_seconds=3601)
         asset,upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
-        self.storage.base_url='https://dev.shadify.org';self.storage.access_ttl=900
+        self.storage.base_url='https://dev.shadify.org';self.storage.access_ttl=7200
         now=int(time.time())
         with patch('shadify_api.storage_service.time.time',return_value=now):
-            url,expiry=self.storage.issue(asset,'private',admitted_actor('owner-a',issued=now,expires=now+600))
-            self.assertEqual(expiry,now+300)
+            url,expiry=self.storage.issue(asset,'private',admitted_actor('owner-a',issued=now,expires=now+7200))
+            self.assertEqual(expiry,now+3600)
+            _,upload_expiry=self.storage.issue(asset,'put',admitted_actor('owner-a',issued=now,expires=now+7200))
+            self.assertLessEqual(upload_expiry,now+300)
             self.assertEqual(urlsplit(url).hostname,'dev.shadify.org')
             self.assertEqual(urlsplit(url).path,'/media/'+str(asset.id))
             self.assertEqual(self.bytes.get(url).status_code,200)
@@ -117,7 +121,7 @@ class LocalStorageTests(ArtistPostgresCase):
         asset=self.derived();path='/media/v1/tracks/'+str(self.track)+'/access'
         now=int(time.time())
         with patch('shadify_api.storage_service.time.time',return_value=now):first=self.bytes.get(path)
-        self.assertEqual(first.status_code,200);self.assertEqual(int(datetime.fromisoformat(first.json()['expires_at']).timestamp()),now+300)
+        self.assertEqual(first.status_code,200);self.assertEqual(int(datetime.fromisoformat(first.json()['expires_at']).timestamp()),now+3600)
         with patch('shadify_api.storage_service.time.time',return_value=now+1):second=self.bytes.get(path)
         self.assertEqual(second.status_code,200);self.assertNotEqual(first.json()['url'],second.json()['url'])
         self.assertEqual(urlsplit(first.json()['url']).path,urlsplit(second.json()['url']).path)
@@ -485,8 +489,8 @@ class LocalConfigurationTests(unittest.TestCase):
             with patch('shadify_api.storage.R2Storage', side_effect=AssertionError('R2 prohibited')), patch.dict(os.environ, {'STORAGE_PROVIDER':'local'}):
                 storage, config=compose_storage(directory, Mock())
             self.assertEqual(set(storage.adapters), {'local'})
-            self.assertEqual(config.playback_url_ttl_seconds,300)
-            self.assertEqual(storage.access_ttl,300)
+            self.assertEqual(config.playback_url_ttl_seconds,3600)
+            self.assertEqual(storage.access_ttl,3600)
             with patch.dict(os.environ, {'STORAGE_PROVIDER':'r2'}):
                 with self.assertRaises(ValueError): compose_storage(directory, Mock())
 
