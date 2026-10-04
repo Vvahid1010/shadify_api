@@ -771,3 +771,82 @@ operator bootstrap/recovery and coordinated backup/restore. No real authority,
 credential/security setting, allocation, live migration, installation, push or
 build-feed publication was made. Independent Astra review of these exact local
 commits is the next source check, not a claim of deployed operation.
+
+
+### Exact package qualification and coordinated rollback (2026-10-04)
+
+Astra source PASS applies to `524e5803d3b144788d0246d18b004653dfb283b2`, including
+runtime commit0f280a0d. Parent authorized isolated exact-package qualification.
+Archive remains pinned to **524e5803**, even after this documentation follow-up:
+
+- Archive: `.build-tools/app-admin-qualification/shadify-api-app-admin-524e5803.tar.gz`
+- Archive SHA256: `b918e1587d41ab50f3380a41c0bc59e6e1befd6307ad1097e77243725804c559`
+- Manifest SHA256: `6237734fdb274209a5ea4f50f09fa1fbfefbcf751fd1bcba8b074abb81fba980`
+- Receipt: `.build-tools/app-admin-qualification/app-admin-offline-proof.json`
+- Target: **006_app_admin**; 59 manifest files; 29 production wheels.
+
+Extraction/inventory/hash validation passed; every packaged source and SQL file
+matches Git524e5803 byte-for-byte. Fresh Python3.14 virtual environment installed
+all production wheels offline with hash enforcement, then four existing hashed
+test-only wheels. Dependency checks passed before and after test extras. All
+**105 tests passed against the actual extracted packaged runtime**; the import
+origin log identifies package/source, not the working checkout. Tests/tooling
+come from the exact524e5803 Git snapshot; test migration files are copies of the
+verified packaged SQL. Reverification after testing confirms unchanged archive
+and manifest bytes. No publication or installation into an application occurred.
+
+Auth compatibility snapshots exact reviewed
+`2c94e5cac22a3e955f4e3c0119d6e05185cc252a` into the isolated proof directory.
+Its real ProxyService issuer emits identity/session/assurance only, no
+app_authority, with its existing 600-second identity lifetime. OTP, passkey and
+`admin` assurance each admit identity without conferring Shadify admin rights.
+Only explicit synthetic Shadify delegation permits verification; owner transfer
+denies; revocation denies the next verification. Issuer account/session mismatch
+and client authority headers fail/filter as expected; consumer account binding
+and unadmitted requests deny. Three additional checks carry these actual
+Auth-issued headers through the packaged canonical native ON crypto/admission
+and API path. Peers, Redis commands and kernel-return inputs are synthetic;
+no socket listener, real session or remote service was activated.
+
+`compatibility-rollback.log` proves the rollback boundary in a disposable
+PostgreSQL database: historicald6ee352c/schema005 code reads additive schema006,
+but accepts a central admin context without reading the new Shadify primary or
+delegates, and denies an identity-only context even when it is the app primary.
+Current packaged source denies that central-only actor and preserves new primary,
+delegate/audit state. Structural database compatibility is therefore insufficient
+for safe application rollback. No destructive downgrade or migration rewrite was
+added or exercised.
+
+For any later authorized rollback, the owner must select the consumer/schema/
+issuer pair together. Preserve schema006 and its authority/audit history and use
+an explicitly reviewed app-owned-authority-capable consumer; do not select005
+code merely because readiness passes. If no suitable pair exists, use the
+existing lifecycle controls to hold affected admission/writes while choosing one,
+rather than restoring central claims or reviving historical full-admin rows.
+A coordinated backup/restore must cover app content, primary/delegates, audit and
+post-backup writes with the matching consumer; an old backup plus old005 code is
+not an automatic authority-preserving rollback. Exact operational stop/restore
+selection remains owner-controlled and has not been executed.
+
+The bootstrap seam remains internal and unexposed. **operator_reference is audit
+metadata, not authorization proof.** Real protected bootstrap/recovery must verify
+the separately selected operator authority; neither a caller-supplied string nor
+first login selects a real primary. No operational operator/account/credential or
+recovery route was chosen during qualification.
+
+Parent/runtime coordination facts: the package manifest pins006_app_admin, the
+receipt includes the exact per-table privileges exercised by the restricted role,
+historical shadify_admin_grants has no runtime privileges, and both audit tables
+have SELECT/INSERT only. Node Agent owns consumer manifest/per-table access,
+allocation, enrollment and lifecycle; app migration SQL remains owned solely by
+this repository and is shipped in the verified package. Source inventory says
+node B's installed schema11 lacks the Shadify consumer and the newer prior
+consumer pins002: neither is a schema006 deployment selection. No live database,
+role, grant, migration, enrollment, push, deployment or build-feed action occurred.
+
+Smallest remaining operational prerequisites: owner-approved schema006 consumer/
+table grants and independent WSL/node allocations/projections; coordinated exact
+package and 54-endpoint enrollment; explicit operator/primary/bootstrap/recovery
+selection and backup/restore. Deploy the compatible consumer before the
+identity-only issuer transition. This qualification establishes local package
+behavior only; the artifact/receipt can now receive independent Astra review.
