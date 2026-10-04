@@ -1179,3 +1179,112 @@ AND/same-account/scope/verified proof, renewal/replacement/revocation/expiry,
 inactive-primary recovery policies, stable ID, audit/expiry rollback and ordinary
 API/canonical catalog invariance. Exact Auth adapter and final combined package
 qualification remain pending owner coordination. No standalone CLI workflow.
+
+
+## Finalized nomination v1 source integration (2026-10-04)
+
+This section supersedes the unwired007 checkpoint's provisional lifecycle and
+wire details. The normal forward merge f2e5f810da5bde0a50328bcf14afa0c7570cfa1f
+preserves both nomination preparation and the reviewed media63 history.007 and
+nomination.py stay inert, with no imports into the new controller and no automatic
+historical nomination/grant migration. Additive008_nomination_control.sql uses
+separate tables. No previously applied migration is rewritten.
+
+Authentication-admitted POST /api/admin/nominations is the only mutation route,
+with an empty query, exact original UTF8 body SHA256 and strict extra-forbidden
+JSON. Common fields are operation,operation_id,nomination_id,scope and
+expected_nomination_revision. UUIDs must be canonical lowercase36; Auth account
+and session IDs remain unchanged ASCII1..36. Revisions are strict JSON integers
+0..2147483647. Operation and intent are separate:
+
+* register: fresh ID/revision0, intent initialize|recover, expected_admin_revision,
+  expected_primary_account_id, explicit delegate_policy, expires_at and selector.
+  initialize requires revision0/null primary/null policy; recover requires exact
+  current primary/revision and retain|revoke. Register after claimed/revoked history
+  creates a fresh record; outstanding pending/expired/blocked history uses replace.
+* renew: only common fields plus expires_at; exact current positive revision,
+  pending and unexpired only, strictly extends within24hours of now. Tags, pin,
+  intent and admin prestate remain immutable. Expired history never becomes pending.
+* revoke: common fields only; exact current ID/revision, without contacts or admin
+  prestate lookup. It can terminate pending/effectively expired history even after
+  a primary change. Claimed/revoked records cannot be revived.
+* replace: common fields plus a distinct fresh replacement_nomination_id and all
+  registration fields. Pending/expired/blocked predecessor only. Pending is
+  terminalized atomically; expired/blocked predecessor bytes are unchanged. New
+  record links predecessor. The newly reviewed admin prestate must still match
+  at execution/claim; replacement does not waive concurrent primary/grant drift.
+
+Scope is exactly app_id=shadify_api, installed app_instance_id, domain_app=shadify
+and protected deployment_id. RuntimeConfig.nomination_scope is optional protected
+configuration, compared to the actual current canonical receiver instance; body
+scope cannot select it. No deployment/operator/account is selected in source.
+GET /api/admin/nominations/context returns only account_id,session_id,scope under
+the same admitted identity boundary and no-store; it never claims or lists grants.
+
+The signed outer assertion's admin_nomination_v1 contains scope,operation,
+operation_id,nomination_id,body_sha256. Only register/replace add selector_tags and
+existing_account_id. Selector email and/or phone presence must match tag arrays;
+Auth resolves verified same-account ownership or conflict. Arrays contain unique
+sorted versions, at most64, each version:[64 lowercase hex]. API neither normalizes
+contacts nor creates HMAC tags. Both selected kinds intersect independently on
+one current account; nonnull existing_account_id pins the stable Auth account.
+GET /api/me verified_contacts_v1 contains exact scope,account_id and email/phone
+tag arrays. Malformed/missing/optional scope failure skips the claim hook without
+blocking ordinary identity/profile flow; broken base identity still denies.
+
+Nomination assertions are bounded to60seconds, within session/approval expiry.
+The existing8192ASCII assertion and16384 aggregate-header bounds remain; no
+truncation. Exact approval token SHA256 is carried in the admitted outer assertion;
+x-proxy-approval is declared in the catalog. The approval claims bind execute,
+admin_nomination/v1, account/session, POST, /admin/nominations, empty query, original
+body digest and single-use jti. Native whole-request admission remains authoritative;
+this does not add another cryptographic implementation.
+
+Node supplies owner-only nonsymlink admin-nomination-witness.json in the selected
+credentials directory. Exact fields: schema_version=1,scope,operation,operation_id,
+nomination_id,actor_account_id,actor_session_id,body_sha256,expires_at. It contains
+no contact text, tags or approval tokens. Witness and signed Auth proof must agree
+on the same account/session, scope, operation, IDs and original body; neither alone
+authorizes. The controller rereads the witness and installed binding after waiting
+and after audit before commit. Node owns popup login/factors, exact origin/window/
+random-state checks and protected witness custody; these are not API/UI changes.
+
+App-state exclusive locking serializes operation/claim/revoke with primary/grant
+changes. Approval fingerprint consumption, unique operation result, nomination
+change and metadata-only audit commit together. Claim uses fresh matching contacts
+and canonical active local identity; pending itself grants nothing. Recovery keeps
+the previous primary until valid claim and explicitly retains/revokes delegates.
+Artist ownership/membership/content audit remain independent. Primary drift blocks
+a pending claim; a fresh reviewed replacement can name current recovery prestate.
+
+Node's protected status integration can use NominationControl.operation_result(UUID)
+or SELECT the exact UUID and installed scope from shadify_nomination_operation_status.
+It returns operation_id,operation,nomination_id,intent plus live revision,state,
+expires_at; unknown operation returns no result. The view also has historical
+result,actor_account_id,body_sha256 and scope for protected pairing. It is not a
+browser HTTP status route or automatic execute retry. Node must independently read
+this protected result after a popup check-trigger; postMessage content is untrusted.
+
+For optional schema008 the API additionally needs SELECT/INSERT/UPDATE on
+shadify_admin_nomination_v1, SELECT/UPDATE on shadify_nomination_control,
+SELECT/INSERT only on shadify_nomination_operations and SELECT on its status view.
+No DELETE, TRUNCATE, DDL or historical007/grant access is required. A Node status
+consumer needs only scoped SELECT on the metadata view; role allocation/grants
+remain a deployment-owner decision, with no live grant issued here.
+
+Source proof includes16 finalized SQL tests and one real native ON→runtime→disposable
+PostgreSQL round trip. It covers pending/claim, each-kind intersection/version
+rotation/pin, strict shapes, expiry-only renewal/no expired revival, fresh replacement
+and recovery, delegate policy, audit/single-use rollback, claim/revoke race and real
+lock-wait expiry. Native proof tests context metadata, witness/session/body/token/
+scope/lifetime binding,8192 assertion and16384 aggregate-header denial, replay and
+malformed optional GET preservation. Auth issuer, Redis, kernel peer UID and Node
+witness are synthetic. This is not actual Auth producer/popup custody evidence.
+
+Combined Auth final-contract source pairing, Node popup/status bridge, independent
+Astra PASS and any newly pinned combined native artifact remain pending. Runtime
+configuration/schema application/operator nomination are live deployment decisions;
+none are authorized here. Frozen media63/7a625c11/9a76 packages remain unchanged.
+R2 implementation/qualification is suspended by the latest operator direction;
+the completed adapter remains dormant. Further local-media deltas await Astra's
+narrow plan; no link TTL or live storage setting is changed by this nomination work.

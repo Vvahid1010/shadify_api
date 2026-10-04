@@ -258,6 +258,6 @@ class NominationTests(ArtistPostgresCase):
         before=client.get('/api/me').json()
         command=self.command();self.nom.change_nomination(self.operator,command)
         self.assertEqual(before,client.get('/api/me').json())
-        self.assertEqual(len(receiver_catalog()),56)
-        self.assertFalse(any('nomination' in endpoint['path'] for endpoint in receiver_catalog()))
+        self.assertEqual(len(receiver_catalog()),58)
+        self.assertEqual(client.post('/api/admin/nominations',json={}).status_code,422)
         self.assertTrue(repo.ready())  # current006 readiness is intentionally unaffected

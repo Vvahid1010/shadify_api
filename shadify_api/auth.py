@@ -23,6 +23,12 @@ class Identity:
     proxy_app: str
 
 
+@dataclass(frozen=True)
+class AdmittedIdentity:
+    identity: Identity
+    payload: bytes
+
+
 def require_fresh_actor(actor: Identity) -> Identity:
     """Trusted internal context only; never reconstruct authority from an account ID.
 
@@ -101,8 +107,10 @@ def identity_from_admitted_authentication(request: Request) -> Identity:
         if (type(issued) is not int or type(expires) is not int or expires <= issued
                 or issued > now + 60 or expires <= now):
             raise ValueError()
-        return Identity(claims["account_id"], claims["session_id"], claims["auth_level"], expires,
-                        issued, claims["domain_app"], claims["proxy_app"])
+        actor = Identity(claims["account_id"], claims["session_id"], claims["auth_level"], expires,
+                         issued, claims["domain_app"], claims["proxy_app"])
+        request.state.admitted_identity = AdmittedIdentity(actor, payload_bytes)
+        return actor
     except Exception:
         raise HTTPException(401, "Invalid Authentication identity") from None
 

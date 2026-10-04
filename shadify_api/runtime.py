@@ -15,6 +15,9 @@ from .media import MediaService
 from .repository import PostgresMediaRepository
 from .security import create_binding, ManagedReceiver
 from .storage import R2Storage
+from .nomination_contract import Scope
+from .nomination_control import NominationControl, WitnessReader
+from .media import MediaError
 
 
 class RuntimeConfig(BaseModel):
@@ -25,6 +28,7 @@ class RuntimeConfig(BaseModel):
     app_security: dict
     app_security_binding: dict
     app_security_transport: dict | None = None
+    nomination_scope: Scope | None = None
 
 
 def replay_address(directory):
@@ -95,6 +99,18 @@ def create_runtime_app(directory: Path, *, binding=None):
                 receiver.close()
             raise RuntimeError("Shadify storage configuration invalid; values redacted") from None
 
+    nomination = None
+    if config.nomination_scope is not None and repository is not None:
+        selected_scope = config.nomination_scope
+        def scope_provider():
+            if receiver is None or not receiver.current():
+                raise MediaError(503,'Installed nomination binding unavailable')
+            native = binding.acquire()
+            if native.status()[:2] != ('shadify_api',selected_scope.app_instance_id):
+                raise MediaError(503,'Installed nomination instance mismatch')
+            return selected_scope
+        nomination = NominationControl(database.connect,scope_provider,WitnessReader(directory))
+
     async def readiness():
         checks = {"scope": "profile_database", "authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
@@ -121,6 +137,14 @@ def create_runtime_app(directory: Path, *, binding=None):
                  and checks["managed_ingress"] == "installed"
                  and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
                  and checks["replay_admission"] == "ready")
+        if nomination is not None:
+            try:
+                nomination.scope()
+                await asyncio.to_thread(nomination.ready)
+                checks['nomination']='schema_ready'
+            except Exception:
+                checks['nomination']='unavailable'
+                ready=False
         # Initial profile/database readiness is independent of optional media.
         # Missing storage keeps media operations closed; configured storage is
         # explicitly unverified cloud access, never a real R2 readiness claim.
@@ -128,7 +152,7 @@ def create_runtime_app(directory: Path, *, binding=None):
 
     from .main import create_app
     return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
-                      repository=repository, binding=binding, readiness=readiness, receiver=receiver)
+                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination)
 
 
 def app_factory():

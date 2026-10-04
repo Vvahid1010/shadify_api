@@ -2,7 +2,7 @@
 HEADERS = ["accept", "content-type", "cache-control", "x-auth-assertion",
            "x-authenticated-account-id", "x-authenticated-session-id",
            "x-authenticated-auth-level", "x-authenticated-domain-app", "x-authenticated-proxy-app",
-           "x-request-id", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto"]
+           "x-proxy-approval", "x-request-id", "x-forwarded-for", "x-forwarded-host", "x-forwarded-proto"]
 
 
 def receiver_catalog():
@@ -15,6 +15,8 @@ def receiver_catalog():
               ("media.access", "POST", "/api/media/{asset_id}/access"),
               ("media.playback", "POST", "/api/tracks/{track_id}/playback")]
     routes += [
+        ("admin.nomination", "POST", "/api/admin/nominations"),
+        ("admin.nomination.context", "GET", "/api/admin/nominations/context"),
         ("admin.authority", "GET", "/api/admin/authority"),
         ("admin.audit", "GET", "/api/admin/authority/audit"),
         ("admin.delegate", "PUT", "/api/admin/delegates/{account_id}"),

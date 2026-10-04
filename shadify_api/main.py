@@ -17,7 +17,7 @@ def require_identity():
 
 
 def create_app(service: MediaService | None = None, identity: Callable = require_identity,
-               *, domain=None, repository=None, binding=None, readiness=None, receiver=None):
+               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -87,7 +87,9 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return domain
 
     @app.get("/api/me")
-    def me(owner: Identity = Depends(identity), data=Depends(domain_service)):
+    def me(request:Request,owner: Identity = Depends(identity), data=Depends(domain_service)):
+        from .nomination_routes import finalize_me
+        finalize_me(nomination,request,owner)
         return data.me(owner)
 
     @app.post("/api/artists/{artist_id}/tracks", status_code=201)
@@ -143,6 +145,9 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         # ingress remains Node/Auth-owned; this route does not bypass admission.
         access = common_storage().playback_access(track_id, preview=preview)
         return {'url': access.url, 'expires_at': access.expires_at}
+
+    from .nomination_routes import install_nomination_routes
+    install_nomination_routes(app,identity,nomination)
 
     from .artist_routes import install_artist_routes
     install_artist_routes(app, identity, repository)
