@@ -1,0 +1,184 @@
+{
+  "auth_source_commit": "92a4e07b681aaf9964084ebf0741331acf3cfcab",
+  "owner_vectors_sha256": "d3f06203145402c178969dd03a346aeaab760efb8d450cbea0c6a6d3983a8b6c",
+  "synthetic_only": true,
+  "lifecycle_vectors": [
+    {
+      "operation": "register",
+      "nomination_request": {
+        "operation_id": "77777777-7777-4777-8777-000000000001",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "expected_nomination_revision": 0,
+        "intent": "initialize",
+        "expected_admin_revision": 0,
+        "expected_primary_account_id": null,
+        "delegate_policy": null,
+        "expires_at": 1791115200,
+        "selector": {
+          "email": " Synthetic.Admin@Example.Invalid ",
+          "phone": "0012025550101"
+        },
+        "operation": "register"
+      },
+      "exact_utf8_body": "{\"delegate_policy\":null,\"expected_admin_revision\":0,\"expected_nomination_revision\":0,\"expected_primary_account_id\":null,\"expires_at\":1791115200,\"intent\":\"initialize\",\"nomination_id\":\"66666666-6666-4666-8666-666666666666\",\"operation\":\"register\",\"operation_id\":\"77777777-7777-4777-8777-000000000001\",\"scope\":{\"app_id\":\"shadify_api\",\"app_instance_id\":\"22222222-2222-4222-8222-222222222222\",\"deployment_id\":\"33333333-3333-4333-8333-333333333333\",\"domain_app\":\"shadify\"},\"selector\":{\"email\":\" Synthetic.Admin@Example.Invalid \",\"phone\":\"0012025550101\"}}",
+      "body_sha256": "a4c10193e53d5ac23ad46aec1c5db5b801851aebd7e2f64d19bfdc79597993fb",
+      "admin_nomination_v1": {
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "operation_id": "77777777-7777-4777-8777-000000000001",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "body_sha256": "a4c10193e53d5ac23ad46aec1c5db5b801851aebd7e2f64d19bfdc79597993fb",
+        "operation": "register",
+        "selector_tags": {
+          "email": [
+            "v1:ac3f63563af2675bb80703c01252d2fea1279eec46bee2010fa2a4c3589c5c31",
+            "v2:b46c5d30db1ac83ed7b3f99ae187f55f0753521f332dbae572d7f7cd4cc3489c"
+          ],
+          "phone": [
+            "v1:3b1b39096ecd3ce2ea7a0a92c07afedb80e7c14585750f2fb9f673dc5867673e",
+            "v2:c3d433d0c0fab5d496b1ea2545cec4c84dc5c4dca0d15be3b856d1f23c86edca"
+          ]
+        },
+        "existing_account_id": "44444444-4444-4444-8444-444444444444"
+      }
+    },
+    {
+      "operation": "renew",
+      "nomination_request": {
+        "operation_id": "77777777-7777-4777-8777-000000000002",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "expected_nomination_revision": 2,
+        "operation": "renew",
+        "expires_at": 1791118800
+      },
+      "exact_utf8_body": "{\"expected_nomination_revision\":2,\"expires_at\":1791118800,\"nomination_id\":\"66666666-6666-4666-8666-666666666666\",\"operation\":\"renew\",\"operation_id\":\"77777777-7777-4777-8777-000000000002\",\"scope\":{\"app_id\":\"shadify_api\",\"app_instance_id\":\"22222222-2222-4222-8222-222222222222\",\"deployment_id\":\"33333333-3333-4333-8333-333333333333\",\"domain_app\":\"shadify\"}}",
+      "body_sha256": "3e5d1eaddf8ec602b0d33bc3401caa4915944bdbaef27d250ec2bd511b5bb858",
+      "admin_nomination_v1": {
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "operation_id": "77777777-7777-4777-8777-000000000002",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "body_sha256": "3e5d1eaddf8ec602b0d33bc3401caa4915944bdbaef27d250ec2bd511b5bb858",
+        "operation": "renew"
+      }
+    },
+    {
+      "operation": "revoke",
+      "nomination_request": {
+        "operation_id": "77777777-7777-4777-8777-000000000003",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "expected_nomination_revision": 2,
+        "operation": "revoke"
+      },
+      "exact_utf8_body": "{\"expected_nomination_revision\":2,\"nomination_id\":\"66666666-6666-4666-8666-666666666666\",\"operation\":\"revoke\",\"operation_id\":\"77777777-7777-4777-8777-000000000003\",\"scope\":{\"app_id\":\"shadify_api\",\"app_instance_id\":\"22222222-2222-4222-8222-222222222222\",\"deployment_id\":\"33333333-3333-4333-8333-333333333333\",\"domain_app\":\"shadify\"}}",
+      "body_sha256": "f26c33a3c7cecbbd31824a44657c049e9a514acfe408adbc6c58ef30dcf9e057",
+      "admin_nomination_v1": {
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "operation_id": "77777777-7777-4777-8777-000000000003",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "body_sha256": "f26c33a3c7cecbbd31824a44657c049e9a514acfe408adbc6c58ef30dcf9e057",
+        "operation": "revoke"
+      }
+    },
+    {
+      "operation": "replace",
+      "nomination_request": {
+        "operation_id": "77777777-7777-4777-8777-000000000004",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "expected_nomination_revision": 2,
+        "intent": "initialize",
+        "expected_admin_revision": 0,
+        "expected_primary_account_id": null,
+        "delegate_policy": null,
+        "expires_at": 1791115200,
+        "selector": {
+          "email": " Synthetic.Admin@Example.Invalid ",
+          "phone": "0012025550101"
+        },
+        "operation": "replace",
+        "replacement_nomination_id": "88888888-8888-4888-8888-888888888888"
+      },
+      "exact_utf8_body": "{\"delegate_policy\":null,\"expected_admin_revision\":0,\"expected_nomination_revision\":2,\"expected_primary_account_id\":null,\"expires_at\":1791115200,\"intent\":\"initialize\",\"nomination_id\":\"66666666-6666-4666-8666-666666666666\",\"operation\":\"replace\",\"operation_id\":\"77777777-7777-4777-8777-000000000004\",\"replacement_nomination_id\":\"88888888-8888-4888-8888-888888888888\",\"scope\":{\"app_id\":\"shadify_api\",\"app_instance_id\":\"22222222-2222-4222-8222-222222222222\",\"deployment_id\":\"33333333-3333-4333-8333-333333333333\",\"domain_app\":\"shadify\"},\"selector\":{\"email\":\" Synthetic.Admin@Example.Invalid \",\"phone\":\"0012025550101\"}}",
+      "body_sha256": "fee8cc0e9feca05801b9049cb5d76990089516f885afa2cb0d537daa9004a47d",
+      "admin_nomination_v1": {
+        "scope": {
+          "app_id": "shadify_api",
+          "app_instance_id": "22222222-2222-4222-8222-222222222222",
+          "domain_app": "shadify",
+          "deployment_id": "33333333-3333-4333-8333-333333333333"
+        },
+        "operation_id": "77777777-7777-4777-8777-000000000004",
+        "nomination_id": "66666666-6666-4666-8666-666666666666",
+        "body_sha256": "fee8cc0e9feca05801b9049cb5d76990089516f885afa2cb0d537daa9004a47d",
+        "operation": "replace",
+        "selector_tags": {
+          "email": [
+            "v1:ac3f63563af2675bb80703c01252d2fea1279eec46bee2010fa2a4c3589c5c31",
+            "v2:b46c5d30db1ac83ed7b3f99ae187f55f0753521f332dbae572d7f7cd4cc3489c"
+          ],
+          "phone": [
+            "v1:3b1b39096ecd3ce2ea7a0a92c07afedb80e7c14585750f2fb9f673dc5867673e",
+            "v2:c3d433d0c0fab5d496b1ea2545cec4c84dc5c4dca0d15be3b856d1f23c86edca"
+          ]
+        },
+        "existing_account_id": "44444444-4444-4444-8444-444444444444"
+      }
+    }
+  ],
+  "verified_contacts_v1": {
+    "scope": {
+      "app_id": "shadify_api",
+      "app_instance_id": "22222222-2222-4222-8222-222222222222",
+      "domain_app": "shadify",
+      "deployment_id": "33333333-3333-4333-8333-333333333333"
+    },
+    "account_id": "44444444-4444-4444-8444-444444444444",
+    "tags": {
+      "email": [
+        "v1:ac3f63563af2675bb80703c01252d2fea1279eec46bee2010fa2a4c3589c5c31",
+        "v2:b46c5d30db1ac83ed7b3f99ae187f55f0753521f332dbae572d7f7cd4cc3489c"
+      ],
+      "phone": [
+        "v1:3b1b39096ecd3ce2ea7a0a92c07afedb80e7c14585750f2fb9f673dc5867673e",
+        "v2:c3d433d0c0fab5d496b1ea2545cec4c84dc5c4dca0d15be3b856d1f23c86edca"
+      ]
+    }
+  }
+}

@@ -10,7 +10,7 @@ from .auth import Identity, require_fresh_actor, unique_pairs
 from .media import MediaError
 
 Revision=Annotated[int,Field(strict=True,ge=0,le=2147483647)]
-Epoch=Annotated[int,Field(strict=True,ge=0)]
+Epoch=Annotated[int,Field(strict=True,gt=0,le=9223372036854775807)]
 TokenId=Annotated[str,Field(min_length=1,max_length=128,pattern=r'^[A-Za-z0-9][A-Za-z0-9_.:-]*$')]
 MAX_LEASE=86400
 

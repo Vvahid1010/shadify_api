@@ -1288,3 +1288,14 @@ none are authorized here. Frozen media63/7a625c11/9a76 packages remain unchanged
 R2 implementation/qualification is suspended by the latest operator direction;
 the completed adapter remains dormant. Further local-media deltas await Astra's
 narrow plan; no link TTL or live storage setting is changed by this nomination work.
+
+
+Finalized Auth source92a4e07b681aaf9964084ebf0741331acf3cfcab and its actual
+contact_contracts/service approval fields were compared read-only. A pinned
+synthetic fixture preserves all four original UTF8 lifecycle vectors and their
+SHA256s; test_nomination_vectors parses each strict API variant/projection and
+current contact facts. Epoch bounds match the existing positive BigInteger.
+Native admission8192/16384 denial and API SQL races are covered locally as above.
+Actual Auth producer→this API candidate, Node popup/witness/status custody and
+independent combined review remain pending; vector/source matching is not that
+full owner integration. No Auth source or its frozen maintenance artifact changed.
