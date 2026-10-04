@@ -380,3 +380,18 @@ work does not claim B installation or acceptance. Hyper-V inventory access is
 denied; required persistent credential/access decisions remain specific owner
 blockers. No tunnel/network/security change, real grant, live root or credential
 is created here. Old frozen63/7a/9a artifacts remain unchanged.
+
+
+Exact media-only source 94143222de5c249a63e62588ff6b6d124e5d8acd was frozen at
+.build-tools/local-300-qualification/shadify-api-local-300-94143222.tar.gz.
+Archive SHA256 76fe071a75a22c417ed43ae897ffc4173e3fb53e13315c5773426b176b8c2615;
+manifest SHA256 0f72daf2e966c98dc4eeca59817548d56d60882d7ec8c55fc6e5db503811a3ae.
+Fresh offline hash-pinned production/test installs and both pip checks passed.
+All53 packaged targeted tests passed without skips:21 Local/config cases,
+one actual nginx/Unix factory test,7 artifact verification,7 identity and17
+ordinary artist/API cases. Packaged source/SQL bytes match the exact commit;
+only config.py,main.py,media_routes.py,storage_service.py differ from media63.
+Schema006,catalog56,wheels/dependencies/signing format/logical paths remain
+unchanged. R2-specific qualification was deliberately excluded. Receipt/logs
+are in the owning qualification directory. Actual Node-generated dev routing,
+decodable browser renewal and B installed/runtime proof are not asserted.
