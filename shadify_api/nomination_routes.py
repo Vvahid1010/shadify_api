@@ -32,8 +32,15 @@ def install_nomination_routes(app,identity,control):
 
 
 def finalize_me(control,request,actor):
+    require_fresh_actor(actor)
     if control is None:return
-    try:scope=control.scope()
-    except MediaError:return  # Optional projection cannot gate ordinary identity use.
-    contacts=optional_contacts(request,actor,scope)
-    if contacts is not None:control.finalize(actor,contacts)
+    try:
+        scope=control.scope()
+        contacts=optional_contacts(request,actor,scope)
+        if contacts is not None:control.finalize(actor,contacts)
+    except Exception:
+        # finalize owns its transaction: it has rolled back before returning
+        # an error here. Optional nomination work cannot gate ordinary /me.
+        require_fresh_actor(actor)
+        return
+    require_fresh_actor(actor)

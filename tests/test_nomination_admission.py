@@ -100,6 +100,12 @@ class NominationAdmissionTests(fixture.NominationControlCase):
                     malformed=await call(http,'/api/me',account='owner-a',extra={'verified_contacts_v1':{'bad':'projection'}})
                     self.assertEqual(malformed[0],200,malformed);self.assertIsNone(self.primary())
                     contact=dict(scope=self.scope.model_dump(),account_id='owner-a',tags={'email':[TAG],'phone':[]})
+                    before=self.row(cmd.nomination_id)
+                    with patch('shadify_api.nomination_control.NominationControl._admin_audit',side_effect=RuntimeError('synthetic nomination audit failure')):
+                        failed_claim=await call(http,'/api/me',account='owner-a',extra={'verified_contacts_v1':contact})
+                    self.assertEqual(failed_claim[0],200,failed_claim)
+                    self.assertFalse(failed_claim[1]['app_admin']['is_primary'])
+                    self.assertIsNone(self.primary());self.assertEqual(self.row(cmd.nomination_id),before)
                     result=await call(http,'/api/me',account='owner-a',extra={'verified_contacts_v1':contact})
                     self.assertEqual(result[0],200,result);self.assertTrue(result[1]['app_admin']['is_primary']);self.assertEqual(self.primary(),'owner-a')
             finally:

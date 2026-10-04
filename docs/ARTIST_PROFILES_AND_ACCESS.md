@@ -1299,3 +1299,18 @@ Native admission8192/16384 denial and API SQL races are covered locally as above
 Actual Auth producer→this API candidate, Node popup/witness/status custody and
 independent combined review remain pending; vector/source matching is not that
 full owner integration. No Auth source or its frozen maintenance artifact changed.
+
+
+### Optional nomination claim failure and ordinary profile access
+
+The /api/me hook catches nomination-only connection, lock, scope and audit
+failures outside NominationControl.finalize's transaction, after rollback.
+It revalidates normal identity freshness before continuing the existing profile
+read; invalid/expired identity remains an error. The response reads actual
+committed app authority, never an inferred claim-success flag. A failed claim
+cannot leave primary, nomination revision, operation history or audit changes.
+Five handler/disposable-SQL regressions cover absent projection, connection
+failure, failure after claim/audit writes, real nomination-row lock timeout and
+identity expiry during failure. The existing real native ON round trip also
+injects claim audit failure: ordinary profile succeeds without grant, followed
+by a separately valid successful claim. Qualified Local94143222 stays unchanged.
