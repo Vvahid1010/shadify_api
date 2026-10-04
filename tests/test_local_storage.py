@@ -96,6 +96,67 @@ class LocalStorageTests(ArtistPostgresCase):
         self.assertEqual(self.repo.get(asset.id).publish_state, 'draft')
         self.assertEqual(self.api.post('/api/tracks/' + str(self.track) + '/playback').status_code, 404)
 
+    def test_local_link_cap_dev_origin_and_shorter_actor_expiry(self):
+        from shadify_api.config import LocalStorageConfig
+        settings=LocalStorageConfig(provider='local',local_root=str(self.root),media_base_url='https://dev.shadify.org')
+        self.assertEqual(settings.playback_url_ttl_seconds,300)
+        with self.assertRaises(ValueError):LocalStorageConfig(provider='local',local_root=str(self.root),media_base_url='https://dev.shadify.org',playback_url_ttl_seconds=301)
+        asset,upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        self.storage.base_url='https://dev.shadify.org';self.storage.access_ttl=900
+        now=int(time.time())
+        with patch('shadify_api.storage_service.time.time',return_value=now):
+            url,expiry=self.storage.issue(asset,'private',admitted_actor('owner-a',issued=now,expires=now+600))
+            self.assertEqual(expiry,now+300)
+            self.assertEqual(urlsplit(url).hostname,'dev.shadify.org')
+            self.assertEqual(urlsplit(url).path,'/media/'+str(asset.id))
+            self.assertEqual(self.bytes.get(url).status_code,200)
+            _,expiry=self.storage.issue(asset,'private',admitted_actor('owner-a',issued=now,expires=now+45))
+            self.assertEqual(expiry,now+45)
+
+    def test_renewal_reevaluates_public_and_private_authority(self):
+        asset=self.derived();path='/media/v1/tracks/'+str(self.track)+'/access'
+        now=int(time.time())
+        with patch('shadify_api.storage_service.time.time',return_value=now):first=self.bytes.get(path)
+        self.assertEqual(first.status_code,200);self.assertEqual(int(datetime.fromisoformat(first.json()['expires_at']).timestamp()),now+300)
+        with patch('shadify_api.storage_service.time.time',return_value=now+1):second=self.bytes.get(path)
+        self.assertEqual(second.status_code,200);self.assertNotEqual(first.json()['url'],second.json()['url'])
+        self.assertEqual(urlsplit(first.json()['url']).path,urlsplit(second.json()['url']).path)
+        with self.connect() as c:c.execute("UPDATE shadify_tracks SET access_class='paid' WHERE id=%s",(self.track,))
+        denied=self.bytes.get(path);self.assertEqual(denied.status_code,403);self.assertEqual(denied.headers['cache-control'],'private, no-store')
+        with self.connect() as c:c.execute("UPDATE shadify_artists SET publish_state='suspended' WHERE id=%s",(self.artist,))
+        self.assertEqual(self.bytes.get(path).status_code,404)
+        original,upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(original).status_code,200)
+        access=self.api.post('/api/media/'+str(original.id)+'/access')
+        self.assertEqual(access.status_code,200);self.assertEqual(access.headers['cache-control'],'private, no-store')
+        self.repo.change_owner(admitted_actor('admin'),self.artist,action='transfer',target='owner-b',expected='owner-a')
+        denied=self.api.post('/api/media/'+str(original.id)+'/access')
+        self.assertEqual(denied.status_code,404);self.assertEqual(denied.headers['cache-control'],'private, no-store')
+
+    def test_expiry_after_blocked_read_drops_block_before_yield(self):
+        asset,upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        self.storage.access_ttl=2;now=int(time.time());clock=[now]
+        with patch('shadify_api.storage_service.time.time',side_effect=lambda:clock[0]):url=self.access(asset)
+        read=os.read
+        def delayed(fd,size):
+            block=read(fd,size);clock[0]=now+2;return block
+        with patch('shadify_api.media_routes.time.time',side_effect=lambda:clock[0]),patch('shadify_api.media_routes.os.read',side_effect=delayed):response=self.bytes.get(url)
+        self.assertEqual(response.content,b'');self.assertEqual(response.headers['content-length'],str(len(self.body)))
+        self.assertEqual(response.headers['cache-control'],'private, no-store')
+
+    def test_expiry_after_awaited_authority_check_prevents_next_read(self):
+        self.body=b'fLaC'+b'x'*(65536*2-4)
+        asset,upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
+        self.storage.access_ttl=2;now=int(time.time());clock=[now];ticks=[0.0];reads=[0];checks=[0]
+        with patch('shadify_api.storage_service.time.time',side_effect=lambda:clock[0]):url=self.access(asset)
+        read=os.read;authorize=self.storage.authorize_read
+        def advancing_read(fd,size):
+            block=read(fd,size);reads[0]+=1;ticks[0]+=2.;return block
+        def delaying_authority(*args):
+            authorize(*args);checks[0]+=1
+            if checks[0]==2:clock[0]=now+2
+        with patch('shadify_api.media_routes.time.time',side_effect=lambda:clock[0]),patch('shadify_api.media_routes.time.monotonic',side_effect=lambda:ticks[0]),patch('shadify_api.media_routes.os.read',side_effect=advancing_read),patch.object(self.storage,'authorize_read',side_effect=delaying_authority):response=self.bytes.get(url)
+        self.assertEqual(len(response.content),65536);self.assertEqual(reads[0],1);self.assertEqual(checks[0],2)
+
     def test_overwrite_race_exclusive_and_no_temporary_leak(self):
         asset, upload = self.upload()
         with ThreadPoolExecutor(2) as pool: results = list(pool.map(lambda _: self.put(upload).status_code, range(2)))
@@ -424,6 +485,8 @@ class LocalConfigurationTests(unittest.TestCase):
             with patch('shadify_api.storage.R2Storage', side_effect=AssertionError('R2 prohibited')), patch.dict(os.environ, {'STORAGE_PROVIDER':'local'}):
                 storage, config=compose_storage(directory, Mock())
             self.assertEqual(set(storage.adapters), {'local'})
+            self.assertEqual(config.playback_url_ttl_seconds,300)
+            self.assertEqual(storage.access_ttl,300)
             with patch.dict(os.environ, {'STORAGE_PROVIDER':'r2'}):
                 with self.assertRaises(ValueError): compose_storage(directory, Mock())
 

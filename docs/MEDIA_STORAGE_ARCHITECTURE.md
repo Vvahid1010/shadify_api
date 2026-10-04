@@ -336,3 +336,47 @@ The future cached delivery direction is a capability-validating Worker Free on
 media.shadify.org with private R2, not native S3 presigned URLs on a custom domain.
 See MEDIA_DELIVERY_CACHE_SECURITY.md for checked limits, link/cache TTL separation
 and validation-before-cache invariants. No Worker or cloud activation is included.
+
+
+## Approved Local signed-link delta (2026-10-04)
+
+LocalStorageConfig defaults playback/private-access grants to300seconds and
+rejects configured values above300. StorageService additionally caps issuance by
+the recorded object's local provider, even if the default provider changes or a
+caller supplies an older900-second setting. A shorter admitted actor/session
+expiry still wins. Upload lifetime retains its existing300-second default.
+R2 implementation/qualification is suspended; its completed dormant source and
+storage abstraction stay intact, with no cloud credential or activation.
+
+Public guest issuance reuses GET /media/v1/tracks/{track UUID}/access with optional
+preview=true|false. Private issuance and upload/completion remain Auth-admitted.
+Every new issuance/renewal rechecks current policy; there is no refresh token or
+cached grant. Stable /media/{asset UUID}, logical keys and per-object provider are
+preserved; only the transient signed query and expires_at change. Development
+origin is https://dev.shadify.org, selected by protected Node settings. Node must
+pair issuer origin with the exact selected website/nginx Host; the private byte
+factory itself does not add a competing Host-policy implementation.
+
+Streaming checks expiry after an awaited authority recheck and again after the
+awaited filesystem read immediately before yielding. A queued read cannot extend
+the grant. Authority checks retain the existing two-second per-response interval.
+Expiry/revocation ends a response with its declared Content-Length incomplete;
+previously delivered/browser-buffered bytes cannot be recalled. Private/public
+issuance, successful bytes, Range and errors use private,no-store. No capability
+URL belongs in catalog rows, SSR output, logs or durable browser storage.
+
+The delta is isolated from nomination source in
+/tmp/shadify-local-media-300-20261004, derived from media-only473ff8f718b4cad5e9a86e3a13bdab8879de125b
+with exact qualified runtime63e19536. Nomination008/catalog58 are absent. Focused
+tests cover Local300 default/upper bound, dev URL/path, shorter actor expiry,
+renewal paid/suspension/owner-transfer denial and expiry after a delayed read.
+Existing upload/Range/Unix evidence is reused where unchanged. Synthetic derived
+fixtures are explicitly seeded, not a processing/publishing feature.
+
+Actual Node-generated dev Host pairing, decodable browser playback/renewal and
+the selected qualified Node/API/Web tuple remain coordination gates. Node B
+installation was explicitly authorized by the operator, but this API source/test
+work does not claim B installation or acceptance. Hyper-V inventory access is
+denied; required persistent credential/access decisions remain specific owner
+blockers. No tunnel/network/security change, real grant, live root or credential
+is created here. Old frozen63/7a/9a artifacts remain unchanged.
