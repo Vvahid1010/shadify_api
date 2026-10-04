@@ -125,6 +125,25 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "access_class": asset.access_class, "publish_state": asset.publish_state}
 
+    def common_storage():
+        from .storage_service import StorageService
+        media = media_service()
+        if not isinstance(media.storage, StorageService):
+            raise HTTPException(503, 'Media delivery integration pending')
+        return media.storage
+
+    @app.post('/api/media/{asset_id}/access')
+    def private_media_access(asset_id: UUID, owner: Identity = Depends(identity)):
+        access = common_storage().private_access(owner, asset_id)
+        return {'url': access.url, 'expires_at': access.expires_at}
+
+    @app.post('/api/tracks/{track_id}/playback')
+    def playback_access(track_id: UUID, preview: bool = False, owner: Identity = Depends(identity)):
+        # No entitlement inferred from this identity. Canonical guest issuance
+        # ingress remains Node/Auth-owned; this route does not bypass admission.
+        access = common_storage().playback_access(track_id, preview=preview)
+        return {'url': access.url, 'expires_at': access.expires_at}
+
     from .artist_routes import install_artist_routes
     install_artist_routes(app, identity, repository)
     return app

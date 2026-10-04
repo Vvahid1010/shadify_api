@@ -15,7 +15,7 @@ REFS = {'tracks': ('original_asset_id','delivery_asset_id','preview_asset_id','a
         'moments': ('track_id','image_asset_id'), 'events': ()}
 AVAILABILITY = {'original_audio_upload': True, 'track_artwork_upload': True,
                 'profile_media_upload': False, 'video_upload': False, 'processing': False,
-                'playback_http': False, 'paid_entitlements': False, 'followers': False,
+                'playback_http': True, 'guest_playback_ingress': False, 'paid_entitlements': False, 'followers': False,
                 'official_playlists': False, 'home_rails': False, 'commerce': False}
 
 
@@ -43,7 +43,7 @@ class ArtistOperations:
             prefix={'audio_delivery':'delivery/','audio_preview':'previews/',
                     'video_delivery':'delivery/','artwork_delivery':'delivery/'}[kind]
             eligible=(row['state']=='ready' and row['publish_state']=='published'
-                      and row['storage_provider']=='r2' and row['key'].startswith(prefix)
+                      and row['storage_provider'] in ('local','r2') and (row['key'].startswith(prefix) or row['key'].startswith(f"artists/{artist_id}/tracks/{row['track_id']}/{row['id']}/") or (kind=='artwork_delivery' and row['key'].startswith(f"covers/{row['id']}/")))
                       and row['access_class'] in ('free','paid'))
             if kind in ('audio_preview','artwork_delivery'):
                 eligible=eligible and row['access_class']=='free'

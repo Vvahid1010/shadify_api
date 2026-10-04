@@ -1,5 +1,7 @@
 """PostgreSQL metadata; all management authority comes from ArtistAccessRepository."""
 from uuid import uuid4
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from psycopg.rows import dict_row
 from .access import ArtistAccessRepository
 from .artists import ArtistOperations
@@ -55,6 +57,35 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             return c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
                 "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original')",
                 (target,asset_id,asset.artist_id,expected)).rowcount==1
+
+    @contextmanager
+    def upload_guard(self, actor, asset):
+        with self.authorized(actor, asset.artist_id, operation='manage_content') as (c, _, _, _):
+            row = c.execute('SELECT * FROM shadify_media_assets WHERE id=%s FOR UPDATE', (asset.id,)).fetchone()
+            if (row is None or Asset(**row) != asset or row['state'] != 'upload_pending'
+                    or row['expires_at'] <= datetime.now(timezone.utc)):
+                raise MediaError(409, 'Upload state changed or expired')
+            if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',
+                         (asset.track_id, asset.artist_id)).fetchone() is None:
+                raise MediaError(404, 'Track not found')
+            yield
+
+    def check_upload(self, actor, asset):
+        with self.upload_guard(actor, asset): pass
+
+    def get_playback_target(self, track_id, *, preview=False):
+        from .delivery import PlaybackTarget
+        reference = 'preview_asset_id' if preview else 'delivery_asset_id'
+        with self.connect() as connection:
+            with connection.cursor(row_factory=dict_row) as c:
+                row = c.execute('SELECT t.id,t.artist_id,t.publish_state,t.access_class,t.' + reference +
+                                ' AS asset_id,a.publish_state AS page_state FROM shadify_tracks t '
+                                'JOIN shadify_artists a ON a.id=t.artist_id WHERE t.id=%s', (track_id,)).fetchone()
+                if row is None or row['asset_id'] is None: return None
+                asset = c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s AND track_id=%s',
+                                  (row['asset_id'], row['artist_id'], track_id)).fetchone()
+                if asset is None: return None
+                return PlaybackTarget(track_id, row['publish_state'], row['access_class'], Asset(**asset), row['page_state'])
 
     def access_context(self,actor,artist):
         with self.authorized(actor,artist) as (_,auth,_,_): return auth.dto()

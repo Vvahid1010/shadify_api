@@ -41,6 +41,7 @@ class ObjectStorage(Protocol):
 
 
 class R2Storage:
+    provider = "r2"
     def __init__(self, config: StorageConfig, client=None):
         self.config = config
         if client is None:
@@ -55,28 +56,30 @@ class R2Storage:
             )
         self.client = client
 
-    def authorize_upload(self, key, mime, size):
+    def authorize_upload(self, key, mime, size, *, ttl=None, checksum=None):
         try:
-            url = self.client.generate_presigned_url(
-                "put_object", Params={"Bucket": self.config.bucket, "Key": key,
-                "ContentType": mime, "ContentLength": size, "IfNoneMatch": "*"},
-                ExpiresIn=self.config.upload_ttl_seconds, HttpMethod="PUT",
-            )
+            ttl = min(ttl, self.config.upload_ttl_seconds) if ttl is not None else self.config.upload_ttl_seconds
+            params = {"Bucket": self.config.bucket, "Key": key, "ContentType": mime,
+                      "ContentLength": size, "IfNoneMatch": "*"}
+            if checksum is not None: params['ChecksumSHA256'] = checksum
+            url = self.client.generate_presigned_url("put_object", Params=params, ExpiresIn=ttl, HttpMethod="PUT")
             return UploadAuthorization(url, {"Content-Type": mime, "If-None-Match": "*"},
-                                       self.config.upload_ttl_seconds)
+                                       ttl)
         except Exception:
             raise StorageUnavailable("Upload authorization unavailable") from None
 
-    def create_playback_access(self, key):
+    def create_playback_access(self, key, *, ttl=None, method="GET"):
         try:
             # Conservative expiry rounded to seconds before SDK signing. This
             # returns no later than signing time + TTL even across a second tick.
+            ttl = min(ttl, self.config.playback_url_ttl_seconds) if ttl is not None else self.config.playback_url_ttl_seconds
             issued_at = datetime.now(timezone.utc).replace(microsecond=0)
+            if method not in ("GET", "HEAD"): raise ValueError()
             url = self.client.generate_presigned_url(
-                "get_object", Params={"Bucket": self.config.bucket, "Key": key},
-                ExpiresIn=self.config.playback_url_ttl_seconds, HttpMethod="GET",
+                "head_object" if method == "HEAD" else "get_object", Params={"Bucket": self.config.bucket, "Key": key},
+                ExpiresIn=ttl, HttpMethod=method,
             )
-            return PlaybackAccess(url, issued_at + timedelta(seconds=self.config.playback_url_ttl_seconds))
+            return PlaybackAccess(url, issued_at + timedelta(seconds=ttl))
         except Exception:
             raise StorageUnavailable("Playback authorization unavailable") from None
 

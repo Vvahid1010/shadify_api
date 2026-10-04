@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr
 
 from .auth import observed_account
-from .config import load_protected_json, load_database_config, load_storage_config
+from .config import load_protected_json, load_database_config, load_storage_config, compose_storage
 from .domain import DomainService
 from .media import MediaService
 from .repository import PostgresMediaRepository
@@ -87,9 +87,9 @@ def create_runtime_app(directory: Path, *, binding=None):
     service = None
     if (directory / config.storage_file).exists():
         try:
-            storage = load_storage_config(directory / config.storage_file)
             if repository is not None:
-                service = MediaService(repository, R2Storage(storage), storage.max_upload_bytes, storage.upload_ttl_seconds)
+                storage, settings = compose_storage(directory, repository)
+                service = MediaService(repository, storage, settings.max_upload_bytes, settings.upload_ttl_seconds)
         except Exception:
             if receiver is not None:
                 receiver.close()

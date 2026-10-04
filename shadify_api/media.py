@@ -71,12 +71,17 @@ class MediaService:
         if intent.mime not in allowed[intent.asset_type] or intent.size > self.max_size:
             raise MediaError(422, "Unsupported type or configured size limit exceeded")
         asset_id = uuid4()
-        key = f"originals/artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
-        authorization = self.storage.authorize_upload(key, intent.mime, intent.size)
-        require_fresh_actor(owner)
+        key = f"artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
         asset = Asset(asset_id, owner.account_id, intent.artist_id, intent.track_id, key,
                       intent.asset_type, intent.mime, intent.size,
                       datetime.now(timezone.utc) + timedelta(seconds=self.ttl))
+        from .storage_service import StorageService
+        if isinstance(self.storage, StorageService):
+            asset = replace(asset, storage_provider=self.storage.provider)
+            authorization = self.storage.authorize_asset_upload(owner, asset)
+        else:
+            authorization = self.storage.authorize_upload(key, intent.mime, intent.size)
+        require_fresh_actor(owner)
         self.repository.insert(owner, asset)
         require_fresh_actor(owner)
         return asset, authorization
@@ -95,7 +100,8 @@ class MediaService:
             raise MediaError(409, "Upload cannot be completed")
         if asset.expires_at <= datetime.now(timezone.utc):
             raise MediaError(409, "Upload session expired; request a new asset")
-        info = self.storage.inspect(asset.key)
+        from .storage_service import StorageService
+        info = self.storage.inspect_asset(asset) if isinstance(self.storage, StorageService) else self.storage.inspect(asset.key)
         require_fresh_actor(owner)
         if (info.size != asset.size or info.content_type != asset.mime
                 or not valid_signature(asset.mime, info.prefix)):

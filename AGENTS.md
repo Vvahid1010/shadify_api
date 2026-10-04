@@ -168,3 +168,18 @@ checkout for this work; no live source reload, push, build feed, installation,
 credential, grant or live migration is authorized. Each app has independent DB
 and access on the existing cluster; WSL and node data stay separate. Exact roles,
 protected bootstrap/recovery and deployment remain owner decisions.
+
+## Local-first storage approval (2026-10-04)
+
+The operator now explicitly authorizes source implementation of LocalAdapter
+behind a small StorageService with the existing R2 adapter retained. This
+supersedes earlier R2-first, stateless durable-media and direct-upload-only
+rules for this approved phase. Durable local bytes stay outside Git/build/DB;
+logical keys, per-object provider, ownership and private/paid/publication rules
+stay authoritative. Read the current local contract in
+docs/MEDIA_STORAGE_ARCHITECTURE.md and docs/MEDIA_DELIVERY_CACHE_SECURITY.md.
+The byte listener is separate and narrowly routed by Node ownership; never
+disable GuardedASGI or pass large uploads through Authentication. No live root,
+key, credential, listener, migration, installation, cloud call or push is
+authorized here. Storage source work precedes any pending admin nomination
+implementation; this remains the sole isolated API writer.

@@ -1,8 +1,99 @@
 # Shadify Media Storage Architecture
 
-> Phase 1 source of truth: `docs/R2_SIGNED_MEDIA_DELIVERY.md`. Cache and future Worker/CDN policy: `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`. The earlier mandatory public R2 playback/Custom Domain design is replaced.
+> Historical R2 preparation reference: `docs/R2_SIGNED_MEDIA_DELIVERY.md`. Cache and future Worker/CDN policy: `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`. The earlier mandatory public R2 playback/Custom Domain design is replaced.
 
-## Decision
+## Current local-first implementation contract (2026-10-04)
+
+The user selected local durable media now, with dynamic signed expiring links
+and a future R2 migration using the same client and business contracts. This
+section supersedes the retained earlier R2-first decision below. Local storage
+is an object adapter, not an S3 emulator. No server or cloud resource was deployed.
+
+`StorageService` owns app media capabilities; `LocalAdapter` and `R2Storage`
+implement the actual byte/provider operations. The default provider is selected
+by protected `storage.credentials.json` (`provider: local|r2`); optional
+`STORAGE_PROVIDER` must match that explicit config, never silently fall back.
+Local mode never loads an R2 client or R2 credentials. Local reads continue to
+work after changing the default to R2 when its protected config also retains
+the existing `local_root`. Each row's provider selects the adapter; changing the
+default affects only new assets. Missing adapters fail closed.
+
+DB rows retain logical key, asset UUID and provider. New original keys use
+`artists/{artist_id}/tracks/{track_id}/{asset_id}/master`. Derived keys may use
+the same immutable asset prefix, artwork may use `covers/{asset_id}/...`, and
+valid historical originals/delivery/previews keys continue to work. No URL,
+physical root, signing key or file bytes are persisted in PostgreSQL. Replacing
+a master creates a new UUID/key. No applied migration is modified or added.
+
+API issuance preserves `upload:{method,url,headers,expires_in}` and returns
+read access as `{url,expires_at}`. URLs use the app origin and `/media/{asset_id}`
+with a signed temporary capability; clients never choose keys/providers/roots.
+They are reusable until expiry, not permanent public or one-time links.
+POST `/api/media/{asset_id}/access` requires current content-management authority.
+POST `/api/tracks/{track_id}/playback?preview=false` uses the actual DB projection:
+page/track/asset must be published, asset ready and appropriately derived/free.
+Originals, drafts, suspended pages and full paid tracks without entitlement deny.
+Paid previews are independent free assets. No processing or implicit publishing
+is introduced. Source fixtures deliberately create ready derived rows only for
+testing; no runtime producer exists. Normal upload completion remains private/draft.
+
+The separate `shadify_api.media_runtime:app_factory` listener exposes only
+PUT/GET/HEAD `/media/{UUID}`. Node ownership must route that exact path to the
+listener, never `/api` or other methods; it must disable/redact URL query and
+authorization logs and apply its existing request/timeout/disk controls. All
+business/issuance routes remain on canonical GuardedASGI (catalog 56 routes,
+Authentication peer only). Large media bodies do not traverse Authentication.
+Operational guest free-playback issuance remains pending explicit Node/Auth
+guest ingress: source policy allows free guests, but no admitted guest request
+is invented and the existing issuance HTTP dependency still requires identity.
+
+Local root is explicitly protected, runtime-owned, owner-only, absolute, outside
+source/build and already present; startup never provisions it. Linux xattrs
+preserve MIME metadata. Every path component is opened without symlink following;
+keys reject traversal. Private temporary files stream bounded bytes, require exact
+length/MIME/immutable headers, optionally validate `x-amz-checksum-sha256`, and
+are fsynced then exclusively atomically linked into the final key. This provides
+the no-overwrite publication invariant of an exclusive rename without relying
+on Linux-only renameat2. Failed/truncated/disk-full uploads remove temporary files.
+No full upload buffering, S3 server or extra dependency/framework is added.
+
+Before final local file publication, existing artist/admin/identity/asset locks
+revalidate current authority, pending state and expiry. Identity expiry or audit
+failure removes a newly installed file. Completion retains existing bounded
+inspection, container validation, locked transition and final identity checks.
+Local GET/HEAD supports single bounded/open/suffix byte ranges, 206/416 and
+Content-Range/Accept-Ranges; reads recheck current authority/publication and TTL,
+including between streaming chunks. Initial denial precedes bytes; expiry or
+revocation during a response truncates it against its declared Content-Length.
+SHA256 can be computed locally for migration verification. This is parity with
+the supported R2 contract, not full S3 emulation; multi-range, resumable video,
+ETag conditions, transcoding and entitlement remain outside this slice.
+
+R2 remains optional and disabled in local mode. A capability-valid request uses
+307 to a private SDK-presigned PUT/GET bounded by remaining capability TTL;
+PUT retains size/MIME/If-None-Match and optional SHA256. Browser replay/Range
+within TTL remains supported. After redirect, R2 bearer access lasts until expiry;
+application revocation cannot recall an already issued provider URL. Real R2
+CORS/privacy/expiry/range/conditional write/checksum behavior remains unproved.
+
+### Future migration and rollback
+
+1. Explicitly configure the future private R2 destination while retaining local
+   storage and the app URL/signing contract; do not change existing row providers.
+2. Copy immutable keys, preserving MIME and size. Verify complete SHA256 byte
+   equality and destination metadata/private access before selecting each object.
+3. Atomically update only each verified object's provider, preserving UUID/key/
+   references/publication. Existing issued capabilities bind the original provider
+   and fail closed after a change; request fresh access at the same app URL path.
+4. Change the new-upload default independently. Keep local originals during the
+   reviewed rollback window; rollback provider pointers only when matching bytes
+   still exist. Never point R2-only new objects at absent local files.
+
+No automatic migration/copy/delete tool or real R2 validation is implemented.
+`STORAGE_PROVIDER=r2` alone does not copy media. WSL and B roots/data remain
+separate; disk sizing and installation belong to Node ownership.
+
+## Retained earlier decision
 
 Shadify media uses object storage. The initial provider is Cloudflare R2 Standard.
 

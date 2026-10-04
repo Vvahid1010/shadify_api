@@ -1,6 +1,34 @@
 # Shadify media delivery, cache and security
 
-## Current contract
+## Current local-first contract (2026-10-04)
+
+MEDIA_STORAGE_ARCHITECTURE.md defines the new local-first implementation. Its
+dynamic app URLs and separate capability-only byte listener supersede the
+retained direct-R2-first guidance below. The main API GuardedASGI is unchanged;
+Node must narrowly route `/media/{UUID}` PUT/GET/HEAD outside the body-limited
+Authentication proxy. No other API route may bypass canonical admission.
+
+The media signing key is a separate 256-bit protected custody file, never an
+Authentication/session/node credential. Capabilities bind purpose/method, UUID,
+logical key, provider, MIME, exact size and expiry; private/upload grants also
+bind the complete admitted identity with expiry bounded by that identity.
+No email/account-ID-only assertion or first-user authority is introduced.
+Wrong method/asset, malformed/tampered/expired grants and unsigned reads deny.
+Local delivery rechecks current app authority or published/free/ready state;
+R2 redirects are bounded by remaining capability TTL but remain provider bearer
+access until expiry. No one-time semantics or immediate R2 URL revocation claim.
+
+Both API issuance and byte responses use no-store. Byte responses also include
+no-referrer and nosniff. Node/browser telemetry must not log capability queries,
+R2 redirect URLs, identity evidence or secrets; Uvicorn access logging must be
+disabled on the dedicated listener. No public filesystem mount, directory list,
+cache rule, Worker, DNS, Cloudflare or public bucket is configured. Root is
+owner-only outside source/build, with descriptor-relative no-symlink opens.
+Public playback never authorizes originals/drafts or full paid tracks without
+entitlement. Guest issuance ingress and real edge behavior remain operational
+gaps, even though DB projection and byte delivery now have isolated proofs.
+
+## Retained R2 preparation contract
 
 docs/R2_SIGNED_MEDIA_DELIVERY.md is the Phase 1 source of truth. This retained file
 reconciles cache/security guidance with the replacement of the mandatory public

@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     provider: Literal["r2"] = "r2"
+    media_base_url: str | None = None
+    local_root: str | None = None
     endpoint_url: str
     bucket: str = Field(min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9.-]*[a-z0-9]$")
     access_key_id: SecretStr
@@ -53,9 +55,23 @@ def load_protected_json(path: Path) -> dict:
             raise ValueError("Protected configuration is invalid; values are redacted") from None
 
 
-def load_storage_config(path: Path) -> StorageConfig:
+class LocalStorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    provider: Literal["local"]
+    local_root: str
+    media_base_url: str
+    upload_ttl_seconds: int = Field(default=300, ge=30, le=900, strict=True)
+    playback_url_ttl_seconds: int = Field(default=900, ge=1, le=604800, strict=True)
+    max_upload_bytes: int = Field(default=104857600, gt=0, le=104857600, strict=True)
+
+
+def load_storage_config(path: Path) -> StorageConfig | LocalStorageConfig:
     try:
-        return StorageConfig.model_validate(load_protected_json(path))
+        value = load_protected_json(path)
+        selected = os.environ.get('STORAGE_PROVIDER', value.get('provider', 'r2'))
+        if selected not in ('local', 'r2') or selected != value.get('provider', 'r2'):
+            raise ValueError('Provider must match explicit protected configuration')
+        return (LocalStorageConfig if selected == 'local' else StorageConfig).model_validate(value)
     except Exception:
         raise ValueError("Storage configuration is invalid; values are redacted") from None
 
@@ -95,3 +111,31 @@ def load_database_config(path: Path) -> DatabaseConfig:
         return DatabaseConfig.model_validate(load_protected_json(path))
     except Exception:
         raise ValueError("Database configuration is invalid; values are redacted") from None
+
+
+def compose_storage(directory, repository):
+    """No provisioning, automatic fallback, ambient credentials or cloud probes."""
+    import base64
+    from .storage_service import StorageService
+    from .local_storage import LocalAdapter
+    config = load_storage_config(directory / 'storage.credentials.json')
+    url = urlsplit(config.media_base_url or '')
+    if (url.scheme != 'https' or not url.hostname or url.username or url.password
+            or url.query or url.fragment or url.path not in ('', '/') or url.port not in (None, 443)):
+        raise ValueError('Explicit HTTPS app media origin required')
+    keyfile = load_protected_json(directory / 'media-signing.credentials.json')
+    if set(keyfile) != {'key'}: raise ValueError('Media signing key required')
+    key = base64.b64decode(keyfile['key'], validate=True)
+    if len(key) != 32: raise ValueError('256-bit media signing key required')
+    adapters = {}
+    if config.local_root:
+        root = Path(config.local_root)
+        source = Path(__file__).resolve().parents[1]
+        if not root.is_absolute() or root.resolve().is_relative_to(source):
+            raise ValueError('Local media root must be outside source/build')
+        adapters['local'] = LocalAdapter(root)
+    if config.provider == 'r2':
+        from .storage import R2Storage
+        adapters['r2'] = R2Storage(config)
+    return StorageService(repository, adapters, config.provider, config.media_base_url, key,
+                          upload_ttl=config.upload_ttl_seconds, access_ttl=config.playback_url_ttl_seconds), config

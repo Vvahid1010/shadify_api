@@ -11,7 +11,9 @@ def receiver_catalog():
               ("tracks.create", "POST", "/api/artists/{artist_id}/tracks"),
               ("media.upload.create", "POST", "/api/media/uploads"),
               ("media.upload.complete", "POST", "/api/media/uploads/{asset_id}/complete"),
-              ("media.read", "GET", "/api/media/{asset_id}")]
+              ("media.read", "GET", "/api/media/{asset_id}"),
+              ("media.access", "POST", "/api/media/{asset_id}/access"),
+              ("media.playback", "POST", "/api/tracks/{track_id}/playback")]
     routes += [
         ("admin.authority", "GET", "/api/admin/authority"),
         ("admin.audit", "GET", "/api/admin/authority/audit"),

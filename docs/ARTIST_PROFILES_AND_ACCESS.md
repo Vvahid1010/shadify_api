@@ -1055,3 +1055,19 @@ current verified API already covers normal primary transfer and grant management
 No real operator, target account, runtime DB, bootstrap, grant or credential was
 selected by this plan. There is no additional runtime/code/package change for
 this documentation handoff; qualified9a76caca and frozen524e5803 remain unchanged.
+
+## Local media continuation (2026-10-04)
+
+Storage is implemented before pending app-admin nomination runtime changes.
+Local-first delivery uses existing app-owned manage_content/artist membership
+authority; uploader remains audit only. Current private media upload/access and
+completion recheck current actor/page/admin state and identity expiry. The
+dedicated byte listener rechecks at final local write and on private reads.
+Public derived playback DB projection enforces page/track/asset publication,
+ready state, free/full or separate free preview, and denies paid full without
+entitlement. It never makes uploaded originals public. No producer is added.
+API receiver catalog is now 56 Authentication-only routes, adding guarded POST
+media access and track playback issuance. Actual guest issuance admission is
+pending Node/Auth ownership. See MEDIA_STORAGE_ARCHITECTURE.md for storage,
+provider parity, migration and byte-ingress details; existing admin/owner rules,
+bootstrap plan and qualified9a76 artifact remain unchanged.

@@ -1,3 +1,9 @@
+> 2026-10-04: Local-first storage with dynamic signed app URLs now supersedes
+> this earlier direct-R2-first stage. See MEDIA_STORAGE_ARCHITECTURE.md and
+> MEDIA_DELIVERY_CACHE_SECURITY.md. R2 stays a future private provider; no cloud
+> activation or real cost is authorized. This retained document records the
+> R2 adapter preparation and future cloud acceptance requirements.
+
 # R2 signed media delivery — Phase 1 source of truth
 
 Decision:2026-10-02. This contract replaces the earlier mandatory public R2

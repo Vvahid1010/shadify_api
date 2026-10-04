@@ -1,3 +1,9 @@
+> Current 2026-10-04 storage continuation: local-first private objects and
+> expiring app media URLs supersede older direct-R2/no-local-byte statements
+> below. Catalog now has 56 Authentication-only routes. See
+> MEDIA_STORAGE_ARCHITECTURE.md and local_bootstrap.md for the separate narrow
+> byte listener and remaining guest/live deployment gaps.
+
 # Initial authenticated API, private R2 uploads and signed delivery preparation
 
 Phase 1 playback source of truth: [R2_SIGNED_MEDIA_DELIVERY.md](R2_SIGNED_MEDIA_DELIVERY.md).

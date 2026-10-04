@@ -94,3 +94,40 @@ docs/ARTIST_PROFILES_AND_ACCESS.md. Old 002 packages/schema cannot be mixed with
 this cutover. Local testing/packaging does not authorize migration, publication,
 grant or shared topology changes. Source-ASGI public metadata is tested; guest
 managed ingress and playback HTTP remain inactive.
+
+## Local media source contract (2026-10-04; not live activation)
+
+Runtime API storage is optional. To select local media later, the Node owner
+supplies owner-only protected `storage.credentials.json` with:
+
+```json
+{"provider":"local","local_root":"<assigned absolute private directory outside source/build>","media_base_url":"https://<approved app host>","upload_ttl_seconds":300,"playback_url_ttl_seconds":900,"max_upload_bytes":104857600}
+```
+
+Protected `media-signing.credentials.json` contains exactly `{"key":"<base64
+32-byte media signing key>"}`. No real key/root is created here. Both processes
+receive the assigned CREDENTIALS_DIRECTORY; optional STORAGE_PROVIDER must match
+the protected provider. Local config accepts no R2 credential fields.
+LocalAdapter requires runtime/root ownership, 0700-style root permissions,
+no symlink components and Linux user xattrs. Owner chooses durable filesystem,
+capacity/backup/quota and service identity. WSL and B are separate allocations.
+
+Existing API startup/managed receiver remains unchanged. Node ownership must
+separately launch native Uvicorn with factory
+`shadify_api.media_runtime:app_factory`, factory mode, `--no-access-log`, on an
+owner-assigned private socket/listener. Route only `/media/{UUID}` PUT/GET/HEAD
+from the approved HTTPS app origin to it; preserve Range/Content-Type/Length/
+If-None-Match/optional x-amz-checksum-sha256. Never route `/api` or broadly bypass
+GuardedASGI and never relay upload bytes through Authentication. No port/socket/
+service/proxy setting is chosen or installed by this source task. Listener has
+no documentation, directory, issuance, admin or business routes. Same-origin
+delivery needs no permissive CORS. Guest issuance remains explicitly pending.
+
+R2 future config keeps existing account-scoped endpoint/bucket/S3 credentials,
+adds the same media_base_url and optional existing local_root for mixed object
+providers, and uses the same separate media signing file. New-upload default
+switching is distinct from object migration. See MEDIA_STORAGE_ARCHITECTURE.md
+for copy+full-checksum verification, per-object cutover and rollback.
+
+No Node B API installation, live filesystem, key, database migration, R2 call,
+cloud resource or publishing is established by the isolated tests.

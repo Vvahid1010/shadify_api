@@ -213,6 +213,58 @@
         "proxy_headers": true
       },
       {
+        "endpoint_id": "shadify_api.media.access",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/media/{asset_id}/access",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.media.playback",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/tracks/{track_id}/playback",
+        "headers": [
+          "accept",
+          "content-type",
+          "cache-control",
+          "x-auth-assertion",
+          "x-authenticated-account-id",
+          "x-authenticated-session-id",
+          "x-authenticated-auth-level",
+          "x-authenticated-domain-app",
+          "x-authenticated-proxy-app",
+          "x-request-id",
+          "x-forwarded-for",
+          "x-forwarded-host",
+          "x-forwarded-proto"
+        ],
+        "off_supported": true,
+        "proxy_headers": true
+      },
+      {
         "endpoint_id": "shadify_api.admin.authority",
         "receiver_app": "shadify_api",
         "permitted_peer_apps": [
