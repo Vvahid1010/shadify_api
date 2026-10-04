@@ -138,3 +138,17 @@ rejects unsigned bytes before ASGI. Therefore the factory above is a concrete
 handler contract, not an approved operational unit/socket instruction. Resolve
 the narrow transport with Node ownership before any projection/installation;
 never infer approval for a second service or weaken canonical admission.
+
+### Node-agreed media ingress correction
+
+The prior new-listener restriction is resolved by the coordinated Node owner:
+one small Shadify media unit, same API UID, dedicated Unix socket
+`/run/node-agent-shadify-media/receiver.sock`, and only assigned database/storage/
+media-signing custody; it has no canonical transport/replay/signing keys. Node
+owns exact service/socket/root modes and source construction. nginx may route
+only `/media/{UUID}` PUT/GET/HEAD with exactly one token query and GET
+`/media/v1/tracks/{UUID}/access` with only optional preview=true|false. No retries,
+no full body buffering, no access-query logs, existing bounded body/timeout
+controls; no /api bypass or upload through Authentication. The GET access route
+performs real DB free/preview checks, never invents a guest Authentication identity.
+This resolves the source contract, not live installation or transport proof.

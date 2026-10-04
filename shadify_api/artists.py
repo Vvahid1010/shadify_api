@@ -15,7 +15,7 @@ REFS = {'tracks': ('original_asset_id','delivery_asset_id','preview_asset_id','a
         'moments': ('track_id','image_asset_id'), 'events': ()}
 AVAILABILITY = {'original_audio_upload': True, 'track_artwork_upload': True,
                 'profile_media_upload': False, 'video_upload': False, 'processing': False,
-                'playback_http': True, 'guest_playback_ingress': False, 'paid_entitlements': False, 'followers': False,
+                'playback_http': True, 'guest_playback_ingress': True, 'paid_entitlements': False, 'followers': False,
                 'official_playlists': False, 'home_rails': False, 'commerce': False}
 
 

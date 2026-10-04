@@ -1080,3 +1080,31 @@ proofs. Schema001..006, production wheels and locks match the preserved9a76
 artifact; its archive is unchanged. Receipt is `.build-tools/local-storage-qualification/local-storage-offline-proof.json`.
 No operational guest/native byte ingress, real R2/Worker/CDN behavior, root/key
 custody, installation or live activation is established by this proof.
+
+### Astra-reviewed media correction (following frozen7a625c11)
+
+The agreed Node-owned media socket is `/run/node-agent-shadify-media/receiver.sock`
+with one small same-UID Shadify media unit and DB/storage/media-signing custody
+only. Canonical GuardedASGI/catalog56 remain unchanged. Anonymous GET
+`/media/v1/tracks/{UUID}/access` accepts only optional preview=true|false and
+performs real DB published/free/ready/separate-preview authorization, without
+synthetic identity. Originals/drafts/private/paid full without entitlement deny.
+Private access/upload creation/completion remain Auth-guarded. Node owns narrow
+nginx routing, HTTP1.1 streamed bodies, bounded uploads, no retries and redaction.
+
+Streaming now performs initial authority checking and checks again before the
+next chunk after two seconds (per-response clock, no shared permission cache),
+while checking expiry each chunk. R2 gets absolute grant deadlines, recomputes
+TTL inside the signing worker after queue delay, and validates SDK signature
+expiry before returning a URL; expired grants never revive via max(1).
+
+Focused proof:23 local/config/delivery tests,8 unchanged signing/policy tests,
+and1 actual disposable nginx -> Unix Uvicorn media_runtime factory -> local/SQL
+test passed. The socket fixture covers chunked PUT, completion, repeat denial,
+private HEAD/Range/416, unsigned/duplicate token/wrong host/wrong method/API-route
+denial, owner-transfer revocation, anonymous published-free issuance/range, and
+unentitled paid denial. Its keys/identity/data/processes are synthetic/disposable,
+with no TCP/public TLS or actual Node-generated projection proof. Node's exact
+unit/nginx pairing remains its owner's integration task. Frozen7a625c11 archive
+and9a76 baseline remain unchanged; this is a source correction, not a requalified
+combined package, installation or cloud/Worker validation.
