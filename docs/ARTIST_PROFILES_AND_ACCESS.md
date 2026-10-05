@@ -1440,3 +1440,108 @@ Node integration still pending
   A popup wake-up is only a lookup trigger; timeout/disconnect is unknown status,
   never an automatic execute retry. No live nomination deployment is authorized.
   Qualified Local94143222 media package remains separate and unchanged.
+
+
+### Node4c protected source composition and bounded receipt reader (2026-10-05)
+
+Pinned Node source: 4c8f5e3618e3d95fffe2733de20182da9c81b048;
+its provider/adapter/reverse transport symbols are unchanged from Node26.
+node-admin-nomination-source-integration-v2.json is the owner handoff. Optional
+ProtectedNominationComposition binds Node's exact NominationProviderClient and
+AppProviderAdapter to the API's protected RuntimeConfig scope and current native
+receiver/instance guard. Node's trusted ProtectedInstalledSelectionReader supplies
+the installed release/process commitment. Every selection is reread and compared
+with the pinned object; scope and native instance are checked before and after.
+Preparation defers first binding until the native receiver is current after startup;
+a lock serializes that selection. Failed binding remains unavailable and can retry
+only protected selection, never an execute operation.
+The installer supplies the connected reader descriptor and exact endpoint peer
+guard. Neither wire fields, a witness file, root UID alone nor a default socket
+path can select authority. Node verifies issued_at and retains the complete
+original witness; Shadify drops only issued_at in its frozen owner mapping.
+
+create_runtime_app has an optional nomination_composition parameter, mutually
+exclusive with the existing explicit nomination_provider. The default application
+factory supplies neither; absent authority remains denied. No new listener,
+public route, scope, install registry, service or dependency installation is made.
+Node helper imports occur only in this explicitly selected composition.
+
+ProtectedNominationComposition.serve_receipt(connection) runs the canonical Node
+serve_result_async on the existing loop and closes the app-owned connected
+descriptor in finally, including cancellation. Management identity/process/source
+checks and selected installation checks run before and after the exchange. It
+uses only the existing immutable read_committed_operation receipt, never the
+current nomination status view. A missing/invalid response remains unknown and
+never invites an execute replay.
+
+BoundedReceiptReader runs the entire synchronous owner SQL/authority read off the
+event loop. Its dedicated DatabaseConfig.connect_nomination_receipt connector
+uses libpq connect_timeout=1, statement_timeout=1000ms and lock_timeout=500ms;
+ordinary transactions keep 5s/10000ms/5000ms. The worker also sets transaction-local
+SQL bounds. Cancellation sends psycopg cancel_safe(timeout=1) off-loop and fences
+the worker through rollback and close before propagating CancelledError. If cancel
+races/fails, SQL timeout still bounds the query and the cleanup fence remains.
+Cancellation while connection opens waits for its bounded completion then closes
+without issuing the receipt query; repeated cancellation cannot bypass cleanup.
+Node's 3s transport deadline remains independent. The receipt connector requires one numeric DB endpoint (localhost maps to
+127.0.0.1) and passes hostaddr, preserving host for TLS identity. DNS and multiple
+hosts deny before connect; ordinary transactions are unchanged. libpq may round
+connect_timeout=1 up to its minimum; installed qualification must measure the
+single protected endpoint against the independent transport deadline. No live
+endpoint is chosen here. Current provider exchanges retain Node's own finite exchange bounds.
+
+Focused disposable proof uses real PostgreSQL, actual SO_PEERCRED UDS and Node4c
+source. It checks exact frozen mapping, native-instance and protected-revision
+drift, PID/start/source peer denial, reverse immutable receipt and descriptor
+closure, real query cancellation/backend disappearance, lock and pg_sleep SQL
+timeouts, responsive event loop, connect-time cancellation and repeated-cancel
+cleanup. Kernel stat/status/cwd are real; service cgroup and installed selection
+are synthetic remapped fixtures. No root reader service/sandbox or legitimate
+browser/Auth producer integration is claimed. Existing provider receipts, optional
+/me, native admission and runtime configuration tests remain the affected checks.
+
+Live blockers: exact nomination scope and protected installer composition;
+authenticated reader descriptor/peer provenance including socket activation;
+real management/process/source visibility under the installed sandbox; dedicated
+DB endpoint/SELECT privileges and measured bounds; signed Auth92 and actual Node
+producer pairing; independent combined review and separately authorized runtime
+activation. No scope, socket/group/capability, role, credential, grant or live
+migration is selected. The separately qualified 3600-second media package/source
+and ordinary app flows are unchanged by this nomination integration.
+
+
+Inherited-listener provenance clarification (Astra/parent 2026-10-05)
+  Forward require_reader_peer(fd) is an installed endpoint provenance guard,
+  never child-reader PID proof from inherited SO_PEERCRED. Accept=no evidence
+  does not qualify an Accept=yes sandbox. Node authenticates the connecting app
+  process independently. App authentication checks the fixed protected endpoint,
+  every non-app-writable parent, stable socket owner/mode/device/inode, trusted
+  systemd manager and actual unit bound to the approved launcher/module/release.
+  These checks run before and after each Node client exchange and must return
+  exactly None. Root UID or a manager PID alone is insufficient. No new daemon,
+  key or protocol is needed. No activation path or permissions are selected here.
+
+  Shared protected descriptor fields for the installer-owned guard:
+    endpoint_path; socket_device, socket_inode, owner_uid, owner_gid, socket_mode;
+    ordered parent commitments {path,device,inode,owner_uid,owner_gid,mode};
+    unit_name, activation_mode, launcher_path, module_name, release_source_commit,
+    release_manifest_sha256; protected installation revision; app UID/groups.
+  They are installation metadata, never request JSON. The existing callback owns
+  rereading/validating them and verifying actual kernel/filesystem/systemd state;
+  a stored snapshot alone is not authentication. connect_descriptor must be a
+  bounded installed connector returning one app-owned connected Unix descriptor.
+  Positive source UDS tests here use direct socketpairs with exact kernel
+  credentials and remapped process/unit metadata. They prove adapter plumbing,
+  peer denial and cleanup, not inherited-listener endpoint provenance. The real
+  Node guard/launcher and cross-UID ProtectProc/empty-capability evidence remain
+  owner-composed qualification blockers. Do not weaken checks or grant access.
+
+Source qualification result: 36 focused tests PASS (11 transport/cancellation,
+12 immutable provider/receipt, 5 optional /me, 1 actual Native ON admission/runtime
+composition, 7 database/runtime configuration). After the final executor cleanup
+fence adjustment, all 11 transport/cancellation tests PASS again. No skips. The
+admission fixture now pins both iat and exp for its 61-second lifetime rejection,
+so crossing a clock second cannot turn it into a permitted 60-second assertion.
+Logs: /tmp/shadify-node4c-integration.log and
+/tmp/shadify-node4c-worker-fence.log. Fixture source is an immutable git archive
+of Node4c, not its mutable owner's worktree. No unrelated suite/media rebuild ran.

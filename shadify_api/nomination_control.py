@@ -231,7 +231,7 @@ class NominationControl(AppAdminRepository):
                 if row['expires_at']<=datetime.now(timezone.utc):
                     raise MediaError(401,'Nomination evidence expired or scope changed before commit')
                 return True
-    def read_committed_operation(self,installed_scope,operation_id):
+    def read_committed_operation(self,installed_scope,operation_id,*,receipt_connect=None):
         """Immutable original control receipt, never current rights/state."""
         import re
         from .nomination_contract import canonical_uuid
@@ -241,7 +241,7 @@ class NominationControl(AppAdminRepository):
         result=OperationResultV1(scope=installed_scope,operation_id=operation_id,
                                  outcome='unknown',operation=None,receipt=None)
         try:
-            with self.connect() as connection:
+            with (receipt_connect or self.connect)() as connection:
                 connection.execute('SET TRANSACTION READ ONLY')
                 with connection.cursor(row_factory=dict_row) as c:
                     row=c.execute(

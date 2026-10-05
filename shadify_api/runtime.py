@@ -57,7 +57,7 @@ def replay_factory(directory, address=None):
     return factory
 
 
-def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None):
+def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None, nomination_composition=None):
     directory = Path(directory)
     receiver = None
     try:
@@ -109,7 +109,12 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
             if native.status()[:2] != ('shadify_api',selected_scope.app_instance_id):
                 raise MediaError(503,'Installed nomination instance mismatch')
             return selected_scope
+        if nomination_provider is not None and nomination_composition is not None:
+            raise RuntimeError("Select one protected nomination composition")
         nomination = NominationControl(database.connect,scope_provider,nomination_provider)
+        if nomination_composition is not None:
+            nomination.provider = nomination_composition.prepare(
+                nomination, scope_provider, database.connect_nomination_receipt)
 
     async def readiness():
         checks = {"scope": "profile_database", "authentication": binding.status().get("state"),

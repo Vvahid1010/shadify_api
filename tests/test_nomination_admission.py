@@ -51,7 +51,17 @@ class NominationAdmissionTests(fixture.NominationControlCase):
                'replay.credentials.json':{'url':'redis://:synthetic@127.0.0.1:6379/0'},
                'database.credentials.json':{'host':'127.0.0.1','dbname':'synthetic','user':'synthetic','password':'synthetic','sslmode':'disable'}}.items():write(name,value)
             repo=PostgresMediaRepository(self.connect)
-            with patch('shadify_api.replay_bounds.LocalReplayBounds',return_value=bounds),patch('shadify_api.runtime.replay_factory',return_value=factory),patch('shadify_api.runtime.PostgresMediaRepository',return_value=repo),patch('shadify_api.runtime.load_database_config',return_value=Mock(connect=self.connect)):app=create_runtime_app(directory,nomination_provider=self.reader)
+            selected=[]
+            composition=Mock()
+            def bind_nomination(owner,scope_provider,receipt_connect):
+                selected.append(scope_provider())  # Actual current Native ON receiver/instance.
+                self.assertTrue(callable(receipt_connect))
+                return self.reader  # Explicit synthetic provider; real UDS is separately tested.
+            from shadify_api.nomination_transport import LazyNominationProvider
+            composition.prepare.side_effect=lambda *args:LazyNominationProvider(lambda:bind_nomination(*args))
+            with patch('shadify_api.replay_bounds.LocalReplayBounds',return_value=bounds),patch('shadify_api.runtime.replay_factory',return_value=factory),patch('shadify_api.runtime.PostgresMediaRepository',return_value=repo),patch('shadify_api.runtime.load_database_config',return_value=Mock(connect=self.connect,connect_nomination_receipt=self.connect)):app=create_runtime_app(directory,nomination_composition=composition)
+            composition.prepare.assert_called_once()
+            self.assertEqual(selected,[])
             binding=app.state.app_security;receiver=app.state.managed_receiver
             config=uvicorn.Config(app,log_config=None);config.load()
             protocol=receiver.http_protocol(config=config,server_state=__import__('uvicorn.server',fromlist=['ServerState']).ServerState(),app_state={})
@@ -87,10 +97,11 @@ class NominationAdmissionTests(fixture.NominationControlCase):
                     witness=dict(schema_version=1,scope=self.scope.model_dump(),operation='register',operation_id=cmd.operation_id,nomination_id=cmd.nomination_id,actor_account_id='admin',actor_session_id='test-session',body_sha256=digest,expires_at=now+120)
                     write('admin-nomination-witness.json',{**witness,'actor_session_id':'other'})
                     self.assertEqual((await call(http,'/api/admin/nominations',raw=raw,method='POST',extra=evidence))[0],401)
+                    self.assertEqual(selected,[self.scope])
                     write('admin-nomination-witness.json',witness)
                     self.assertEqual((await call(http,'/api/admin/nominations',raw=raw+b' ',method='POST',extra=evidence))[0],401)
                     self.assertEqual((await call(http,'/api/admin/nominations',raw=raw,method='POST',extra=evidence,token='other'))[0],401)
-                    self.assertEqual((await call(http,'/api/admin/nominations',raw=raw,method='POST',extra=evidence,claims_change={'exp':now+61}))[0],401)
+                    self.assertEqual((await call(http,'/api/admin/nominations',raw=raw,method='POST',extra=evidence,claims_change={'iat':now,'exp':now+61}))[0],401)
                     wrong=dict(evidence);wrong['admin_nomination_v1']={**projection,'scope':{**projection['scope'],'deployment_id':'other'}}
                     self.assertEqual((await call(http,'/api/admin/nominations',raw=raw,method='POST',extra=wrong))[0],401)
                     try:

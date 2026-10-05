@@ -96,11 +96,28 @@ class DatabaseConfig(BaseModel):
         return self
 
     def connect(self):
+        return self._connect(5, 10000, 5000)
+
+    def connect_nomination_receipt(self):
+        """Private immutable reader only; ordinary transactions retain their bounds."""
+        from ipaddress import ip_address
+        try:
+            address = '127.0.0.1' if self.host == 'localhost' else str(ip_address(self.host))
+        except ValueError:
+            # libpq's timeout does not bound DNS or a list of selected hosts.
+            # Receipt activation needs one protected numeric endpoint; ordinary
+            # transactions retain their existing configured-host behavior.
+            raise ValueError("Nomination receipt requires a numeric DB endpoint") from None
+        return self._connect(1, 1000, 500, hostaddr=address)
+
+    def _connect(self, connection_seconds, statement_ms, lock_ms, *, hostaddr=None):
         import psycopg
         options = {"host": self.host, "port": self.port, "dbname": self.dbname,
                    "user": self.user, "password": self.password.get_secret_value(),
-                   "sslmode": self.sslmode, "connect_timeout": 5,
-                   "options": "-c statement_timeout=10000 -c lock_timeout=5000"}
+                   "sslmode": self.sslmode, "connect_timeout": connection_seconds,
+                   "options": f"-c statement_timeout={statement_ms} -c lock_timeout={lock_ms}"}
+        if hostaddr is not None:
+            options["hostaddr"] = hostaddr
         if self.sslrootcert:
             options["sslrootcert"] = self.sslrootcert
         return psycopg.connect(**options)
