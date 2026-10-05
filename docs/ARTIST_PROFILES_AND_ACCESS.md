@@ -2020,3 +2020,42 @@ expiry, cancellation and immutable receipt regressions still pass. Coherent
 read-during-write test accepts only coherent results or the intentional409 fence
 denial. Log /tmp/shadify-nomination-catalog-final-guard-race.log.
 No runtime, active database, installation, grant, migration or other-repo changes.
+
+
+### Explicit paired Node543 catalog stream hookup (2026-10-05)
+
+Separate forward hookup follows the P2 guard-fence correction56b1b1b and pins
+Node543cab7f4a769310d510c4bd06703799cb1dd0b0. serve_receipt now accepts the optional
+server-owned catalog_callbacks keyword. It requires exact NominationCatalogCallbacks
+for the same bound NominationControl owner, then uses Node's exact
+catalog_callbacks_for_selection with the existing captured verified selection.
+Both returned callbacks are passed as read_catalog_state/require_catalog_current
+to the SAME serve_result_async invocation. Existing management/control/app selection
+guards and descriptor finally-close remain. Caller common scope cannot construct
+or replace InstalledSelection. No extra listener, path, app.state assignment,
+operational consumer or runtime factory is selected.
+
+Default catalog_callbacks remains None: no SQL/native-origin read or operational
+selection is inferred. Node543 returns state=null for catalog on an already guarded
+stream with absent callbacks; real protected provider/origin/access still absent.
+Explicit owner construction remains catalog_callbacks(settings_provider=actual
+protected native callback, receipt_connect=existing bounded connector). Invalid
+owner dependency denies and closes the descriptor. The original receipt action
+keeps its original callback and behavior; no mutation is repeated.
+
+53 paired isolated cases PASS, no skips, using immutable Node543 source archive:
+5 new stream cases plus15 catalog,16 receipt transport,17 nomination controls.
+New cases use actual Node CatalogStateClient/read_catalog_state_async/server and
+Shadify callbacks with real disposable PostgreSQL over connected socketpairs.
+They prove successful read and distinct fresh request correlations, exact finite
+wire scope/keys, unselected null response without SQL, protected origin drift
+rejection, ending-owner final-guard primary commit race ->null/Denied, and cancelled
+SQL cleanup of both descriptors and all sessions. Existing historical immutable
+receipt/control behavior still passes. Kernel socketpair peer credentials are real;
+OS process/cgroup/installation/native/settings observations are synthetic fixtures,
+not root cross-UID or installation qualification. No old privileged fixture ran.
+Log /tmp/shadify-nomination-catalog-stream-543.log; the preceding Node365 guard-race
+log remains separate evidence. Current-state SQL fence/original expiry/read-only
+semantics remain intact. Existing protected browser-origin/provider/access selection,
+independent review, root cleanup/qualification and action-time activation gaps
+remain. No runtime, live database, grant, migration, install, push or other-repo edits.

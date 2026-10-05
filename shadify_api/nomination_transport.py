@@ -225,7 +225,7 @@ class ProtectedNominationComposition:
         return NominationCatalogCallbacks(owner=self.adapter_owner,settings_provider=settings_provider,
             require_selection=require_selection,receipt_connect=receipt_connect)
 
-    async def serve_receipt(self, connection):
+    async def serve_receipt(self, connection,*,catalog_callbacks=None):
         """One connected, protected app-owned descriptor; always close it."""
         try:
             if self.adapter is None and self._initialize is not None:
@@ -244,8 +244,20 @@ class ProtectedNominationComposition:
                     raise MediaError(403, 'Nomination scope mismatch')
                 return await self.adapter.read_operation_result(self.owner_scope, operation_id)
 
+            catalog_options={}
+            if catalog_callbacks is not None:
+                from .nomination_catalog import NominationCatalogCallbacks
+                from node_agent_package_helper.nomination_result_transport import catalog_callbacks_for_selection
+                if (type(catalog_callbacks) is not NominationCatalogCallbacks
+                        or catalog_callbacks.owner is not self.adapter_owner):
+                    raise MediaError(503,'Protected catalog owner unavailable')
+                read_catalog,require_catalog=catalog_callbacks_for_selection(self.selection,
+                    read_owner_state=catalog_callbacks.read_owner_state,
+                    require_owner_current=catalog_callbacks.require_owner_current)
+                catalog_options=dict(read_catalog_state=read_catalog,
+                    require_catalog_current=require_catalog)
             return await serve_result_async(connection, selection=self.selection,
                 management=self.management, read_receipt=receipt,
-                require_selection=selected, require_control=self.require_control)
+                require_selection=selected, require_control=self.require_control,**catalog_options)
         finally:
             connection.close()
