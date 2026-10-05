@@ -1594,3 +1594,28 @@ SQL; existing 11 cancellation/timeout/reverse descriptor cases pass unchanged.
 Positive inherited-manager credentials/protected observations are synthetic;
 the wire and app-side peer are real UDS. No root/cross-UID activation claim.
 Log: /tmp/shadify-node-ba6-endpoint.log. No unrelated suites or media rebuild ran.
+
+
+### Native node identity equality correction (Astra P2, 2026-10-05)
+
+Protected nomination selection now compares the full existing installed native
+binding identity (node_id,app_id,app_instance_id) with Node InstalledSelection,
+not only app/instance. The runtime reads AppSecurityBinding.checkpoint()['identity']
+from the process-owned installed binding and checks its app/instance against
+binding.acquire().status() and the configured Shadify scope. No config field,
+request value or peer first observation supplies node identity. Native status
+alone has app/instance/generation and is insufficient to establish node equality.
+ProtectedNominationComposition.prepare/bind require the runtime-owned
+native_identity_provider. Its selected guard compares all three fields before
+and after rereading the protected installed selection, covering first selection,
+every provider use and immutable receipt guards. Wrong node with the right app,
+instance, scope and unchanged installed metadata fails closed before exchange/SQL.
+The existing Native ON admission proof verifies the real installed binding tuple;
+the focused wrong-node regression covers initial and later mismatch. No shared
+library/Node/source or ManagedReceiver behavior is changed by this scoped fix.
+
+P2 fix proof: 17 affected tests PASS (16 transport and 1 actual Native ON admission),
+no skips. The extended wrong-node regression then PASS again, covering first
+binding, later use and node drift during installed-selection reread, with matching
+app/instance and unchanged scope. No descriptor or SQL is authorized on mismatch.
+Logs: /tmp/shadify-native-node-p2.log and /tmp/shadify-native-node-ending.log.

@@ -53,12 +53,14 @@ class NominationAdmissionTests(fixture.NominationControlCase):
             repo=PostgresMediaRepository(self.connect)
             selected=[]
             composition=Mock()
-            def bind_nomination(owner,scope_provider,receipt_connect):
+            def bind_nomination(owner,scope_provider,receipt_connect,*,native_identity_provider):
                 selected.append(scope_provider())  # Actual current Native ON receiver/instance.
+                self.assertEqual(native_identity_provider(),
+                    (b['node_id'],'shadify_api',b['app_instance_id']))
                 self.assertTrue(callable(receipt_connect))
                 return self.reader  # Explicit synthetic provider; real UDS is separately tested.
             from shadify_api.nomination_transport import LazyNominationProvider
-            composition.prepare.side_effect=lambda *args:LazyNominationProvider(lambda:bind_nomination(*args))
+            composition.prepare.side_effect=lambda *args,**kwargs:LazyNominationProvider(lambda:bind_nomination(*args,**kwargs))
             with patch('shadify_api.replay_bounds.LocalReplayBounds',return_value=bounds),patch('shadify_api.runtime.replay_factory',return_value=factory),patch('shadify_api.runtime.PostgresMediaRepository',return_value=repo),patch('shadify_api.runtime.load_database_config',return_value=Mock(connect=self.connect,connect_nomination_receipt=self.connect)):app=create_runtime_app(directory,nomination_composition=composition)
             composition.prepare.assert_called_once()
             self.assertEqual(selected,[])

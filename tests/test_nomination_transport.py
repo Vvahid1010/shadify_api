@@ -140,7 +140,7 @@ class NominationTransportTests(NominationControlCase):
         selection=InstalledSelection(scope=common,node_id=str(uuid4()),uid=os.getuid(),pid=os.getpid(),
             start_ticks=ticks,source_directory=cwd,source_commit='a'*40,manifest_sha256='b'*64,
             unit='node-agent-shadify-api.service',protected_revision='c'*32)
-        installed=[selection];native=[('shadify_api',self.scope.app_instance_id)];peers=[];threads=[]
+        installed=[selection];native=[(selection.node_id,'shadify_api',self.scope.app_instance_id)];peers=[];threads=[]
         management=ManagementSelection(uid=os.getuid(),pid=os.getpid(),start_ticks=ticks,source_directory=cwd)
         proc=Path(tmp)/'proc';p=proc/str(os.getpid());p.mkdir(parents=True)
         (p/'stat').write_text(Path('/proc',str(os.getpid()),'stat').read_text())
@@ -148,7 +148,7 @@ class NominationTransportTests(NominationControlCase):
         (p/'cwd').symlink_to(cwd,target_is_directory=True)
         (p/'cgroup').write_text('0::/system.slice/node-agent.service\n')
         def scope():
-            if native[0]!=('shadify_api',self.scope.app_instance_id):raise Denied()
+            if native[0][1:]!=('shadify_api',self.scope.app_instance_id):raise Denied()
             return self.scope
         class Backend:
             def installed_selection(_,requested):
@@ -177,7 +177,8 @@ class NominationTransportTests(NominationControlCase):
             require_management(management,credentials,proc=proc);peers.append(credentials)
         composition=ProtectedNominationComposition(connect_descriptor=connect,require_reader_peer=peer,
             read_installed=lambda _:installed[0],management=management,require_control=lambda _:None)
-        connections=[];adapter=composition.bind(self.nom,scope,self.bounded(connections).connect)
+        connections=[];adapter=composition.bind(self.nom,scope,self.bounded(connections).connect,
+            native_identity_provider=lambda:native[0])
         self.nom.provider=adapter
         return composition,installed,native,peers,threads,proc,connections
 
@@ -188,9 +189,9 @@ class NominationTransportTests(NominationControlCase):
             composition,installed,native,peers,threads,proc,_=self.composition(tmp)
             proof=self.nom.read_verified_witness(self.scope,cmd.operation_id)
             self.assertEqual(proof,self.reader.witness);self.assertGreaterEqual(len(peers),6)
-            native[0]=('shadify_api','wrong')
+            native[0]=(installed[0].node_id,'shadify_api','wrong')
             with self.assertRaises(Denied):self.nom.require_current(self.scope,proof)
-            native[0]=('shadify_api',self.scope.app_instance_id)
+            native[0]=(installed[0].node_id,'shadify_api',self.scope.app_instance_id)
             original=installed[0];installed[0]=replace(original,protected_revision='changed')
             with self.assertRaises(Denied):self.nom.require_current(self.scope,proof)
             installed[0]=original
@@ -325,7 +326,9 @@ class NominationTransportTests(NominationControlCase):
             with patch.object(guard,'connect',side_effect=connect):
                 endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
                     read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
-                adapter=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                adapter=endpoint.bind(self.nom,lambda:self.scope,self.connect,
+                    native_identity_provider=lambda:(installed[0].node_id,
+                        self.scope.app_id,self.scope.app_instance_id))
                 self.nom.provider=adapter
                 self.assertIs(adapter._client._peer.__self__,guard)
                 self.assertIs(adapter._client._connect,guard.connect)
@@ -344,7 +347,9 @@ class NominationTransportTests(NominationControlCase):
             with patch.object(guard,'connect',side_effect=direct.connect_descriptor):
                 endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
                     read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
-                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect,
+                    native_identity_provider=lambda:(installed[0].node_id,
+                        self.scope.app_id,self.scope.app_instance_id))
                 with patch.object(self.nom,'connect',side_effect=AssertionError('SQL forbidden')) as connect:
                     with self.assertRaises(Denied):self.nom.read_verified_witness(self.scope,cmd.operation_id)
                     connect.assert_not_called()
@@ -373,7 +378,38 @@ class NominationTransportTests(NominationControlCase):
             with patch.object(guard,'connect',side_effect=connect):
                 endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
                     read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
-                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect,
+                    native_identity_provider=lambda:(installed[0].node_id,
+                        self.scope.app_id,self.scope.app_instance_id))
                 with self.assertRaises(Denied):self.nom.require_current(self.scope)
                 self.assertEqual(calls[0],4)
+            for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
+
+    def test_wrong_native_node_same_app_instance_denies_initial_and_current_selection(self):
+        from node_agent_package_helper.nomination_reader import Denied
+        cmd=self.command();self.apply_command(cmd)
+        with TemporaryDirectory() as tmp:
+            composition,installed,native,_,threads,_,_=self.composition(tmp)
+            original=installed[0]
+            wrong_node=str(uuid4())
+            # Same canonical app/instance/scope, stable installed metadata. Only
+            # node differs: it must fail before descriptor exchange or SQL.
+            native[0]=(wrong_node,self.scope.app_id,self.scope.app_instance_id)
+            with patch.object(composition,'connect_descriptor',side_effect=AssertionError('descriptor forbidden')):
+                with patch.object(self.nom,'connect',side_effect=AssertionError('SQL forbidden')) as connect:
+                    with self.assertRaises(Denied):self.nom.require_current(self.scope)
+                    connect.assert_not_called()
+            native[0]=(original.node_id,self.scope.app_id,self.scope.app_instance_id)
+            def ending_node_drift(_):
+                native[0]=(wrong_node,self.scope.app_id,self.scope.app_instance_id)
+                return original
+            with patch.object(composition,'read_installed',side_effect=ending_node_drift):
+                with self.assertRaises(Denied):self.nom.require_current(self.scope)
+            native[0]=(original.node_id,self.scope.app_id,self.scope.app_instance_id)
+            initial=ProtectedNominationComposition(connect_descriptor=lambda:(_ for _ in ()).throw(AssertionError('descriptor forbidden')),
+                require_reader_peer=composition.require_reader_peer,read_installed=lambda _:replace(original,node_id=wrong_node),
+                management=composition.management,require_control=composition.require_control)
+            with self.assertRaises(Denied):initial.bind(self.nom,lambda:self.scope,self.connect,
+                native_identity_provider=lambda:native[0])
+            self.assertIsNone(initial.adapter)
             for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())

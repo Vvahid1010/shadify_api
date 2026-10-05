@@ -102,19 +102,27 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
     nomination = None
     if config.nomination_scope is not None and repository is not None:
         selected_scope = config.nomination_scope
-        def scope_provider():
+        def native_identity_provider():
             if receiver is None or not receiver.current():
                 raise MediaError(503,'Installed nomination binding unavailable')
             native = binding.acquire()
-            if native.status()[:2] != ('shadify_api',selected_scope.app_instance_id):
-                raise MediaError(503,'Installed nomination instance mismatch')
+            # Existing installed binding tuple, not configuration/request input.
+            identity = tuple(binding.checkpoint()['identity'])
+            if (len(identity) != 3 or any(type(value) is not str for value in identity)
+                    or identity[1:] != native.status()[:2]
+                    or identity[1:] != ('shadify_api',selected_scope.app_instance_id)):
+                raise MediaError(503,'Installed nomination identity mismatch')
+            return identity
+        def scope_provider():
+            native_identity_provider()
             return selected_scope
         if nomination_provider is not None and nomination_composition is not None:
             raise RuntimeError("Select one protected nomination composition")
         nomination = NominationControl(database.connect,scope_provider,nomination_provider)
         if nomination_composition is not None:
             nomination.provider = nomination_composition.prepare(
-                nomination, scope_provider, database.connect_nomination_receipt)
+                nomination, scope_provider, database.connect_nomination_receipt,
+                native_identity_provider=native_identity_provider)
 
     async def readiness():
         checks = {"scope": "profile_database", "authentication": binding.status().get("state"),

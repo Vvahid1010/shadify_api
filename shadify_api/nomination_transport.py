@@ -141,14 +141,15 @@ class ProtectedNominationComposition:
         composition._endpoint_guard = endpoint_guard
         return composition
 
-    def prepare(self, owner, scope_provider, receipt_connect):
+    def prepare(self, owner, scope_provider, receipt_connect, *, native_identity_provider):
         if self._initialize is not None or self.adapter is not None:
             raise MediaError(503, 'Protected composition already selected')
-        lazy = LazyNominationProvider(lambda: self.bind(owner, scope_provider, receipt_connect))
+        lazy = LazyNominationProvider(lambda: self.bind(owner, scope_provider, receipt_connect,
+            native_identity_provider=native_identity_provider))
         self._initialize = lazy.get
         return lazy
 
-    def bind(self, owner, scope_provider, receipt_connect):
+    def bind(self, owner, scope_provider, receipt_connect, *, native_identity_provider):
         # Optional Node dependency is not imported or activated by normal boot.
         from node_agent_package_helper.nomination_contract import Scope
         from node_agent_package_helper.nomination_reader import InstalledSelection, Denied
@@ -161,8 +162,11 @@ class ProtectedNominationComposition:
             raise Denied()
 
         def selected(scope):
+            expected_identity = (selection.node_id, common.app_id, common.app_instance_id)
             if (scope != common or scope_provider() != owner_scope
+                    or native_identity_provider() != expected_identity
                     or self.read_installed(common) != selection
+                    or native_identity_provider() != expected_identity
                     or scope_provider() != owner_scope):
                 raise Denied()
 
