@@ -154,8 +154,10 @@ def create_media_app(storage):
                         if now - last_authority_check >= AUTHORITY_RECHECK_SECONDS:
                             await run_in_threadpool(storage.authorize_read, claims, actor, asset)
                             last_authority_check = time.monotonic()
+                            if claims['exp'] <= int(time.time()): return
                         block = await run_in_threadpool(os.read, stream_fd, min(65536, remaining))
-                        if not block: return
+                        # A queued filesystem read must not extend the grant.
+                        if claims['exp'] <= int(time.time()) or not block: return
                         remaining -= len(block)
                         yield block
                 except (MediaError, StorageUnavailable):

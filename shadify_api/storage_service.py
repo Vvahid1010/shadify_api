@@ -29,7 +29,10 @@ class StorageService:
 
     def issue(self, asset, purpose, actor=None, *, preview=False):
         now = int(time.time())
-        expiry = now + (self.upload_ttl if purpose == 'put' else self.access_ttl)
+        lifetime = self.upload_ttl if purpose == 'put' else self.access_ttl
+        if purpose != 'put' and asset.storage_provider == 'local':
+            lifetime = min(lifetime, 3600)
+        expiry = now + lifetime
         if actor is not None:
             require_fresh_actor(actor)
             expiry = min(expiry, actor.expires_at)

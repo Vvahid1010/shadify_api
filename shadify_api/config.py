@@ -61,7 +61,7 @@ class LocalStorageConfig(BaseModel):
     local_root: str
     media_base_url: str
     upload_ttl_seconds: int = Field(default=300, ge=30, le=900, strict=True)
-    playback_url_ttl_seconds: int = Field(default=900, ge=1, le=604800, strict=True)
+    playback_url_ttl_seconds: int = Field(default=3600, ge=1, le=3600, strict=True)
     max_upload_bytes: int = Field(default=104857600, gt=0, le=104857600, strict=True)
 
 

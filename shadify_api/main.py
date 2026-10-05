@@ -49,7 +49,10 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         except Exception:
             # Provider/database exception strings may contain protected runtime data.
             response = JSONResponse(status_code=503, content={"detail": "API operation unavailable"})
-        response.headers["Cache-Control"] = "no-store"
+        media_access = (request.method == 'POST' and
+                        (request.url.path.startswith('/api/media/') and request.url.path.endswith('/access')
+                         or request.url.path.startswith('/api/tracks/') and request.url.path.endswith('/playback')))
+        response.headers["Cache-Control"] = "private, no-store" if media_access else "no-store"
         return response
 
     @app.exception_handler(MediaError)
