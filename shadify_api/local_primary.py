@@ -1,6 +1,7 @@
 """Finite unwired WSL primary seam. Operational authority belongs to local-control."""
 import hashlib
 import json
+import math
 import time
 from datetime import datetime
 from typing import Literal, Protocol
@@ -87,8 +88,15 @@ class VerifiedLocalContext(Closed):
     binding: WSLBinding
     request_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     authority_audit_reference: str = Field(min_length=1,max_length=200)
-    expires_at: int = Field(ge=1)
+    expires_at: int | float = Field(ge=1)
+    audit_authority_sha256: str | None = Field(default=None,pattern=r"^[a-f0-9]{64}$")
     immutable_executable: bool
+
+    @field_validator("expires_at")
+    @classmethod
+    def finite_expiry(cls,value):
+        if not math.isfinite(value):raise ValueError("Finite authority expiry required")
+        return value
 
 
 class LocalPrimaryContextProvider(Protocol):
@@ -131,7 +139,7 @@ class LocalPrimaryAdapter:
         if (type(context) is not VerifiedLocalContext or type(context.binding) is not WSLBinding
                 or context.request_sha256!=command_digest(command)
                 or context.binding.reference!=command.binding_reference
-                or context.immutable_executable is not True or int(time.time())>=context.expires_at):
+                or context.immutable_executable is not True or time.time()>=context.expires_at):
             raise MediaError(403,'Verified local primary context required')
         binding=context.binding
         actual=self.native_identity_provider()
@@ -139,7 +147,7 @@ class LocalPrimaryAdapter:
             raise MediaError(403,'Protected WSL instance mismatch')
         if self.context_provider.require_current(command,context) is not None:
             raise MediaError(403,'Verified local primary context required')
-        if (self.native_identity_provider()!=actual or int(time.time())>=context.expires_at):
+        if (self.native_identity_provider()!=actual or time.time()>=context.expires_at):
             raise MediaError(403,'Protected local context changed or expired')
 
     def _database(self,c,binding):
@@ -161,6 +169,9 @@ class LocalPrimaryAdapter:
             raise MediaError(422,'Existing active canonical Shadify mapping required')
         return user
 
+    def _admit(self,command,connection):
+        return self.context_provider.admit(command)
+
     def execute(self,command):
         if type(command) is not LocalPrimaryCommand:
             raise MediaError(422,'Closed local primary command required')
@@ -171,11 +182,11 @@ class LocalPrimaryAdapter:
         if self.context_provider is None or self.native_identity_provider is None:
             raise MediaError(503,'Protected local primary authority unavailable')
         # Each apply freshly admits itself; dry-run is not a reusable capability.
-        context=self.context_provider.admit(command)
-        self._current(command,context)
         apply=command.mode=='apply'
         with self.repository.connect() as connection:
             if not apply:connection.execute('SET TRANSACTION READ ONLY')
+            context=self._admit(command,connection)
+            self._current(command,context)
             with connection.cursor(row_factory=dict_row) as c:
                 self._database(c,context.binding)
                 state=c.execute(sql.SQL('SELECT * FROM {} WHERE singleton'+
@@ -216,7 +227,8 @@ class LocalPrimaryAdapter:
                 if changed is None:raise MediaError(409,'Local primary prestate changed')
                 audit=self.repository._admin_audit(c,None,'local_'+command.operation.replace('-','_'),
                     target=command.mapping.account_id,schema=context.binding.schema_name,details={'operation_id':command.operation_id,
-                        'authority_reference':context.authority_audit_reference,'old_primary':primary,
+                        'authority_reference':context.authority_audit_reference,
+                        'audit_authority_sha256':context.audit_authority_sha256,'old_primary':primary,
                         'expected_revision':state['revision'],'revision':changed['revision'],
                         'delegates':command.delegates,'previous_delegates':delegates})
                 self._mapping(c,command,context.binding,locked=True)

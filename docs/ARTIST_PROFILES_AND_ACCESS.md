@@ -1851,3 +1851,68 @@ pass. Log /tmp/shadify-wsl-primary-schema-binding.log. Prior 39 artist/nominatio
 results remain historical evidence; they were not rerun for this bounded correction.
 Delegate-CAS commit and Web contract are unchanged. Adapter remains unwired with
 the same common-owner provider/integration dependencies; no live DB/runtime work.
+
+
+### Frozen common verified-selection composition (2026-10-05)
+
+Source-only local_primary_composition.LocalPrimaryComposition consumes exactly
+Topology commit 7701286b9e434d0f5f2b33dd14c3cfb4cc9a2925, common source SHA256
+ea20ef67109dc6c20aa23aa8e168d28aed063a74fd5ce667aeb72167c67d06fa.
+No Topology source/interface is changed. This composition selects no operational
+module import/path, policy, domain, account, binding or factory. Missing any
+dependency denies before a connection is opened. Common source is checked against
+the exact pin. A future protected owner supplies the installed module, real policy,
+ProtectedCompositionBinding and existing native identity callback internally;
+these dependencies are never HTTP/CLI/environment choices. The fixed connection
+factory belongs to that protected binding, never to a caller DSN.
+
+The original app command translates to closed RequestV1/SelectionRequestV1 with
+explicit app scope shadify (separate from protected DNS domain), exact Auth/local
+IDs, mode, authority/binding references and recovery expectations. The exact
+existing local UUID is mapping_ref, verified by actual canonical mapping reads in
+the same transaction. Common's stricter 128-character reference grammar rejects
+unsupported app references without aliases, hashes, truncation or normalization.
+Initialization requires app revision zero, since common omits recovery expectation
+fields for initialization. Operation UUID/full immutable app command remain bound
+by the app's existing command digest. No public request/schema is changed.
+
+The adapter now admits context inside its actual transaction (after READ ONLY for
+dry-run). Composition observes physical DB name/OID/schema/postmaster/address/port
+and actual native instance on that exact connection, compares them to the protected
+binding, and constructs BoundTargetV1 with the independently protected database
+reference and DNS scope. It never reuses only configured DSN/factory metadata as
+connection evidence. It reads the actual already-established canonical active
+mapping in that same transaction. All business/mapping relations retain explicit
+verified-schema qualification from the preceding review fix.
+
+verify_selection_v1 is the only authority result consumed: DecisionV1 eligible
+is rejected. The exact first verifier-issued VerifiedSelectionV1 object is held
+internally as original and passed to each fresh recheck after lock waits, after
+audit and immediately before commit. Composition does not construct/copy a common
+selection, mint a TTL, extend expiry or derive an authority digest. The app's
+context wrapper preserves the exact verifier expiry (including fractional values),
+operator_audit_ref and audit_authority_sha256; expiry must be finite. Existing
+legacy synthetic context tests may omit the digest; this common composition
+requires it through the frozen common verifier and writes it unchanged in audit.
+The maintenance audit has null actor account/user, target remains the nominee;
+the verified operator is separate and is not synthesized as an Auth user.
+
+58 isolated tests PASS, no skips: 10 exact-common composition cases, 18 WSL adapter
+cases and 30 admin/CAS cases. Composition fixtures import the exact immutable
+common test copy by stdlib importlib source path, mocking only installed/WSL
+observations and using a synthetic selection policy. Tests cover absent selection,
+exact domain/mapping, operator/target separation and preserved digest, unchanged
+original object, strict read-only dry-run, mode replay, wrong actual schema and
+wrong PostgreSQL database, wrong binding/eligible-decision rejection, changed
+operator/digest/expiry denial, expiry during a real admin lock wait, revocation
+after audit rollback, unsupported references and initialization revision zero.
+Log /tmp/shadify-wsl-common-composition-final.log. Earlier 39 artist/nomination/me
+results remain historical; no unrelated suite was rerun.
+
+Activation remains unperformed: common owner must choose real operator policy,
+protected binding/factory/DNS scope, immutable installed executable/dependency
+closure and existing real-login mapping; independent review and separately
+authorized integration/installation remain. Root UID, shell access, DecisionV1,
+synthetic policy or caller values cannot replace those. No credentials, real
+grants, active database, migrations, runtime, installation, push or UI changes.
+CAS/Web contract, ordinary closed primary transfer and preserved media remain.
