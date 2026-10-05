@@ -1619,3 +1619,61 @@ no skips. The extended wrong-node regression then PASS again, covering first
 binding, later use and node drift during installed-selection reread, with matching
 app/instance and unchanged scope. No descriptor or SQL is authorized on mismatch.
 Logs: /tmp/shadify-native-node-p2.log and /tmp/shadify-native-node-ending.log.
+
+
+### Actual Node installed-endpoint v2 composition (2026-10-05)
+
+Node b65ad1848cfa0ef1530d88be4aaa45f62a283cfe supplies the actual bounded
+ProtectedLoadedUnitObserver and zero-argument compose_endpoint_guard from existing
+protected setup/upgrade receipts, installed current release, loaded fixed systemd
+units and official complete release seal verification. The earlier source-observer
+implementation gap is closed by Node; actual app read access and installed latency
+remain separate OS qualification requirements. Shared ancestor content timestamps
+are excluded by Node's corrected stable comparison; inode/device/owner/group/type/
+mode remain exact, while socket/source/launcher/release retain full commitments.
+
+ProtectedNominationComposition.from_installed_endpoint explicitly calls that
+actual Node factory and then the existing exact from_endpoint/client_for_endpoint
+path. It accepts no replacement observer/expected snapshot/group/path from app or
+request settings. The default app factory does not call it. Node denies missing
+group/inactive unit/unreadable receipt, sealed provider bytes, semantic drift or
+full verifier timeout, without privilege fallback. Existing lazy native full
+node/app/instance equality and immutable SQL cancellation/cleanup stay required.
+
+Official Shadify Node installation metadata exists: catalog shadify-api,
+instance slot shadify-api, user na-shadify-api, unit
+node-agent-shadify-api.service, protected record
+/var/lib/node-agent-packages/shadify-api-installed.json and release source under
+/opt/node-agent-apps/shadify-api/releases/<approved app source commit>/source.
+Use the existing ProtectedInstalledSelectionReader, official app-source verifier,
+protected binding source/manifest, Node owner identity and current service process
+commitment. No new app catalog, topology adoption or record is invented.
+
+Owner runtime requirements for Node: supply installed Node helper/release at its
+reviewed exact version; protected Shadify nomination Scope matching real native
+node/app/instance and selected deployment; existing exact management selection/
+current guard and connected reverse descriptor; actual read access to the existing
+Node protected receipts, sealed launcher/provider/release and loaded-unit data,
+plus existing approved reader-group membership. Supply the dedicated numeric DB
+endpoint/SELECT role and prove independent connection/query/transport latency.
+No real values, group membership or extra privileges are chosen in this source
+slice. Root Accept=yes/cross-UID sandbox remains permission-blocked, not replaced
+by user-manager evidence or fixture observation.
+
+Bounded installed-endpoint boundary result: 3 focused source tests PASS, no skips.
+The positive fixture reuses Node's actual ProtectedLoadedUnitObserver, existing
+setup receipt schema and official full seal verifier child. Loaded systemctl text
+and root filesystem/manager/group snapshot are remapped synthetic OS observations;
+no app-supplied production fake observer exists. Actual payload tamper, loaded
+module change and missing authoritative receipt deny both ending guard and fresh
+factory; absent existing group denies before observation. Log:
+/tmp/shadify-node-b65-installed-endpoint.log. Only this changed boundary was tested.
+
+Pending upstream correction reported during this slice: Nodeb65 queries the bare
+@.service template with systemctl show, which is unsupported. Node owns the fix to
+query a supported nonstarted instance and validate its Id/template FragmentPath.
+These fixture results do not establish that b65's actual loaded-unit observer is
+accepted or usable against systemd. No app-side workaround is made. Rebind/reprove
+the same explicit factory against Node's corrected reviewed source candidate.
+Root runner remains unexecuted and under review; cross-UID permission remains
+pending. Prior exact source/artifact/qualification evidence is preserved.

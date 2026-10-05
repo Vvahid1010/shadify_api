@@ -141,6 +141,18 @@ class ProtectedNominationComposition:
         composition._endpoint_guard = endpoint_guard
         return composition
 
+    @classmethod
+    def from_installed_endpoint(cls, *, read_installed, management, require_control):
+        """Use Node's real protected record/loaded-unit/seal composition.
+
+        Explicit installer construction only. No observer, snapshot, group,
+        socket path or permissive fallback is accepted from app/wire settings.
+        Absent/unreadable installation/access fails through Node's exact factory.
+        """
+        from node_agent_package_helper.nomination_endpoint_installation import compose_endpoint_guard
+        return cls.from_endpoint(endpoint_guard=compose_endpoint_guard(),
+            read_installed=read_installed, management=management, require_control=require_control)
+
     def prepare(self, owner, scope_provider, receipt_connect, *, native_identity_provider):
         if self._initialize is not None or self.adapter is not None:
             raise MediaError(503, 'Protected composition already selected')
