@@ -1760,3 +1760,68 @@ retirement of ordinary primary transfer. Together with the 30 admin/CAS tests,
 69 distinct affected cases pass. Log: /tmp/shadify-admin-cas-flow-regression.log.
 The local-storage test setup receives only the new explicit revision parameter;
 no local media implementation, artifact or deployment is edited/requalified here.
+
+
+### Finite protected WSL primary adapter (2026-10-05)
+
+Source-only local_primary.LocalPrimaryAdapter implements initialize-primary and
+recover-primary against the existing app-owned tables. It is unwired: no CLI,
+route, service, installation, runtime default provider or operator is selected.
+Missing protected context/native provider denies both modes before database use.
+This follows wsl.local-primary-admin.owner-handoff.v1, input SHA256
+1f23deb96f8047defdc20f359a4773b20177909b6c025a224ea30edcb1d0c387.
+Topology/local-control owns the concrete protected authority, binding and approved
+immutable executable verification. This app does not implement common policy.
+
+LocalPrimaryCommand is strict, frozen and closed to extra fields. It carries an
+operation UUID, authority/binding references, exact existing account/local-user
+mapping for app shadify_api/domain shadify, expected whole-authority revision and
+mode (default dry-run). Recovery additionally requires exact prior primary and an
+explicit retain/revoke delegate policy. Caller DSN, environment selection, VM,
+root UID, username, arbitrary instance and Node-witness declarations are rejected.
+There is no first-user assignment, guessed identity or account creation.
+
+The trusted server-side LocalPrimaryContextProvider admits each full command and
+mode afresh, then require_current repeatedly verifies actual protected evidence.
+Both callbacks must be pure read-only verification. Its VerifiedLocalContext binds
+the command digest, expiry, immutable executable, nonsecret authority audit
+reference and WSLBinding. The binding requires literal WSL/app/domain, canonical
+Node/instance UUIDs, exact database name/OID/schema, postmaster start, address and
+port. Actual existing native identity must match the full node/app/instance tuple;
+actual connection facts are compared before and after locks/effects. Context is
+checked again after the final database I/O immediately before transaction commit.
+These models are server output, never caller proof or a root-shell shortcut.
+
+Default dry-run uses PostgreSQL READ ONLY and takes no row locks or audit/account/
+schema writes. It returns eligible/denied, current primary/revision and no audit
+ID; a dry-run result cannot authorize apply. Explicit apply locks existing admin
+state then the already admitted active target mapping. Mapping requires exact
+canonical account/local UUID plus existing canonical admission provenance; no
+Authentication private database or synthetic operational assertion is accepted.
+Initialization requires no primary and no ambiguous existing delegates. Recovery
+requires the current prior primary and revision; an inactive old primary remains
+recoverable. Retain preserves other delegates; revoke removes all; the successor
+delegate row is removed and the old primary is never automatically delegated.
+Authority, delegates, revision and audit commit together. Audit records operation
+UUID, verified nonsecret authority reference, prestate and delegate policy; the
+apply result includes the actual committed audit UUID. Stale state returns409.
+Missing schema denies without DDL. Unknown commit outcome is not automatically
+retried and introduces no status route; existing audit/state evidence is used.
+
+Sixteen isolated PostgreSQL tests PASS, no skips, including strict inputs/default
+denial, read-only dry-run, exact canonical mapping/scope/database/native identity,
+fresh apply admission, one-winner initialize/recovery races, explicit policies,
+audit failure rollback, authority revocation and target deactivation while waiting
+on real row locks, and expiry during the final database check. Together with the
+69 preceding affected admin/artist/nomination cases, 85 distinct cases pass. The
+30 admin cases were also rechecked after returning the audit UUID. Logs:
+/tmp/shadify-wsl-primary-final.log and
+/tmp/shadify-wsl-primary-final-boundary.log. Fixtures simulate local-control only;
+they establish no real operator authority, root access or installed WSL policy.
+
+Remaining integration decisions belong to the common owner/parent: concrete pure
+provider bridge, protected authority and binding records, immutable executable
+approval, real target established by login, packaging and independent review.
+No credential, real grant, security setting, live migration, installation, push
+or deployment occurred. Existing VM Node nomination remains independent. Web
+requires only the preceding delegate-CAS/closed-transfer contract changes.

@@ -27,11 +27,13 @@ class AppAdminRepository:
         return state
 
     def _admin_audit(self, c, actor, action, *, target=None, artist=None, details=None):
+        audit_id = uuid4()
         c.execute('INSERT INTO shadify_app_admin_audit '
                   '(id,actor_user_id,actor_account_id,target_account_id,artist_id,action,details) '
                   'VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                  (uuid4(), actor.user_id if actor else None, actor.account_id if actor else None,
+                  (audit_id, actor.user_id if actor else None, actor.account_id if actor else None,
                    target, artist, action, Jsonb(details or {})))
+        return audit_id
 
     def bootstrap_primary(self, target, *, operator_reference):
         """Protected local preparation seam, never wired to a request or config.
