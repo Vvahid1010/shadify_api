@@ -121,6 +121,25 @@ class ProtectedNominationComposition:
         self.require_control = require_control
         self.adapter = None
         self._initialize = None
+        self._endpoint_guard = None
+
+    @classmethod
+    def from_endpoint(cls, *, endpoint_guard, read_installed, management, require_control):
+        """Consume Node's exact approved guard; never pin first observations.
+
+        Node ownership supplies the protected expected EndpointSnapshot and
+        bounded actual loaded-unit/sealed-release observer. This factory cannot
+        construct those from app settings, request JSON or a responding peer.
+        """
+        from node_agent_package_helper.nomination_endpoint import ProtectedReaderEndpointGuard
+        from node_agent_package_helper.nomination_reader import Denied
+        if type(endpoint_guard) is not ProtectedReaderEndpointGuard:
+            raise Denied()
+        composition = cls(connect_descriptor=endpoint_guard.connect,
+            require_reader_peer=endpoint_guard.require_peer, read_installed=read_installed,
+            management=management, require_control=require_control)
+        composition._endpoint_guard = endpoint_guard
+        return composition
 
     def prepare(self, owner, scope_provider, receipt_connect):
         if self._initialize is not None or self.adapter is not None:
@@ -158,8 +177,15 @@ class ProtectedNominationComposition:
             return Witness.model_validate(body)
 
         selected(common)
-        client = NominationProviderClient(scope=common, connect=self.connect_descriptor,
-            require_peer=self.require_reader_peer, require_selection=selected)
+        if self._endpoint_guard is not None:
+            from node_agent_package_helper.nomination_endpoint import client_for_endpoint
+            client = client_for_endpoint(scope=common, guard=self._endpoint_guard,
+                require_selection=selected)
+        else:
+            # Retain explicit trusted callback construction for direct source
+            # fixtures and prior owner integration; never infer activation peers.
+            client = NominationProviderClient(scope=common, connect=self.connect_descriptor,
+                require_peer=self.require_reader_peer, require_selection=selected)
         receipt = BoundedReceiptReader(owner=owner, connect=receipt_connect)
         adapter = AppProviderAdapter(client=client, owner_scope=owner_scope,
             common_scope=common, map_witness=map_witness,

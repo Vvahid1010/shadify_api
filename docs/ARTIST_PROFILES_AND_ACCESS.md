@@ -1545,3 +1545,52 @@ so crossing a clock second cannot turn it into a permitted 60-second assertion.
 Logs: /tmp/shadify-node4c-integration.log and
 /tmp/shadify-node4c-worker-fence.log. Fixture source is an immutable git archive
 of Node4c, not its mutable owner's worktree. No unrelated suite/media rebuild ran.
+
+
+### Exact Node endpoint-v1 consumption (2026-10-05)
+
+Node source ba6b23ad16f1ed11e10a94d891024ce4a881accb adds the actual
+node.admin-nomination-reader-endpoint.v1 contract. The earlier semantic descriptor
+list is superseded by its frozen EndpointSnapshot, ReaderUnits and FileCommitment
+models. ProtectedNominationComposition.from_endpoint requires the exact Node
+ProtectedReaderEndpointGuard and binds client_for_endpoint directly. It selects
+neither a path nor a listener/child PID. The default app factory is still absent.
+Existing explicit callback construction remains for trusted direct source fixtures;
+production endpoint composition must use the actual Node guard, not infer a child
+process from inherited SO_PEERCRED.
+
+The Node contract fixes /run/node-agent-nomination-reader/reader.sock, root-owned
+0660 socket/0750 parent with the existing approved reader group; no app-write in
+any parent. Its approved protected EndpointSnapshot pins actual manager PID1
+start/UIDs/systemd, full protected files, unchanged app UIDs/groups and exact
+ReaderUnits. The loaded units must be socket node-agent-nomination-reader.socket
+and service template node-agent-nomination-reader@.service, active Accept=yes,
+no dropins, exact listen path and ExecStart (/usr/bin/python3,-I,
+/usr/lib/node-agent/node_agent_setup_launcher.py), module
+node_agent_package_helper.nomination_reader. ReaderUnits carries exact fragment/
+launcher hashes, sealed release path/digest/source40/manifest64 and protected
+installation revision. Node's observe_endpoint(read_units=...) rereads real
+protected files/proc and compares loaded-unit observations; the guard checks the
+complete approved snapshot before connect and before/after exchange. PID1/root
+credentials are necessary alongside this provenance, never sufficient.
+
+Narrow owner binding gap: no approved real ReaderUnits/EndpointSnapshot or real
+bounded loaded-unit/seal observer is supplied to Shadify in this source handoff.
+The mandatory read_units callback must query actual trusted systemd loaded socket
+and service-template semantics (FragmentPath, DropInPaths, Listen, Accept,
+ExecStart, Environment and approved sandbox), verify actual root-protected unit
+and launcher bytes and the existing sealed release, and match reviewed protected
+installation provenance. Shadify cannot substitute declared settings, on-disk
+hashes alone or first observed peer/snapshot. Node owns that observer/installation
+record. No real group, hash, revision, installed path, scope or peer is guessed.
+Until it is supplied and OS-qualified, runtime endpoint activation stays closed.
+Actual root Accept=yes/cross-UID sandbox permission remains blocked; earlier
+Accept=no proof and synthetic source descriptors do not resolve it.
+
+Exact endpoint-v1 source result: 15 focused transport tests PASS, no skips, against
+immutable Nodeba6 archive. Four added cases check exact guard/factory pairing,
+closed guard type, ending full-snapshot drift and actual nonroot UDS denial before
+SQL; existing 11 cancellation/timeout/reverse descriptor cases pass unchanged.
+Positive inherited-manager credentials/protected observations are synthetic;
+the wire and app-side peer are real UDS. No root/cross-UID activation claim.
+Log: /tmp/shadify-node-ba6-endpoint.log. No unrelated suites or media rebuild ran.

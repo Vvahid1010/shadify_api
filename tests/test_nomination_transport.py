@@ -270,3 +270,110 @@ class NominationTransportTests(NominationControlCase):
             try:asyncio.run(run())
             finally:node.close();app.close()
             for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
+
+    def endpoint_descriptor(self):
+        # Explicit synthetic approved descriptor; never observe/pin live values.
+        import stat
+        from node_agent_package_helper.nomination_endpoint import (
+            SOCKET,LAUNCHER,MODULE,ReaderUnits,FileCommitment,EndpointSnapshot)
+        units=ReaderUnits('node-agent-nomination-reader.socket','node-agent-nomination-reader@.service',
+            Path('/etc/systemd/system/node-agent-nomination-reader.socket'),
+            Path('/etc/systemd/system/node-agent-nomination-reader@.service'),
+            'a'*64,'b'*64,(),True,True,SOCKET,('/usr/bin/python3','-I',str(LAUNCHER)),
+            'c'*64,MODULE,Path('/opt/node-agent/releases/source-fixture'),'d'*64,True,'e'*40,'f'*64,'a'*64)
+        leaves={SOCKET,LAUNCHER,units.socket_fragment,units.service_fragment,units.release_path}
+        paths=set(leaves)
+        for path in leaves:paths.update(path.parents)
+        files=[]
+        for index,path in enumerate(sorted(paths)):
+            mode=stat.S_IFDIR|0o755;gid=0
+            if path==SOCKET:mode=stat.S_IFSOCK|0o660;gid=1002
+            elif path==SOCKET.parent:mode=stat.S_IFDIR|0o750;gid=1002
+            elif path in (LAUNCHER,units.socket_fragment,units.service_fragment):mode=stat.S_IFREG|0o644
+            files.append(FileCommitment(path,1,index+1,0,gid,mode,0,1,1))
+        return EndpointSnapshot(1,23,(0,0,0,0),'systemd',units,tuple(files),(1000,)*4,(1002,))
+
+    def test_endpoint_factory_rejects_declarations_and_nonexact_guards(self):
+        from node_agent_package_helper.nomination_endpoint import ProtectedReaderEndpointGuard
+        from node_agent_package_helper.nomination_reader import Denied
+        expected=self.endpoint_descriptor()
+        class DerivedGuard(ProtectedReaderEndpointGuard):pass
+        for guard in (None,expected,{'root_uid':0},DerivedGuard(expected=expected,observe=lambda:expected,group_id=1002)):
+            with self.assertRaises(Denied):
+                ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
+                    read_installed=lambda _:None,management=None,require_control=lambda _:None)
+
+    def test_actual_endpoint_factory_pairs_synthetic_manager_provenance_with_real_node_uds(self):
+        from node_agent_package_helper.nomination_endpoint import ProtectedReaderEndpointGuard
+        cmd=self.command();self.apply_command(cmd)
+        with TemporaryDirectory() as tmp:
+            direct,installed,_,_,threads,_,_=self.composition(tmp)
+            expected=self.endpoint_descriptor();calls=[]
+            def observe():calls.append(True);return expected
+            guard=ProtectedReaderEndpointGuard(expected=expected,observe=observe,group_id=1002)
+            class SyntheticManagerDescriptor:
+                # Wire is a real UDS; only inherited-manager credentials are
+                # synthetic. This is not actual root/socketactivation evidence.
+                def __init__(self,connection):self.connection=connection
+                def __getattr__(self,name):return getattr(self.connection,name)
+                def getsockopt(self,level,option,*args):
+                    if (level,option)==(socket.SOL_SOCKET,socket.SO_PEERCRED):return struct.pack('3i',1,0,0)
+                    return self.connection.getsockopt(level,option,*args)
+            def connect():
+                guard.current()
+                return SyntheticManagerDescriptor(direct.connect_descriptor())
+            with patch.object(guard,'connect',side_effect=connect):
+                endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
+                    read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
+                adapter=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                self.nom.provider=adapter
+                self.assertIs(adapter._client._peer.__self__,guard)
+                self.assertIs(adapter._client._connect,guard.connect)
+                proof=self.nom.read_verified_witness(self.scope,cmd.operation_id)
+                self.assertEqual(proof,self.reader.witness);self.assertGreaterEqual(len(calls),15)
+            for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
+
+    def test_endpoint_factory_denies_real_nonroot_peer_before_sql(self):
+        from node_agent_package_helper.nomination_endpoint import ProtectedReaderEndpointGuard
+        from node_agent_package_helper.nomination_reader import Denied
+        cmd=self.command();self.apply_command(cmd)
+        with TemporaryDirectory() as tmp:
+            direct,installed,_,_,threads,_,_=self.composition(tmp)
+            expected=self.endpoint_descriptor()
+            guard=ProtectedReaderEndpointGuard(expected=expected,observe=lambda:expected,group_id=1002)
+            with patch.object(guard,'connect',side_effect=direct.connect_descriptor):
+                endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
+                    read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
+                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                with patch.object(self.nom,'connect',side_effect=AssertionError('SQL forbidden')) as connect:
+                    with self.assertRaises(Denied):self.nom.read_verified_witness(self.scope,cmd.operation_id)
+                    connect.assert_not_called()
+            for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
+
+    def test_endpoint_factory_ending_snapshot_drift_cannot_be_cached_authority(self):
+        from node_agent_package_helper.nomination_endpoint import ProtectedReaderEndpointGuard
+        from node_agent_package_helper.nomination_reader import Denied
+        cmd=self.command();self.apply_command(cmd)
+        with TemporaryDirectory() as tmp:
+            direct,installed,_,_,threads,_,_=self.composition(tmp)
+            expected=self.endpoint_descriptor();calls=[0]
+            changed=replace(expected,units=replace(expected.units,release_digest='0'*64))
+            def observe():
+                calls[0]+=1
+                return expected if calls[0]<=3 else changed
+            guard=ProtectedReaderEndpointGuard(expected=expected,observe=observe,group_id=1002)
+            class SyntheticManagerDescriptor:
+                def __init__(self,connection):self.connection=connection
+                def __getattr__(self,name):return getattr(self.connection,name)
+                def getsockopt(self,level,option,*args):
+                    if (level,option)==(socket.SOL_SOCKET,socket.SO_PEERCRED):return struct.pack('3i',1,0,0)
+                    return self.connection.getsockopt(level,option,*args)
+            def connect():
+                guard.current();return SyntheticManagerDescriptor(direct.connect_descriptor())
+            with patch.object(guard,'connect',side_effect=connect):
+                endpoint=ProtectedNominationComposition.from_endpoint(endpoint_guard=guard,
+                    read_installed=lambda _:installed[0],management=direct.management,require_control=direct.require_control)
+                self.nom.provider=endpoint.bind(self.nom,lambda:self.scope,self.connect)
+                with self.assertRaises(Denied):self.nom.require_current(self.scope)
+                self.assertEqual(calls[0],4)
+            for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
