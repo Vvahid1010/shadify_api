@@ -1825,3 +1825,29 @@ approval, real target established by login, packaging and independent review.
 No credential, real grant, security setting, live migration, installation, push
 or deployment occurred. Existing VM Node nomination remains independent. Web
 requires only the preceding delegate-CAS/closed-transfer contract changes.
+
+
+### WSL verified-schema relation binding review correction (2026-10-05)
+
+Astra Standard accepted delegate CAS and identified PostgreSQL implicit pg_temp
+lookup as a WSL P2 blocker. SET LOCAL search_path alone does not bind a relation.
+Every adapter state read/lock, current/prior identity mapping read/lock, delegate
+read/delete, primary CAS update and audit insert now uses a quoted two-part
+Identifier(verified_schema, table). The existing audit helper accepts this explicit
+schema for the local adapter; ordinary app audit callers retain their existing
+behavior. Connection fact functions and pg_database are explicitly pg_catalog
+qualified. The search_path setting remains for existing connection/schema checks,
+never as the security boundary for these queries. No migration is rewritten.
+
+Isolated PostgreSQL proof: 18 WSL cases plus 30 admin/CAS cases PASS (48 total),
+no skips. Two added tests cover real pg_temp shadows of all four local-primary
+relations with false revision/inactive mapping: dry-run and apply select/update
+only verified real tables, return the real audit UUID and leave every shadow
+unchanged. Missing real state, identity, delegate or audit table fails UndefinedTable
+despite a populated shadow, with primary/delegate/revision/audit rollback and no
+shadow effects; both dry-run and apply are checked where the table is required.
+Existing concurrency, lock-wait revocation, final expiry and policy proofs still
+pass. Log /tmp/shadify-wsl-primary-schema-binding.log. Prior 39 artist/nomination/me
+results remain historical evidence; they were not rerun for this bounded correction.
+Delegate-CAS commit and Web contract are unchanged. Adapter remains unwired with
+the same common-owner provider/integration dependencies; no live DB/runtime work.

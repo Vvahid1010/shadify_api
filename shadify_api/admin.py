@@ -1,5 +1,6 @@
 """Small app-owned admin boundary; no operational bootstrap HTTP endpoint."""
 from uuid import uuid4
+from psycopg import sql
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .auth import require_fresh_actor
@@ -26,11 +27,12 @@ class AppAdminRepository:
             raise MediaError(503, 'Application admin schema unavailable')
         return state
 
-    def _admin_audit(self, c, actor, action, *, target=None, artist=None, details=None):
+    def _admin_audit(self, c, actor, action, *, target=None, artist=None, details=None, schema=None):
         audit_id = uuid4()
-        c.execute('INSERT INTO shadify_app_admin_audit '
+        relation = sql.Identifier(schema, 'shadify_app_admin_audit') if schema is not None else sql.Identifier('shadify_app_admin_audit')
+        c.execute(sql.SQL('INSERT INTO {} '
                   '(id,actor_user_id,actor_account_id,target_account_id,artist_id,action,details) '
-                  'VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                  'VALUES (%s,%s,%s,%s,%s,%s,%s)').format(relation),
                   (audit_id, actor.user_id if actor else None, actor.account_id if actor else None,
                    target, artist, action, Jsonb(details or {})))
         return audit_id

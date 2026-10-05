@@ -1,11 +1,13 @@
 """Disposable SQL proof, synthetic protected local-control context only."""
 import time
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Barrier, Event
 from unittest.mock import patch
 from uuid import uuid4
 import psycopg
+from psycopg import sql
 from psycopg.rows import dict_row
 from authority_fixture import admitted_actor
 from test_artist_postgres import ArtistPostgresCase
@@ -279,3 +281,64 @@ class LocalPrimaryTests(ArtistPostgresCase):
             with self.assertRaises(MediaError) as error:self.adapter.execute(command)
         self.assertEqual(error.exception.status,403);self.assertEqual(calls[0],3)
         self.assertEqual(self.snapshot(),before)
+
+
+    @contextmanager
+    def shadow_connection(self, observations):
+        connection=self.connect()
+        names=('shadify_app_admin','shadify_users','shadify_app_admin_delegates','shadify_app_admin_audit')
+        def snapshot():
+            return tuple(connection.execute(sql.SQL('SELECT * FROM {} ORDER BY 1').format(
+                sql.Identifier('pg_temp',name))).fetchall() for name in names)
+        try:
+            for name in names:
+                connection.execute(sql.SQL('CREATE TEMP TABLE {} AS SELECT * FROM {}').format(
+                    sql.Identifier(name),sql.Identifier(self.binding.schema_name,name)))
+            # Deliberately false mapping/prestate: any unqualified read would deny.
+            connection.execute("UPDATE pg_temp.shadify_users SET active=false WHERE auth_account_id='owner-a'")
+            connection.execute('UPDATE pg_temp.shadify_app_admin SET revision=999999')
+            connection.commit();before=snapshot();connection.commit()
+            try:
+                yield connection
+            except BaseException:
+                connection.rollback();raise
+            else:connection.commit()
+            finally:
+                observations.append((before,snapshot()))
+        finally:connection.close()
+
+    def test_temporary_shadow_tables_cannot_redirect_dry_run_or_apply(self):
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'],expected_revision=self.admin_revision())
+        original=self.snapshot();observations=[]
+        with patch.object(self.repo,'connect',side_effect=lambda:self.shadow_connection(observations)):
+            dry=self.adapter.execute(self.command())
+            self.assertEqual(dry['outcome'],'eligible');self.assertEqual(dry['revision'],self.admin_revision())
+            self.assertEqual(self.snapshot(),original)
+            result=self.adapter.execute(self.command(mode='apply',delegates='revoke'))
+        self.assertEqual(result['revision'],original[0][0][1]+1)
+        self.assertEqual(result['primary_account_id'],'owner-a')
+        after=self.snapshot()
+        self.assertEqual(after[1],[]);self.assertEqual(after[3:],original[3:])
+        with self.connect() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM shadify_app_admin_audit WHERE id=%s',
+                (result['audit_id'],)).fetchone()[0],1)
+        self.assertEqual(len(observations),2)
+        for before,after_shadow in observations:self.assertEqual(after_shadow,before)
+
+    def test_missing_verified_table_never_falls_back_to_temporary_shadow(self):
+        for name in ('shadify_app_admin','shadify_users','shadify_app_admin_delegates','shadify_app_admin_audit'):
+            for mode in ('dry-run','apply') if name!='shadify_app_admin_audit' else ('apply',):
+                with self.subTest(table=name,mode=mode):
+                    command=self.command(mode=mode);before=self.snapshot();observations=[]
+                    @contextmanager
+                    def missing():
+                        with self.shadow_connection(observations) as c:
+                            # Renaming keeps FK/trigger relationships valid while hiding the real name.
+                            c.execute(sql.SQL('ALTER TABLE {} RENAME TO {}').format(
+                                sql.Identifier(self.binding.schema_name,name),sql.Identifier(name+'_hidden')))
+                            yield c
+                    with patch.object(self.repo,'connect',side_effect=missing):
+                        with self.assertRaises(psycopg.errors.UndefinedTable):self.adapter.execute(command)
+                    self.assertEqual(self.snapshot(),before)
+                    self.assertEqual(len(observations),1)
+                    self.assertEqual(observations[0][0],observations[0][1])

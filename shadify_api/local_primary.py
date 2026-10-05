@@ -109,10 +109,10 @@ def command_digest(command):
         separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
 
 
-DATABASE_FACTS = ("SELECT current_database() AS database_name, "
-    "(SELECT oid FROM pg_database WHERE datname=current_database()) AS database_oid, "
-    "current_schema() AS schema_name, pg_postmaster_start_time() AS postmaster_started_at, "
-    "inet_server_addr()::text AS server_address, inet_server_port() AS server_port")
+DATABASE_FACTS = ("SELECT pg_catalog.current_database() AS database_name, "
+    "(SELECT oid FROM pg_catalog.pg_database WHERE datname=pg_catalog.current_database()) AS database_oid, "
+    "pg_catalog.current_schema() AS schema_name, pg_catalog.pg_postmaster_start_time() AS postmaster_started_at, "
+    "pg_catalog.inet_server_addr()::text AS server_address, pg_catalog.inet_server_port() AS server_port")
 
 
 class LocalPrimaryAdapter:
@@ -149,9 +149,13 @@ class LocalPrimaryAdapter:
         # Existing protected connection only; never caller DSN/env/retargeting.
         c.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(binding.schema_name)))
 
-    def _mapping(self,c,command,*,locked):
-        user=c.execute('SELECT * FROM shadify_users WHERE auth_account_id=%s'+
-            (' FOR UPDATE' if locked else ''),(command.mapping.account_id,)).fetchone()
+    def _relation(self,binding,name):
+        return sql.Identifier(binding.schema_name,name)
+
+    def _mapping(self,c,command,binding,*,locked):
+        user=c.execute(sql.SQL('SELECT * FROM {} WHERE auth_account_id=%s'+
+            (' FOR UPDATE' if locked else '')).format(self._relation(binding,'shadify_users')),
+            (command.mapping.account_id,)).fetchone()
         if (not active_identity(user) or user['last_admitted_at'] is None
                 or str(user['id'])!=command.mapping.local_user_id):
             raise MediaError(422,'Existing active canonical Shadify mapping required')
@@ -174,19 +178,23 @@ class LocalPrimaryAdapter:
             if not apply:connection.execute('SET TRANSACTION READ ONLY')
             with connection.cursor(row_factory=dict_row) as c:
                 self._database(c,context.binding)
-                state=(self.repository._admin_state(c,exclusive=True) if apply else
-                    c.execute('SELECT * FROM shadify_app_admin WHERE singleton').fetchone())
+                state=c.execute(sql.SQL('SELECT * FROM {} WHERE singleton'+
+                    (' FOR UPDATE' if apply else '')).format(
+                    self._relation(context.binding,'shadify_app_admin'))).fetchone()
                 if state is None:raise MediaError(503,'Existing app admin schema required')
-                user=self._mapping(c,command,locked=apply)
+                user=self._mapping(c,command,context.binding,locked=apply)
                 primary=None
                 if state['primary_user_id'] is not None:
-                    prior=c.execute('SELECT auth_account_id,first_admitted_at,admission_source FROM shadify_users WHERE id=%s',
+                    prior=c.execute(sql.SQL('SELECT auth_account_id,first_admitted_at,admission_source FROM {} WHERE id=%s').format(
+                        self._relation(context.binding,'shadify_users')),
                         (state['primary_user_id'],)).fetchone()
                     if prior is None or prior['first_admitted_at'] is None or prior['admission_source']!='canonical_shell':
                         raise MediaError(503,'Existing primary mapping requires review')
                     primary=prior['auth_account_id']
-                delegates=c.execute('SELECT u.auth_account_id,d.permissions FROM shadify_app_admin_delegates d '
-                    'JOIN shadify_users u ON u.id=d.user_id ORDER BY u.auth_account_id').fetchall()
+                delegates=c.execute(sql.SQL('SELECT u.auth_account_id,d.permissions FROM {} d '
+                    'JOIN {} u ON u.id=d.user_id ORDER BY u.auth_account_id').format(
+                    self._relation(context.binding,'shadify_app_admin_delegates'),
+                    self._relation(context.binding,'shadify_users'))).fetchall()
                 eligible=(state['revision']==command.expected_admin_revision and
                     (primary is None and not delegates if command.operation=='initialize-primary' else
                      primary==command.expected_primary_account_id))
@@ -198,17 +206,20 @@ class LocalPrimaryAdapter:
                         'mode':'dry-run','outcome':'eligible' if eligible else 'denied',
                         'primary_account_id':primary,'revision':state['revision'],'audit_id':None}
                 if not eligible:raise MediaError(409,'Local primary prestate changed or ineligible')
-                if command.delegates=='revoke':c.execute('DELETE FROM shadify_app_admin_delegates')
-                else:c.execute('DELETE FROM shadify_app_admin_delegates WHERE user_id=%s',(user['id'],))
-                changed=c.execute('UPDATE shadify_app_admin SET primary_user_id=%s,revision=revision+1 '
-                    'WHERE singleton AND revision=%s RETURNING revision',(user['id'],state['revision'])).fetchone()
+                if command.delegates=='revoke':c.execute(sql.SQL('DELETE FROM {}').format(
+                    self._relation(context.binding,'shadify_app_admin_delegates')))
+                else:c.execute(sql.SQL('DELETE FROM {} WHERE user_id=%s').format(
+                    self._relation(context.binding,'shadify_app_admin_delegates')),(user['id'],))
+                changed=c.execute(sql.SQL('UPDATE {} SET primary_user_id=%s,revision=revision+1 '
+                    'WHERE singleton AND revision=%s RETURNING revision').format(
+                    self._relation(context.binding,'shadify_app_admin')),(user['id'],state['revision'])).fetchone()
                 if changed is None:raise MediaError(409,'Local primary prestate changed')
                 audit=self.repository._admin_audit(c,None,'local_'+command.operation.replace('-','_'),
-                    target=command.mapping.account_id,details={'operation_id':command.operation_id,
+                    target=command.mapping.account_id,schema=context.binding.schema_name,details={'operation_id':command.operation_id,
                         'authority_reference':context.authority_audit_reference,'old_primary':primary,
                         'expected_revision':state['revision'],'revision':changed['revision'],
                         'delegates':command.delegates,'previous_delegates':delegates})
-                self._mapping(c,command,locked=True)
+                self._mapping(c,command,context.binding,locked=True)
                 self._current(command,context)
                 self._database(c,context.binding)
                 self._current(command,context)
