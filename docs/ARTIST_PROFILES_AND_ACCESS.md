@@ -1677,3 +1677,32 @@ accepted or usable against systemd. No app-side workaround is made. Rebind/repro
 the same explicit factory against Node's corrected reviewed source candidate.
 Root runner remains unexecuted and under review; cross-UID permission remains
 pending. Prior exact source/artifact/qualification evidence is preserved.
+
+
+### Corrected Node installed observer rebind (2026-10-05)
+
+Target Node pin f789629c52d7bf2e6d185bccfae639723194809c corrects the unsupported
+bare-template query: systemctl show queries the fixed nonstarted
+node-agent-nomination-reader@provenance.service instance, requires its exact Id,
+and requires FragmentPath to identify node-agent-nomination-reader@.service.
+Shadify's explicit from_installed_endpoint zero-argument Node factory path remains
+unchanged. Its bounded installation fixture is rebound to an immutable archive of
+this exact candidate. The source test asserts the instance is queried and the bare
+template is not; wrong instance Id or instance-specific FragmentPath deny, along
+with payload/loaded-module/receipt drift and absent existing group. Existing
+official seal verifier child remains actually exercised in the remapped fixture.
+
+This supersedes the b65 template-query source blocker without claiming actual
+loaded observer review acceptance. Parent reports observer review still running;
+the root runner is unexecuted. Actual root Accept=yes/cross-UID access, existing
+record/provider/launcher readability, approved installed release/group/scope and
+full observer/connection/query/transport latency remain installation qualification
+gaps. No root probe, protected live read, grant, service or installation occurred.
+Prior b65, native-node, endpoint, SQL and media artifacts remain preserved.
+
+Corrected rebind receipt: 3 installed-endpoint boundary tests PASS, no skips,
+against immutable Node f789629 archive; initial rebind and final explicit
+instance-query/Id/FragmentPath checks both passed. No other suite rerun. Log:
+/tmp/shadify-node-f789-installed-endpoint.log. Shadify runtime implementation
+remains the previously qualified from_installed_endpoint path; this forward
+checkpoint records its corrected source target and scoped proof.

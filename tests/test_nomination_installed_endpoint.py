@@ -57,12 +57,16 @@ class InstalledEndpointTests(unittest.TestCase):
             self.assertEqual(observations[0].protected_installation_revision,
                 hashlib.sha256(installed.setup.read_bytes()).hexdigest())
             self.assertTrue(any(command[:3]==['/usr/bin/python3','-I','-c'] for command in installed.calls))
+            queried=[command[3] for command in installed.calls if command[0]=='/usr/bin/systemctl']
+            self.assertIn(node.SERVICE_QUERY,queried)
+            self.assertNotIn(node.TEMPLATE_UNIT,queried)
             composition._endpoint_guard.current()
             self.assertEqual(len(observations),2)
             self.assertIsNone(composition.adapter)  # No app mutation/provider activation.
 
     def test_real_loaded_unit_and_full_seal_drift_deny_without_fallback(self):
-        for kind in ('payload_tamper','loaded_module_drift','missing_authoritative_receipt'):
+        for kind in ('payload_tamper','loaded_module_drift','missing_authoritative_receipt',
+                     'wrong_instance_id','instance_fragment'):
             with self.subTest(kind=kind),TemporaryDirectory() as directory,pytest.MonkeyPatch.context() as patches:
                 installed,observations=self.fixture(directory,patches)
                 composition=self.compose()
@@ -70,6 +74,10 @@ class InstalledEndpointTests(unittest.TestCase):
                     (installed.release/'backend/helper.py').write_text('tampered')
                 elif kind=='loaded_module_drift':
                     installed.service_info['Environment']=installed.service_info['Environment'].replace(node.MODULE,'other')
+                elif kind=='wrong_instance_id':
+                    installed.service_info['Id']=node.TEMPLATE_UNIT
+                elif kind=='instance_fragment':
+                    installed.service_info['FragmentPath']=str(installed.units/node.SERVICE_QUERY)
                 else:installed.setup.unlink()
                 with self.assertRaises(Denied):composition._endpoint_guard.current()
                 with self.assertRaises(Denied):self.compose()
