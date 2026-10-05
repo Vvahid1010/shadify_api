@@ -1916,3 +1916,85 @@ authorized integration/installation remain. Root UID, shell access, DecisionV1,
 synthetic policy or caller values cannot replace those. No credentials, real
 grants, active database, migrations, runtime, installation, push or UI changes.
 CAS/Web contract, ordinary closed primary transfer and preserved media remain.
+
+
+### Finite app-owned VM nomination catalog exports (2026-10-05)
+
+Separate source branch nomination-catalog-owner starts from accepted WSL
+composition 82362f2af72520e28b5cc2b161c33bec5080088c. Node handoff pin is
+3659532f743d1385ca07cf111f0f8de03d3096be, exact file
+docs/NOMINATION_CATALOG_API_OWNER_HANDOFF_20261005.md. WSL, media and live API
+checkouts remain preserved. No Node source, installed selection reader, browser,
+Git/WSL discovery, runtime config, listener, HTTP route or wire dispatch is added.
+
+NominationCatalogCallbacks exports read_scope(app_id), async
+read_owner_state(selection), and async require_owner_current(selection, expected).
+ProtectedNominationComposition.catalog_callbacks constructs these only after its
+existing guarded provider binds, with explicit settings_provider/receipt_connect.
+InstalledSelection is always Node-supplied and checked, never constructed by app
+source. The existing scope_provider/native full node/app/instance tuple guard and
+installed record rereads fence each query before/after; the owner still invokes
+the protected Node provider's require_current. No absent provider is selected.
+
+CatalogSettings is an internal frozen scope/origin snapshot supplied by the
+protected native settings owner. Scope must exactly match current NominationControl
+scope including deployment. app_origin must be exact canonical HTTPS origin under
+the shared DTO validator. Shadify currently has no selected protected browser-origin
+setting; this callback dependency remains absent/unavailable, never inferred from
+request headers, media URL, DNS, browser or repository. No installation or actual
+origin is chosen here. Validity limits are source-owned 1..1440 minute proposals
+inside the existing MAX_LEASE=86400-second bound, no new configurable policy.
+
+A READ ONLY bounded receipt session reads one coherent SELECT joining authoritative
+shadify_app_admin singleton, canonical primary shadify_users identity, authoritative
+shadify_nomination_control singleton and its shadify_admin_nomination_v1 row.
+Relations are explicitly qualified by the protected connection's current schema;
+no implicit temporary-table fallback is used. Selected columns omit all contacts,
+tags, proofs, actor/session IDs, credential/connection data and existing nominee ID.
+Missing slots/schema, invalid canonical primary, inconsistent zero revision or
+scope, or ambiguous/unrepresentable lifecycle denies instead of guessing empty.
+Historical 007 grants/nomination rows stay independent and inert.
+
+Output is exact shared NominationOwnerState: actual primary/admin revision, pending
+ID/revision/stored pending status/expiry, protected scope/origin, existing lease
+limits and currently usable action subset. Empty/terminal claimed or revoked slot
+permits initialize only with authoritative zero/null primary, otherwise recover.
+Stored pending permits revoke/replace; renew additionally needs unexpired pending
+and exact current expected admin/primary prestate. Time-expired stored pending keeps
+its real pending status/expiry and excludes renew. Explicit stored blocked/expired/
+replaced states cannot be represented by the pending-only shared DTO and therefore
+remain unavailable, never hidden or mislabeled. Fractional stored expiry denies
+rather than rounding an unsupported value. No new mutation or capability exists.
+
+Observation starts before the executor/SQL read, lasts at most30 seconds, and is
+capped by unexpired pending expiry. The fresh current guard normalizes the original
+expected state before/after a separate read and compares every owner commitment
+with shared same_catalog_state; only observation timestamps may differ. Original
+expiry is never extended. Expected state/selection never establishes authority.
+
+BoundedReceiptReader's existing shield/join/cancel_safe/rollback/close machinery
+is reused by a small internal read runner. Dedicated connection timeout1, statement
+timeout1000 and lock timeout500 remain; no worker/DB session survives cancellation,
+including repeated cancellation or a late connection. Ordinary DB bounds and
+historical immutable operation receipts remain unchanged. The Node catalog request/
+response declarations are tested as closed/redacted DTOs. serve_receipt still uses
+unchanged serve_result_async behavior (operation-result action only); Node owns
+the next finite catalog action dispatch/client through that same guarded stream.
+
+46 isolated tests PASS, no skips: 13 catalog, 16 transport, 17 nomination-control
+cases against an immutable archive of Node3659532. New cases cover exact slots,
+pending revisions/expiry, primary/origin/limits/scope/selection drift, original and
+stale deadlines, forbidden wire fields/redaction, read-only no effects, coherent
+primary/pending transactions under races, real timeout/cancel cleanup, late-connect
+repeated cancellation, ambiguity denial and positive existing guarded Node/socket
+composition with wrong-node denial. Existing immutable receipt/control tests pass.
+Log /tmp/shadify-nomination-catalog-final.log. This is synthetic native/install
+evidence and disposable PostgreSQL only, never live readiness or authority.
+
+Remaining Node composition prerequisites: consume these exact callbacks, connect
+the already declared finite catalog action on the existing guarded stream, select
+actual protected origin/native settings and existing receipt access, independently
+review coherent installed tuple/authority and action-time activation. Existing
+privileged qualification/cleanup gaps are preserved; no old root fixture is run.
+No contacts/session/proof/witness/connection secrets are returned. No runtime,
+installation, grant, migration, active database, push or other-repository edit.

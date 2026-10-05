@@ -68,13 +68,15 @@ class BoundedReceiptReader:
         self.owner, self.connect = owner, connect
 
     async def __call__(self, scope, operation_id):
+        return await self._run(partial(self.owner.read_committed_operation,scope,operation_id))
+
+    async def _run(self,read):
         job = _ReceiptJob(self.connect)
         # Executor futures are not separate cancellable asyncio Tasks during
         # graceful loop shutdown. Shield and join the actual worker completion.
         loop = asyncio.get_running_loop()
         worker = loop.run_in_executor(None, partial(
-            self.owner.read_committed_operation, scope, operation_id,
-            receipt_connect=job.opened))
+            read,receipt_connect=job.opened))
         try:
             return await asyncio.shield(worker)
         except asyncio.CancelledError:
@@ -208,8 +210,20 @@ class ProtectedNominationComposition:
             operation_id=lambda proof: proof.operation_id,
             require_owner_selection=selected_owner, read_owner_result=receipt)
         self.selection, self._selected, self.owner_scope = selection, selected, owner_scope
-        self.adapter = adapter
+        self.adapter,self.adapter_owner = adapter,owner
         return adapter
+
+    def catalog_callbacks(self,*,settings_provider=None,receipt_connect=None):
+        """Explicit owner exports only; Node owns catalog wire dispatch/selection."""
+        if self.adapter is None or settings_provider is None or receipt_connect is None:
+            raise MediaError(503,"Protected catalog owner unavailable")
+        from .nomination_catalog import NominationCatalogCallbacks
+        def require_selection(selection):
+            if selection!=self.selection:
+                raise MediaError(409,"Installed nomination selection changed")
+            self._selected(selection.scope)
+        return NominationCatalogCallbacks(owner=self.adapter_owner,settings_provider=settings_provider,
+            require_selection=require_selection,receipt_connect=receipt_connect)
 
     async def serve_receipt(self, connection):
         """One connected, protected app-owned descriptor; always close it."""
