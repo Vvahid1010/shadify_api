@@ -49,10 +49,7 @@ class NominationCatalogCallbacks:
         self.owner.require_current(settings.scope)
         if self._settings()!=settings:raise MediaError(409,'Catalog state changed')
 
-    def _read(self,selection,observed_at,*,receipt_connect):
-        from node_agent_package_helper.nomination_contract import NominationOwnerState
-        from node_agent_package_helper.nomination_result_transport import normalize_catalog_state
-        settings=self._settings();self._guard(selection,settings)
+    def _snapshot(self,receipt_connect):
         with receipt_connect() as connection:
             connection.execute('SET TRANSACTION READ ONLY')
             with connection.cursor(row_factory=dict_row) as c:
@@ -67,6 +64,13 @@ class NominationCatalogCallbacks:
                     'FROM {} a LEFT JOIN {} u ON u.id=a.primary_user_id '
                     'CROSS JOIN {} slot LEFT JOIN {} n ON n.id=slot.nomination_id '
                     'WHERE a.singleton AND slot.singleton').format(*tables)).fetchall()
+        return rows
+
+    def _read(self,selection,observed_at,*,receipt_connect):
+        from node_agent_package_helper.nomination_contract import NominationOwnerState
+        from node_agent_package_helper.nomination_result_transport import normalize_catalog_state
+        settings=self._settings();self._guard(selection,settings)
+        rows=self._snapshot(receipt_connect)
         if len(rows)!=1:raise MediaError(503,'Catalog state unavailable')
         row=rows[0];primary=row['auth_account_id']
         if row['primary_user_id'] is not None and (not valid_identity_id(primary)
@@ -98,6 +102,12 @@ class NominationCatalogCallbacks:
             primary_account_id=primary,validity_limits=dict(minimumMinutes=1,
                 maximumMinutes=MAX_LEASE//60),actions=actions,nomination=nomination)
         self._guard(selection,settings)
+        # The final installed/provider guard can block. Never compare/return only
+        # the SQL snapshot from before that guard. A distinct bounded READ ONLY
+        # transaction observes current DB state after all blocking guard callbacks.
+        # Do not append another blocking callback after this verification fence.
+        if self._snapshot(receipt_connect)!=rows:
+            raise MediaError(409,'Catalog state changed')
         return normalize_catalog_state(state,selection.scope,now=time.time)
 
     async def read_owner_state(self,selection):

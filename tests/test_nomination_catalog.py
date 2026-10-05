@@ -132,7 +132,9 @@ class CatalogTests(NominationControlCase):
                 time.sleep(.002)
         async def observe():
             for _ in range(20):
-                state=await self.catalog.read_owner_state(self.selection)
+                try:state=await self.catalog.read_owner_state(self.selection)
+                except MediaError as error:
+                    self.assertEqual(error.status,409);continue  # Guard-fence mutation correctly denies.
                 self.assertEqual(state.nomination.revision,state.admin_revision+1)
                 self.assertEqual(state.primary_account_id,None if state.admin_revision==0 else 'admin')
         with ThreadPoolExecutor(1) as pool:
@@ -223,3 +225,50 @@ class CatalogTests(NominationControlCase):
                 self.assertTrue(connections and all(c.closed for c in connections))
             finally:
                 for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
+
+
+    def test_primary_change_during_last_blocking_guard_denies_current_and_read(self):
+        for entry in ('read','current'):
+            with self.subTest(entry=entry):
+                # Reset only this isolated fixture; app primary cannot be removed.
+                if entry=='current':
+                    with self.connect() as c:
+                        c.execute('DROP TABLE shadify_app_admin_audit,shadify_app_admin_delegates,shadify_app_admin')
+                        c.execute('DROP FUNCTION protect_shadify_primary()')
+                    self.apply('006_app_admin.sql')
+                expected=self.read();entered=threading.Event();release=threading.Event();calls=[0]
+                original=self.catalog._guard
+                def guard(*args):
+                    original(*args);calls[0]+=1
+                    if calls[0]==2:
+                        entered.set();self.assertTrue(release.wait(2))
+                with patch.object(self.catalog,'_guard',side_effect=guard),ThreadPoolExecutor(1) as pool:
+                    task=pool.submit(self.current,expected) if entry=='current' else pool.submit(self.read)
+                    self.assertTrue(entered.wait(2))
+                    self.repo.bootstrap_primary(self.actor,operator_reference='isolated-final-guard-race')
+                    release.set()
+                    with self.assertRaises(MediaError) as error:task.result(3)
+                    self.assertEqual(error.exception.status,409)
+                self.assertEqual(self.primary(),'admin')
+                self.assertTrue(all(c.closed for c in self.connections))
+
+    def test_pending_revision_change_during_last_blocking_guard_denies_current_and_read(self):
+        command=self.command();self.apply_command(command)
+        for entry,revision in (('read',1),('current',2)):
+            with self.subTest(entry=entry):
+                expected=self.read();entered=threading.Event();release=threading.Event();calls=[0]
+                original=self.catalog._guard
+                def guard(*args):
+                    original(*args);calls[0]+=1
+                    if calls[0]==2:
+                        entered.set();self.assertTrue(release.wait(2))
+                with patch.object(self.catalog,'_guard',side_effect=guard),ThreadPoolExecutor(1) as pool:
+                    task=pool.submit(self.current,expected) if entry=='current' else pool.submit(self.read)
+                    self.assertTrue(entered.wait(2))
+                    self.apply_command(self.follow(command,'renew',revision=revision,
+                        expires_at=command.expires_at+60*revision))
+                    release.set()
+                    with self.assertRaises(MediaError) as error:task.result(3)
+                    self.assertEqual(error.exception.status,409)
+                self.assertEqual(self.row(command.nomination_id)['revision'],revision+1)
+                self.assertTrue(all(c.closed for c in self.connections))

@@ -1998,3 +1998,25 @@ review coherent installed tuple/authority and action-time activation. Existing
 privileged qualification/cleanup gaps are preserved; no old root fixture is run.
 No contacts/session/proof/witness/connection secrets are returned. No runtime,
 installation, grant, migration, active database, push or other-repository edit.
+
+
+### Final blocking catalog guard SQL fence correction (2026-10-05)
+
+Astra reproduced a P2 race in113f2154: provider/installation guard after SQL could
+block while primary/pending changed, then stale snapshots compared successfully.
+The owner now makes a distinct bounded READ ONLY coherent SQL snapshot after that
+last blocking guard and compares it with the initial snapshot. Any observed row
+commitment drift denies409; no additional blocking callback follows the final SQL
+verification fence. The original observation/deadline and DTO remain unchanged;
+fresh SQL never issues a new expiry. Both sessions reuse existing cancel-safe,
+shield/join/rollback/close handling. No row locks, writes, state store or retry.
+
+48 isolated cases PASS (15 catalog,16 transport,17 controls), no skips, against
+Node3659532 immutable source. Two targeted real concurrent PostgreSQL cases pause
+the exact final guard, commit primary/revision or pending revision/expiry changes,
+then resume; both direct read and require_owner_current reject409. The reproduced
+revision0 expected/revision1 actual case cannot return None. Read-only, original
+expiry, cancellation and immutable receipt regressions still pass. Coherent
+read-during-write test accepts only coherent results or the intentional409 fence
+denial. Log /tmp/shadify-nomination-catalog-final-guard-race.log.
+No runtime, active database, installation, grant, migration or other-repo changes.
