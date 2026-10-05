@@ -82,6 +82,42 @@ class NativePackageTests(unittest.TestCase):
             (root/'build-info.json').write_bytes(canonical(manifest))
             self.assertEqual(verify(root,source)['migration_target'],'006_app_admin')
 
+    def test_combined_target_requires_nomination_files_and_cannot_mislabel_006(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            def add(names):
+                for name in names:
+                    path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
+                    raw=b'synthetic completeness fixture';path.write_bytes(raw)
+                    manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            def write():
+                (root/'build-info.json').write_bytes(canonical(manifest))
+            add('source/'+name for name in (
+                'migrations/003_identity_provenance.sql','migrations/004_artist_memberships.sql',
+                'migrations/005_artist_content.sql','migrations/006_app_admin.sql',
+                'shadify_api/access.py','shadify_api/artists.py','shadify_api/artist_models.py',
+                'shadify_api/artist_routes.py','shadify_api/admin.py'))
+            manifest['migration_target']='006_app_admin';write();verify(root,source)
+            manifest['migration_target']='008_nomination_control';write()
+            with self.assertRaisesRegex(ValueError,'incomplete_nomination_package'):verify(root,source)
+            add('source/'+name for name in (
+                'migrations/007_admin_nomination.sql','migrations/008_nomination_control.sql',
+                'shadify_api/nomination.py','shadify_api/nomination_contract.py',
+                'shadify_api/nomination_control.py','shadify_api/nomination_routes.py',
+                'shadify_api/nomination_transport.py','shadify_api/nomination_catalog.py',
+                'shadify_api/local_primary.py','shadify_api/local_primary_composition.py'))
+            write();self.assertEqual(verify(root,source)['migration_target'],'008_nomination_control')
+            # Every required new module/schema is checked, not only a label.
+            for name in tuple(manifest['files']):
+                if name.startswith('source/migrations/00') and name[-4:]!='.sql':continue
+                if name not in {'source/migrations/007_admin_nomination.sql','source/migrations/008_nomination_control.sql',
+                        'source/shadify_api/nomination_catalog.py','source/shadify_api/local_primary_composition.py'}:continue
+                metadata=manifest['files'].pop(name);write()
+                with self.assertRaisesRegex(ValueError,'incomplete_nomination_package'):verify(root,source)
+                manifest['files'][name]=metadata
+            manifest['migration_target']='006_app_admin';write()
+            with self.assertRaisesRegex(ValueError,'nomination_target_required'):verify(root,source)
+
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;package(root,source)

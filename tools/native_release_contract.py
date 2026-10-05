@@ -41,18 +41,27 @@ def verify(root, source):
         or data.get("source_commit")!=source or not re.fullmatch(r"[a-f0-9]{40}",source)
         or data.get("runtime")!=RUNTIME or data.get("requirements_path")!="source/requirements.txt"
         or data.get("lock_path")!="requirements.lock" or data.get("management_schema_version")!=1
-        or data.get("migration_target") not in {"002_user_profile_track_drafts","005_artist_content","006_app_admin"}):
+        or data.get("migration_target") not in {"002_user_profile_track_drafts","005_artist_content","006_app_admin","008_nomination_control"}):
         raise ValueError("invalid_manifest")
     files=data.get("files")
     if not isinstance(files,dict) or not REQUIRED<=files.keys():
         raise ValueError("incomplete_native_package")
-    if data['migration_target'] in {'005_artist_content','006_app_admin'}:
+    if data['migration_target'] in {'005_artist_content','006_app_admin','008_nomination_control'}:
         required={"source/migrations/003_identity_provenance.sql", "source/migrations/004_artist_memberships.sql",
                   "source/migrations/005_artist_content.sql", "source/shadify_api/access.py",
                   "source/shadify_api/artists.py", "source/shadify_api/artist_models.py", "source/shadify_api/artist_routes.py"}
-        if data['migration_target']=='006_app_admin':
+        if data['migration_target'] in {'006_app_admin','008_nomination_control'}:
             required.update({'source/migrations/006_app_admin.sql','source/shadify_api/admin.py'})
         if not required<=files.keys(): raise ValueError("incomplete_artist_package")
+    nomination_sql='source/migrations/008_nomination_control.sql'
+    if nomination_sql in files and data['migration_target']!='008_nomination_control':
+        raise ValueError('nomination_target_required')
+    if data['migration_target']=='008_nomination_control':
+        required={'source/migrations/007_admin_nomination.sql',nomination_sql}
+        required.update('source/shadify_api/'+name+'.py' for name in (
+            'nomination','nomination_contract','nomination_control','nomination_routes',
+            'nomination_transport','nomination_catalog','local_primary','local_primary_composition'))
+        if not required<=files.keys():raise ValueError('incomplete_nomination_package')
     actual=set()
     for path in root.rglob("*"):
         info=path.lstat()

@@ -2108,3 +2108,31 @@ settings, not root/live qualification. Accepted WSL/media/live sources remain.
 Actual protected browser-origin/provider/connected-descriptor access, independent
 review, root cleanup/qualification and action-time activation remain unselected.
 No runtime, OS qualification, install, grants, active DB, migration or push.
+
+
+### Unified source/package preparation (2026-10-05)
+
+Parent authorized one new isolated candidate at458838b7, merging exact accepted
+Local-media38e932d without altering frozen sources/artifacts. Merge525d6d65 is
+conflict-free. Config keeps Local playback default/cap3600, upload300 and bounded
+nomination connector; main retains private media cache headers plus nomination
+routes; Local tests retain expiry/renewal cases and explicit delegate CAS revisions.
+Dependency/lock/provenance pins are unchanged. No new feature or video ingestion.
+
+New package declares migration_target008_nomination_control and requires exact
+007/008 plus owning nomination/WSL modules. API artifact verifier retains historical
+002/005/006 support and rejects a package with008 SQL mislabeled006. Existing media
+archive remains historical schema006/catalog56 proof, never combined qualification.
+Current pinned Nodeb731 installer verifier supports only through006 and rejects008;
+its owner must review/update compatibility independently before any Node install.
+API owner does not modify that contract/installer or hide/exclude migrations.
+
+Artifact008 describes available combined features, not automatic live migration:
+ordinary artist/admin/Local dev requires explicit schema001..006; optional Node
+nomination/catalog requires explicit schema007..008 and verified provider/native
+scope. WSL local primary uses existing006 and its separately protected common
+selection provider; no default authority/origin/connection/primary is activated.
+Historical grant rows stay inactive; no ownership backfill guesses or migration
+rewrites. Combined source/offline qualification receipt is generated separately
+after one full packaged test pass, using pinned Nodeb731 and common7701286 source.
+No publication, service, live schema/grants/credentials, installation or push.
