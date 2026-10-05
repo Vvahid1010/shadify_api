@@ -73,7 +73,9 @@ class AppAdminRepository:
         from .access import Authority
         return Authority(actor.account_id, user['id'], None, PERMISSIONS, False, 'draft', True, True), users
 
-    def set_delegate(self, actor, target, permissions):
+    def set_delegate(self, actor, target, permissions, *, expected_revision):
+        if type(expected_revision) is not int or not 0 <= expected_revision <= 9223372036854775807:
+            raise MediaError(422, 'Explicit authority revision required')
         if (type(permissions) is not list or any(type(p) is not str for p in permissions)
                 or len(set(permissions)) != len(permissions) or not set(permissions) <= PERMISSIONS):
             raise MediaError(422, 'Explicit existing-operation permissions required')
@@ -81,6 +83,8 @@ class AppAdminRepository:
             with connection.cursor(row_factory=dict_row) as c:
                 state = self._admin_state(c, exclusive=True)
                 auth, users = self._primary_actor(c, actor, state, (target,), validate_targets=bool(permissions))
+                if state['revision'] != expected_revision:
+                    raise MediaError(409, 'Admin authority changed; refresh and review again')
                 # Revocation must remain possible for an inactive/tombstoned delegate.
                 user = users.get(target)
                 if user is None:
@@ -93,32 +97,26 @@ class AppAdminRepository:
                               'ON CONFLICT (user_id) DO UPDATE SET permissions=EXCLUDED.permissions', (user['id'], sorted(permissions)))
                 else:
                     c.execute('DELETE FROM shadify_app_admin_delegates WHERE user_id=%s', (user['id'],))
-                c.execute('UPDATE shadify_app_admin SET revision=revision+1 WHERE singleton=true')
+                changed = c.execute('UPDATE shadify_app_admin SET revision=revision+1 '
+                                    'WHERE singleton=true AND revision=%s RETURNING revision',
+                                    (expected_revision,)).fetchone()
+                if changed is None:
+                    raise MediaError(409, 'Admin authority changed; refresh and review again')
                 self._admin_audit(c, auth, 'set_delegate', target=target,
-                                  details={'before': old['permissions'] if old else [], 'after': sorted(permissions)})
+                                  details={'before': old['permissions'] if old else [], 'after': sorted(permissions),
+                                           'expected_revision': expected_revision, 'revision': changed['revision']})
                 require_fresh_actor(actor)
-                return {'actor_account_id': actor.account_id, 'target_account_id': target, 'permissions': sorted(permissions)}
+                return {'actor_account_id': actor.account_id, 'target_account_id': target,
+                        'permissions': sorted(permissions), 'revision': changed['revision']}
 
     def transfer_primary(self, actor, target, *, expected_primary, delegates):
-        if delegates not in ('retain', 'revoke'):
-            raise MediaError(422, 'Explicit retain or revoke delegates decision required')
-        with self.connect() as connection:
-            with connection.cursor(row_factory=dict_row) as c:
-                state = self._admin_state(c, exclusive=True)
-                auth, users = self._primary_actor(c, actor, state, (target,))
-                if expected_primary != actor.account_id or target == actor.account_id:
-                    raise MediaError(409, 'Primary changed or operation ineligible')
-                previous = c.execute('SELECT u.auth_account_id,d.permissions FROM shadify_app_admin_delegates d '
-                                     'JOIN shadify_users u ON u.id=d.user_id ORDER BY u.auth_account_id').fetchall()
-                if delegates == 'revoke':
-                    c.execute('DELETE FROM shadify_app_admin_delegates')
-                else:
-                    c.execute('DELETE FROM shadify_app_admin_delegates WHERE user_id=%s', (users[target]['id'],))
-                c.execute('UPDATE shadify_app_admin SET primary_user_id=%s,revision=revision+1 WHERE singleton=true', (users[target]['id'],))
-                self._admin_audit(c, auth, 'transfer_primary', target=target,
-                                  details={'old_primary': actor.account_id, 'delegates': delegates, 'previous_delegates': previous})
-                require_fresh_actor(actor)
-                return {'primary_account_id': target, 'delegates': delegates}
+        """Ordinary in-app transfer is closed; no local maintenance bypass.
+
+        VM primary assignment/recovery uses the separately protected Node
+        nomination path. The WSL maintenance adapter remains owner-pending.
+        """
+        require_fresh_actor(actor)
+        raise MediaError(403, 'Primary assignment and transfer require protected control')
 
     def admin_details(self, actor):
         with self.connect() as connection:

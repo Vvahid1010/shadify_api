@@ -126,7 +126,7 @@ class NominationTests(ArtistPostgresCase):
         with self.assertRaises(MediaError):self.claim(command,revision=2)
         with self.assertRaises(MediaError):self.nom.change_nomination(self.operator,replace(revoke,action='renew',operation_id=uuid4(),expected_nomination_revision=2))
         other=self.command();self.nom.change_nomination(self.operator,other);self.claim(other)
-        self.nom.transfer_primary(self.target,'owner-b',expected_primary='owner-a',delegates='revoke')
+        self.primary_fixture('owner-b',delegates='revoke')
         with self.assertRaises(MediaError):self.claim(other,revision=2)
         self.assertEqual(self.primary(),'owner-b')
         for sql in ('DELETE FROM shadify_admin_nominations',"UPDATE shadify_admin_nominations SET state='pending',claimed_user_id=NULL,revision=revision+1"):
@@ -154,7 +154,7 @@ class NominationTests(ArtistPostgresCase):
 
     def test_recover_inactive_primary_explicit_retain_delegates_and_owner_independent(self):
         self.nom.bootstrap_primary(self.operator,operator_reference='synthetic-only')
-        self.nom.set_delegate(self.operator,'listener',['verify']);self.nom.set_delegate(self.operator,'owner-b',['manage_content'])
+        self.nom.set_delegate(self.operator,'listener',['verify'], expected_revision=self.admin_revision());self.nom.set_delegate(self.operator,'owner-b',['manage_content'], expected_revision=self.admin_revision())
         command=self.command(mode='recover_primary',expected_primary_account_id='admin',expected_admin_revision=3,delegates='retain')
         self.nom.change_nomination(self.operator,command)
         with self.connect() as c:c.execute("UPDATE shadify_users SET active=false WHERE auth_account_id='admin'")
@@ -167,10 +167,10 @@ class NominationTests(ArtistPostgresCase):
 
     def test_recovery_revoke_and_revision_drift_deny_before_claim(self):
         self.nom.bootstrap_primary(self.operator,operator_reference='synthetic-only')
-        self.nom.set_delegate(self.operator,'listener',['verify'])
+        self.nom.set_delegate(self.operator,'listener',['verify'], expected_revision=self.admin_revision())
         command=self.command(mode='recover_primary',expected_primary_account_id='admin',expected_admin_revision=2,delegates='revoke')
         self.nom.change_nomination(self.operator,command)
-        self.nom.set_delegate(self.operator,'listener',['suspend'])
+        self.nom.set_delegate(self.operator,'listener',['suspend'], expected_revision=self.admin_revision())
         with self.assertRaises(MediaError):self.claim(command)
         replacement=replace(command,action='replace',operation_id=uuid4(),expected_nomination_revision=1,expected_admin_revision=3)
         self.nom.change_nomination(self.operator,replacement);self.claim(command,revision=2)

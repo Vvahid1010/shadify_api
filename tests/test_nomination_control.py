@@ -171,7 +171,7 @@ class NominationControlTests(NominationControlCase):
         self.apply_command(replacement);self.assertTrue(self.nom.finalize(self.target,self.contacts()));self.assertEqual(self.primary(),'owner-a')
     def test_recovery_delegate_policy_is_explicit_and_atomic(self):
         self.repo.bootstrap_primary(self.actor,operator_reference='synthetic-test')
-        self.repo.set_delegate(self.actor,'listener',permissions=['verify'])
+        self.repo.set_delegate(self.actor,'listener',permissions=['verify'], expected_revision=self.admin_revision())
         cmd=self.command(intent='recover',expected_admin_revision=2,expected_primary_account_id='admin',delegate_policy='revoke')
         self.apply_command(cmd);self.assertEqual(self.primary(),'admin')
         self.assertTrue(self.nom.finalize(self.target,self.contacts()))

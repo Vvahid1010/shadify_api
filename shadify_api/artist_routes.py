@@ -3,7 +3,7 @@ from uuid import UUID
 from .auth import Identity
 from fastapi import Body, Depends, HTTPException, Query
 from .artist_models import (ArtistCreate, Layout, AssignOwner, TransferOwner, RevokeOwner,
-                            Publication, Suspension, Verification, RESOURCE_MODELS, DelegatePermissions, PrimaryTransfer)
+                            Publication, Suspension, Verification, RESOURCE_MODELS, DelegatePermissions, DelegateRevision, PrimaryTransfer)
 
 
 def install_artist_routes(app, identity, repository):
@@ -21,11 +21,11 @@ def install_artist_routes(app, identity, repository):
 
     @app.put('/api/admin/delegates/{account_id}')
     def delegate(account_id:str,body:DelegatePermissions,actor:Identity=Depends(identity),data=Depends(repo)):
-        return data.set_delegate(actor,account_id,body.permissions)
+        return data.set_delegate(actor,account_id,body.permissions,expected_revision=body.expected_revision)
 
     @app.delete('/api/admin/delegates/{account_id}')
-    def revoke_delegate(account_id:str,actor:Identity=Depends(identity),data=Depends(repo)):
-        return data.set_delegate(actor,account_id,[])
+    def revoke_delegate(account_id:str,body:DelegateRevision,actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.set_delegate(actor,account_id,[],expected_revision=body.expected_revision)
 
     @app.put('/api/admin/primary')
     def primary(body:PrimaryTransfer,actor:Identity=Depends(identity),data=Depends(repo)):

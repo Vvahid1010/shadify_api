@@ -132,13 +132,13 @@ class LocalStorageTests(ArtistPostgresCase):
         self.assertEqual(self.complete(asset).status_code, 200)  # current new owner, uploader audit independent
 
     def test_delegate_revoked_during_stream_before_file_commit(self):
-        self.repo.set_delegate(admitted_actor('admin'), 'listener', ['manage_content'])
+        self.repo.set_delegate(admitted_actor('admin'), 'listener', ['manage_content'], expected_revision=self.admin_revision())
         self.actor = 'listener'; asset, upload = self.upload()
         import httpx
         async def proof():
             async def body():
                 yield self.body[:4]
-                self.repo.set_delegate(admitted_actor('admin'), 'listener', [])
+                self.repo.set_delegate(admitted_actor('admin'), 'listener', [], expected_revision=self.admin_revision())
                 yield self.body[4:]
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_media_app(self.storage))) as client:
                 return await client.put(upload['url'], content=body(), headers=upload['headers'])
@@ -162,7 +162,7 @@ class LocalStorageTests(ArtistPostgresCase):
         with patch('shadify_api.local_storage.os.fsync', side_effect=fail_directory):
             self.assertEqual(self.put(upload).status_code, 503)
         self.assertFalse((self.root/asset.key).exists())
-        self.repo.set_delegate(admitted_actor('admin'), 'listener', ['manage_content'])
+        self.repo.set_delegate(admitted_actor('admin'), 'listener', ['manage_content'], expected_revision=self.admin_revision())
         self.actor = 'listener'; asset, upload = self.upload()
         with self.connect() as c:
             c.execute("CREATE FUNCTION reject_media_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic'; END $$")
@@ -236,12 +236,12 @@ class LocalStorageTests(ArtistPostgresCase):
 
     def test_stream_revocation_rechecked_before_next_chunk_at_two_seconds(self):
         self.body=b'fLaC'+b'x'*(65536*4-4)
-        self.repo.set_delegate(admitted_actor('admin'),'listener',['manage_content']);self.actor='listener'
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['manage_content'], expected_revision=self.admin_revision());self.actor='listener'
         asset, upload=self.upload();self.assertEqual(self.put(upload).status_code,201);self.assertEqual(self.complete(asset).status_code,200)
         url=self.access(asset);clock=[0.0];read=os.read;calls=[0]
         def advancing_read(fd,size):
             value=read(fd,size);calls[0]+=1;clock[0]+=1.0
-            if calls[0]==1:self.repo.set_delegate(admitted_actor('admin'),'listener',[])
+            if calls[0]==1:self.repo.set_delegate(admitted_actor('admin'),'listener',[], expected_revision=self.admin_revision())
             return value
         with patch('shadify_api.media_routes.time.monotonic',side_effect=lambda:clock[0]), \
              patch('shadify_api.media_routes.os.read',side_effect=advancing_read), \

@@ -77,10 +77,16 @@ select an operator/account and cannot promote the first user. Current actor and
 grant/transfer targets must be active previously canonically observed identities.
 
 The primary can delegate any subset of the eight actual-operation capabilities
-below, replace/revoke a delegate's subset, and transfer the primary to an explicit
-valid target. Delegates cannot change grants, redelegate, promote themselves or
+below and replace/revoke a delegate's subset. Primary assignment/recovery on a VM
+uses the protected Node nomination path; ordinary in-app primary transfer is closed.
+A separate finite protected WSL maintenance seam follows its owner handoff, with
+no default operator authority or normal-HTTP bypass. Delegates cannot change grants, redelegate, promote themselves or
 replace the primary, even if given every operation capability. Grant replacement
-uses explicit arrays (empty means revoke); unknown/duplicate permissions fail.
+uses explicit arrays (empty means revoke) and the expected global authority
+revision; unknown/duplicate permissions fail. PUT carries expected_revision and
+permissions; DELETE carries JSON expected_revision. Both require strict integer
+0..9223372036854775807. Locked state mismatch returns409 with no mutation/audit;
+refresh and explicitly review again, never silently auto-retry a stale grant.
 Primary transfer requires expected current primary and a mandatory `retain` or
 `revoke` delegate decision. The incoming primary's delegate row is removed; the
 former primary receives no automatic delegate grant. State/grant changes and
@@ -106,8 +112,10 @@ deactivated/lost primary requires a separately selected protected owner procedur
 
 New primary-only routes: GET `/api/admin/authority`, GET
 `/api/admin/authority/audit`, PUT/DELETE `/api/admin/delegates/{account_id}` and PUT
-`/api/admin/primary`. They are app-owned catalog declarations, not live endpoint
-enrollment. Delegates cannot read the authority roster/audit. Page capability DTOs
+`/api/admin/primary` is retained only as a closed compatibility route (403 for
+a valid admitted request). Its repository entry point is closed as well. No
+request flag/config/Node-looking field enables it. These are app-owned catalog
+declarations, not live endpoint enrollment. Delegates cannot read the authority roster/audit. Page capability DTOs
 combine independent ownership with the actual permission subset; acting_as_admin
 identifies the authority used for the operation. Admin operations record actor,
 action and page/target context in append-only app audit. Grant events preserve
@@ -1706,3 +1714,49 @@ instance-query/Id/FragmentPath checks both passed. No other suite rerun. Log:
 /tmp/shadify-node-f789-installed-endpoint.log. Shadify runtime implementation
 remains the previously qualified from_installed_endpoint path; this forward
 checkpoint records its corrected source target and scoped proof.
+
+
+### Delegate CAS and ordinary primary-transfer closure (2026-10-05)
+
+User authorized this bounded source correction before the WSL owner adapter.
+Existing shadify_app_admin.revision is the whole-authority CAS token; no migration,
+per-delegate version framework or historical-grant activation is needed. GET
+/api/admin/authority exposes the current revision to the primary. Every PUT and
+DELETE /api/admin/delegates/{account_id} requires it, compares after taking the
+existing app-state FOR UPDATE lock and validating current primary/target, and
+updates with WHERE revision=expected_revision RETURNING revision. Delegate
+permissions, state revision and audit commit together; audit contains before,
+after, expected_revision and committed revision. Result returns that new revision.
+Unrelated authority changes also invalidate a stale editor, deliberately using
+the existing small global token. Revoking an inactive existing delegate remains
+possible. Expiry after locks/audit still rolls back. No silent retry/regrant occurs.
+
+Web owner contract change (no UI edits in this task): fetch authority revision
+with roster; include it in PUT JSON {permissions:[...],expected_revision:N} and
+DELETE JSON {expected_revision:N}. Both return revision=N+1 on success. Missing,
+boolean/string/float/out-of-range revision =>422; stale revision =>409, no writes.
+On409 refresh the roster and require a new explicit reviewed action; never merge
+or replay stale permissions automatically. Empty PUT array is also a CAS revoke.
+Remove ordinary in-app primary-transfer controls; valid old PUT /api/admin/primary
+returns403. Primary assignment/recovery belongs to the protected Node VM flow or
+separate verified WSL maintenance seam. Primary delegate management stays enabled.
+Ordinary ownership/content/user flows and each explicit delegate capability remain
+independent; no new admin/financial/media permission is introduced.
+
+Source proof: 30 isolated admin/HTTP/CAS tests PASS, no skips. Real PostgreSQL
+revocation holds the state lock through audit, a stale editor waits then returns409
+without grant/audit, and two same-revision competitors yield one200/one409. Stale
+DELETE cannot erase a newer reviewed permission set. Strict input, atomic audit
+rollback, identity expiry, inactive-target revoke, capability/owner separation,
+primary delegate management and closed route/direct transfer are covered. Existing
+tests use explicit fresh fixture revisions and isolated SQL state preparation for
+former-primary scenarios, not a runtime authority fallback. Log:
+/tmp/shadify-admin-cas-transfer.log. Active DB, migrations, permissions, deployment,
+Node/Auth/Web source and the separately qualified media artifact are untouched.
+
+Affected ordinary/protected-flow regression: 39 artist HTTP, finalized nomination
+and optional /me tests PASS, no skips, after explicit fixture revision updates and
+retirement of ordinary primary transfer. Together with the 30 admin/CAS tests,
+69 distinct affected cases pass. Log: /tmp/shadify-admin-cas-flow-regression.log.
+The local-storage test setup receives only the new explicit revision parameter;
+no local media implementation, artifact or deployment is edited/requalified here.

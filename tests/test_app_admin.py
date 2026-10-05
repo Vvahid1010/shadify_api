@@ -26,14 +26,14 @@ class AppAdminTests(ArtistPostgresCase):
     def test_verification_only_proof(self):
         primary = admitted_actor('admin')
         delegate = admitted_actor('listener')
-        self.repo.set_delegate(primary, 'listener', ['verify'])
+        self.repo.set_delegate(primary, 'listener', ['verify'], expected_revision=self.admin_revision())
         result = self.repo.page_state(delegate, self.artist, None, admin_only=True, verification=True)
         self.assertTrue(result['page']['verified'])
         self.assertFalse(result['capabilities']['change_owner'])
         with self.assertRaises(MediaError) as error:
             self.repo.change_owner(delegate, self.artist, action='assign', target='owner-a')
         self.assertEqual(error.exception.status, 403)
-        self.repo.set_delegate(primary, 'listener', [])
+        self.repo.set_delegate(primary, 'listener', [], expected_revision=self.admin_revision())
         with self.assertRaises(MediaError) as error:
             self.repo.page_state(delegate, self.artist, None, admin_only=True, verification=False)
         self.assertEqual(error.exception.status, 403)
@@ -44,37 +44,29 @@ class AppAdminTests(ArtistPostgresCase):
     def test_delegates_cannot_redelegate_promote_or_replace_primary(self):
         primary, delegate = admitted_actor('admin'), admitted_actor('listener')
         # Even every operation capability cannot confer authority-management rights.
-        self.repo.set_delegate(primary, 'listener', sorted(PERMISSIONS))
+        self.repo.set_delegate(primary, 'listener', sorted(PERMISSIONS), expected_revision=self.admin_revision())
         for action in (
-            lambda:self.repo.set_delegate(delegate,'owner-a',['verify']),
-            lambda:self.repo.set_delegate(delegate,'listener',sorted(PERMISSIONS)),
+            lambda:self.repo.set_delegate(delegate,'owner-a',['verify'], expected_revision=self.admin_revision()),
+            lambda:self.repo.set_delegate(delegate,'listener',sorted(PERMISSIONS), expected_revision=self.admin_revision()),
             lambda:self.repo.transfer_primary(delegate,'owner-a',expected_primary='admin',delegates='retain'),
             lambda:self.repo.admin_details(delegate),
             lambda:self.repo.admin_audit(delegate)):
             with self.assertRaises(MediaError) as error: action()
             self.assertEqual(error.exception.status,403)
 
-    def test_transfer_requires_explicit_policy_and_preserves_owner_independence(self):
+    def test_ordinary_primary_transfer_is_closed_without_disturbing_owner_or_delegate(self):
         primary=admitted_actor('admin')
         self.assign(target='admin')
-        self.repo.set_delegate(primary,'listener',['verify'])
-        for policy in (None,'',True,'default'):
+        self.repo.set_delegate(primary,'listener',['verify'],expected_revision=self.admin_revision())
+        before=self.repo.admin_details(primary)
+        for policy in (None,'',True,'default','retain','revoke'):
             with self.assertRaises(MediaError) as error:
                 self.repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates=policy)
-            self.assertEqual(error.exception.status,422)
-        self.repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='retain')
-        with self.repo.authorized(primary,self.artist,operation='edit_profile') as (_,auth,_,_):
-            self.assertFalse(auth.admin)
-            self.assertTrue(auth.owner)
-        with self.assertRaises(MediaError): self.repo.set_delegate(primary,'listener',[])
+            self.assertEqual(error.exception.status,403)
+        self.assertEqual(self.repo.admin_details(primary),before)
         self.repo.page_state(admitted_actor('listener'),self.artist,None,admin_only=True,verification=True)
-        self.repo.transfer_primary(admitted_actor('owner-b'),'owner-a',expected_primary='owner-b',delegates='revoke')
-        with self.assertRaises(MediaError):
-            self.repo.page_state(admitted_actor('listener'),self.artist,None,admin_only=True,verification=False)
-        with self.connect() as c:
-            self.assertEqual(c.execute('SELECT count(*) FROM shadify_app_admin_delegates').fetchone()[0],0)
-            primary_account=c.execute('SELECT u.auth_account_id FROM shadify_app_admin a JOIN shadify_users u ON u.id=a.primary_user_id').fetchone()[0]
-            self.assertEqual(primary_account,'owner-a')
+        with self.repo.authorized(primary,self.artist,operation='edit_profile') as (_,auth,_,_):
+            self.assertTrue(auth.owner)
 
     def test_unknown_unproven_and_inactive_targets_no_identity_guessing(self):
         primary=admitted_actor('admin')
@@ -82,34 +74,32 @@ class AppAdminTests(ArtistPostgresCase):
             c.execute("INSERT INTO shadify_users(id,auth_account_id) VALUES (%s,'unproven')",(uuid4(),))
             c.execute("UPDATE shadify_users SET active=false WHERE auth_account_id='owner-b'")
         for target in ('unknown','unproven','owner-b','somebody@example.invalid'):
-            for action in (lambda:self.repo.set_delegate(primary,target,['verify']),
-                           lambda:self.repo.transfer_primary(primary,target,expected_primary='admin',delegates='retain')):
+            for action in (lambda:self.repo.set_delegate(primary,target,['verify'], expected_revision=self.admin_revision()),):
                 with self.assertRaises(MediaError) as error: action()
                 self.assertEqual(error.exception.status,422)
         for permissions in (['verify','verify'],['admin'],['finance'],[None],'verify'):
-            with self.assertRaises(MediaError):self.repo.set_delegate(primary,'listener',permissions)
-        with self.assertRaises(MediaError):self.repo.set_delegate(primary,'admin',['verify'])
+            with self.assertRaises(MediaError):self.repo.set_delegate(primary,'listener',permissions, expected_revision=self.admin_revision())
+        with self.assertRaises(MediaError):self.repo.set_delegate(primary,'admin',['verify'], expected_revision=self.admin_revision())
         with self.connect() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_app_admin_delegates').fetchone()[0],0)
 
     def test_inactive_delegate_can_be_revoked_and_cannot_self_reactivate(self):
-        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'])
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'], expected_revision=self.admin_revision())
         with self.connect() as c:c.execute("UPDATE shadify_users SET active=false WHERE auth_account_id='listener'")
         self.repo.observe_identity(admitted_actor('listener'))
         with self.assertRaises(MediaError):self.repo.page_state(admitted_actor('listener'),self.artist,None,admin_only=True,verification=True)
-        self.repo.set_delegate(admitted_actor('admin'),'listener',[])
+        self.repo.set_delegate(admitted_actor('admin'),'listener',[], expected_revision=self.admin_revision())
         with self.connect() as c:
             self.assertFalse(c.execute("SELECT active FROM shadify_users WHERE auth_account_id='listener'").fetchone()[0])
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_app_admin_delegates').fetchone()[0],0)
 
     def test_audit_failure_rolls_back_primary_and_delegate_changes(self):
         primary=admitted_actor('admin')
-        self.repo.set_delegate(primary,'listener',['verify'])
+        self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         with self.connect() as c:
             c.execute("CREATE FUNCTION reject_admin_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic audit failure'; END $$")
             c.execute('CREATE TRIGGER reject_admin_audit BEFORE INSERT ON shadify_app_admin_audit FOR EACH ROW EXECUTE FUNCTION reject_admin_audit()')
-        for action in (lambda:self.repo.set_delegate(primary,'listener',[]),
-                       lambda:self.repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='revoke'),
+        for action in (lambda:self.repo.set_delegate(primary,'listener',[], expected_revision=self.admin_revision()),
                        lambda:self.repo.page_state(admitted_actor('listener'),self.artist,None,admin_only=True,verification=True)):
             with self.assertRaises(psycopg.Error):action()
         details=self.repo.admin_details(primary)
@@ -129,21 +119,21 @@ class AppAdminTests(ArtistPostgresCase):
         with self.connect() as c:
             self.assertIsNotNone(c.execute('SELECT primary_user_id FROM shadify_app_admin').fetchone()[0])
 
-    def test_concurrent_primary_transfers_one_success_no_split_primary(self):
+    def test_concurrent_ordinary_primary_transfers_are_both_closed(self):
         def transfer(target):
             try:
                 self.repo.transfer_primary(admitted_actor('admin'),target,expected_primary='admin',delegates='retain')
                 return 200
             except MediaError as error:return error.status
         with ThreadPoolExecutor(2) as pool:outcomes=list(pool.map(transfer,('owner-a','owner-b')))
-        self.assertEqual(sorted(outcomes),[200,403])
+        self.assertEqual(sorted(outcomes),[403,403])
         with self.connect() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM shadify_app_admin WHERE primary_user_id IS NOT NULL').fetchone()[0],1)
-            self.assertEqual(c.execute("SELECT count(*) FROM shadify_app_admin_audit WHERE action='transfer_primary'").fetchone()[0],1)
+            self.assertEqual(c.execute("SELECT count(*) FROM shadify_app_admin_audit WHERE action='transfer_primary'").fetchone()[0],0)
 
     def test_revoke_commits_before_waiting_verification_denies_without_write(self):
         primary,delegate=admitted_actor('admin'),admitted_actor('listener')
-        self.repo.set_delegate(primary,'listener',['verify'])
+        self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         entered=Event()
         def checked(actor):
             result=require_fresh_actor(actor)
@@ -155,7 +145,7 @@ class AppAdminTests(ArtistPostgresCase):
                     c.execute('SELECT id FROM shadify_artists WHERE id=%s FOR UPDATE',(self.artist,))
                     future=pool.submit(self.repo.page_state,delegate,self.artist,None,admin_only=True,verification=True)
                     self.assertTrue(entered.wait(2))
-                    self.repo.set_delegate(primary,'listener',[])
+                    self.repo.set_delegate(primary,'listener',[], expected_revision=self.admin_revision())
                 with self.assertRaises(MediaError) as error:future.result(timeout=5)
                 self.assertEqual(error.exception.status,403)
         with self.connect() as c:
@@ -163,11 +153,11 @@ class AppAdminTests(ArtistPostgresCase):
 
     def test_grant_revocation_serializes_with_authorized_commit(self):
         primary,delegate=admitted_actor('admin'),admitted_actor('listener')
-        self.repo.set_delegate(primary,'listener',['verify'])
+        self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         begun,finished=Event(),Event()
         def revoke():
             begun.set()
-            self.repo.set_delegate(primary,'listener',[])
+            self.repo.set_delegate(primary,'listener',[], expected_revision=self.admin_revision())
             finished.set()
         with ThreadPoolExecutor(1) as pool:
             with self.repo.authorized(delegate,self.artist,admin_only=True,operation='verify') as (c,_,_,_):
@@ -185,8 +175,7 @@ class AppAdminTests(ArtistPostgresCase):
         def audit(*args,**kwargs):
             original(*args,**kwargs)
             clock[0]=primary.expires_at
-        for action in (lambda:self.repo.set_delegate(primary,'listener',['verify']),
-                       lambda:self.repo.transfer_primary(primary,'owner-a',expected_primary='admin',delegates='revoke'),
+        for action in (lambda:self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision()),
                        lambda:self.repo.page_state(primary,self.artist,None,admin_only=True,verification=True)):
             clock[0]=now
             with patch('shadify_api.auth.time.time',side_effect=lambda:clock[0]),patch.object(self.repo,'_admin_audit',side_effect=audit):
@@ -215,7 +204,7 @@ class AppAdminTests(ArtistPostgresCase):
           'verify':lambda:client.put(admin_path+'/verification',json={'verified':True}),
           'edit_user_profile':lambda:client.patch('/api/admin/users/'+user+'/profile',json={'name':'Target','bio':'Edited'})}
         for granted in sorted(PERMISSIONS):
-            self.repo.set_delegate(primary,'listener',[granted])
+            self.repo.set_delegate(primary,'listener',[granted], expected_revision=self.admin_revision())
             with self.subTest(granted=granted):
                 for operation,attempt in attempts.items():
                     response=attempt()
@@ -227,46 +216,46 @@ class AppAdminTests(ArtistPostgresCase):
                 if granted=='verify':
                     self.assertEqual(client.get(path+'/tracks/'+track).status_code,404)
                     self.assertEqual(client.get('/api/admin/users/'+user+'/profile').status_code,403)
-        self.assertEqual(client.put('/api/admin/delegates/owner-b',json={'permissions':['verify']}).status_code,403)
+        self.assertEqual(client.put('/api/admin/delegates/owner-b',json={'permissions':['verify'],'expected_revision':self.admin_revision()}).status_code,403)
         self.assertEqual(client.put('/api/admin/primary',json={'account_id':'listener','expected_primary_account_id':'admin','delegates':'retain'}).status_code,403)
 
-    def test_primary_http_management_routes_and_explicit_transfer_fields(self):
-        actor=['admin']
-        client=TestClient(create_app(identity=lambda:admitted_actor(actor[0]),repository=self.repo))
-        self.assertEqual(client.get('/api/admin/authority').status_code,200)
-        self.assertEqual(client.put('/api/admin/delegates/listener',json={'permissions':['verify']}).status_code,200)
+    def test_primary_http_management_requires_revision_and_closes_transfer(self):
+        client=TestClient(create_app(identity=lambda:admitted_actor('admin'),repository=self.repo))
+        revision=client.get('/api/admin/authority').json()['revision']
+        grant=client.put('/api/admin/delegates/listener',json={'permissions':['verify'],'expected_revision':revision})
+        self.assertEqual(grant.status_code,200,grant.text)
+        self.assertEqual(grant.json()['revision'],revision+1)
         for body in ({'permissions':['admin']},{'permissions':['verify','verify']},{'permissions':['verify'],'role':'admin'}):
-            self.assertEqual(client.put('/api/admin/delegates/listener',json=body).status_code,422)
-        self.assertEqual(client.put('/api/admin/primary',json={'account_id':'owner-b','expected_primary_account_id':'admin'}).status_code,422)
-        response=client.put('/api/admin/primary',json={'account_id':'owner-b','expected_primary_account_id':'admin','delegates':'retain'})
-        self.assertEqual(response.status_code,200,response.text)
-        self.assertEqual(client.get('/api/admin/authority').status_code,403)
-        actor[0]='owner-b'
-        self.assertEqual(client.delete('/api/admin/delegates/listener').status_code,200)
-        self.assertEqual(len(client.get('/api/admin/authority/audit').json()['events']),4)
+            self.assertEqual(client.put('/api/admin/delegates/listener',json={**body,'expected_revision':revision+1}).status_code,422)
+        self.assertEqual(client.put('/api/admin/primary',json={'account_id':'owner-b','expected_primary_account_id':'admin','delegates':'retain'}).status_code,403)
+        self.assertEqual(client.get('/api/admin/authority').json()['primary_account_id'],'admin')
+        revoked=client.request('DELETE','/api/admin/delegates/listener',json={'expected_revision':revision+1})
+        self.assertEqual(revoked.status_code,200,revoked.text)
+        self.assertEqual(revoked.json()['revision'],revision+2)
+        self.assertEqual(len(client.get('/api/admin/authority/audit').json()['events']),3)
 
     def test_owner_with_narrow_admin_uses_independent_membership_permissions(self):
         self.assign(target='listener')
         primary,delegate=admitted_actor('admin'),admitted_actor('listener')
-        self.repo.set_delegate(primary,'listener',['verify'])
+        self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         edited=self.repo.edit_page(delegate,self.artist,{'bio':'Own page'})
         self.assertFalse(edited['acting_as_admin'])
         self.assertTrue(edited['capabilities']['manage_content'])
         verified=self.repo.page_state(delegate,self.other,None,admin_only=True,verification=True)
         self.assertTrue(verified['acting_as_admin'])
         self.assertFalse(verified['capabilities']['manage_content'])
-        self.repo.set_delegate(primary,'listener',[])
+        self.repo.set_delegate(primary,'listener',[], expected_revision=self.admin_revision())
         self.repo.edit_page(delegate,self.artist,{'bio':'Still own page'})
         with self.assertRaises(MediaError):self.repo.edit_page(delegate,self.other,{'bio':'No'})
 
     def test_suspension_does_not_bypass_separate_publication_permission(self):
         primary,delegate=admitted_actor('admin'),admitted_actor('listener')
-        self.repo.set_delegate(primary,'listener',['suspend'])
+        self.repo.set_delegate(primary,'listener',['suspend'], expected_revision=self.admin_revision())
         self.repo.page_state(delegate,self.artist,'suspended',admin_only=True)
         with self.assertRaises(MediaError) as error:self.repo.page_state(delegate,self.artist,'published',admin_only=True)
         self.assertEqual(error.exception.status,403)
         self.repo.page_state(delegate,self.artist,'draft',admin_only=True)
-        self.repo.set_delegate(primary,'listener',['suspend','publish_content'])
+        self.repo.set_delegate(primary,'listener',['suspend','publish_content'], expected_revision=self.admin_revision())
         self.repo.page_state(delegate,self.artist,'published',admin_only=True)
 
     def test_documented_runtime_table_privileges_suffice_and_legacy_grants_unreadable(self):
@@ -291,11 +280,13 @@ class AppAdminTests(ArtistPostgresCase):
         primary=admitted_actor('admin')
         self.assertTrue(repo.ready())
         repo.observe_identity(primary)
-        repo.set_delegate(primary,'listener',['verify'])
+        repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         repo.page_state(admitted_actor('listener'),self.artist,None,admin_only=True,verification=True)
         repo.change_owner(primary,self.artist,action='assign',target='owner-a')
-        repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='retain')
-        self.assertEqual(repo.admin_details(admitted_actor('owner-b'))['primary_account_id'],'owner-b')
+        with self.assertRaises(MediaError) as error:
+            repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='retain')
+        self.assertEqual(error.exception.status,403)
+        self.assertEqual(repo.admin_details(primary)['primary_account_id'],'admin')
         for query in ('SELECT * FROM shadify_admin_grants','DELETE FROM shadify_app_admin_audit','DELETE FROM artist_ownership_audit',
                       'DELETE FROM shadify_app_admin','TRUNCATE shadify_app_admin_delegates'):
             with self.assertRaises(psycopg.errors.InsufficientPrivilege):
@@ -320,7 +311,7 @@ class AppAdminTests(ArtistPostgresCase):
 
     def test_me_primary_summary_adds_only_self_authority(self):
         self.assign(target='admin')
-        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'])
+        self.repo.set_delegate(admitted_actor('admin'),'listener',['verify'], expected_revision=self.admin_revision())
         response=self.me_client('admin').get('/api/me')
         self.assertEqual(response.status_code,200,response.text)
         body=response.json()
@@ -336,7 +327,7 @@ class AppAdminTests(ArtistPostgresCase):
         primary=admitted_actor('admin')
         client=self.me_client('listener')
         for permissions in (['verify'],sorted(PERMISSIONS)):
-            self.repo.set_delegate(primary,'listener',permissions)
+            self.repo.set_delegate(primary,'listener',permissions, expected_revision=self.admin_revision())
             response=client.get('/api/me')
             self.assertEqual(response.status_code,200,response.text)
             self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':sorted(permissions),'can_manage_admin':False})
@@ -361,14 +352,14 @@ class AppAdminTests(ArtistPostgresCase):
     def test_me_revoked_delegate_and_former_primary_refresh_immediately(self):
         primary=admitted_actor('admin')
         self.assign(target='listener')
-        self.repo.set_delegate(primary,'listener',['verify'])
+        self.repo.set_delegate(primary,'listener',['verify'], expected_revision=self.admin_revision())
         client=self.me_client('listener')
         self.assertEqual(client.get('/api/me').json()['app_admin']['permissions'],['verify'])
-        self.repo.set_delegate(primary,'listener',[])
+        self.repo.set_delegate(primary,'listener',[], expected_revision=self.admin_revision())
         response=client.get('/api/me')
         self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
         self.assertEqual(response.json()['artist_ids'],[str(self.artist)])
-        self.repo.transfer_primary(primary,'owner-b',expected_primary='admin',delegates='retain')
+        self.primary_fixture('owner-b')
         former=self.me_client('admin')
         self.assertEqual(former.get('/api/me').json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
         self.assertEqual(former.get('/api/admin/authority').status_code,403)
@@ -409,7 +400,7 @@ class UnconfiguredAdminTests(ArtistPostgresCase):
         self.assertEqual(response.json()['app_admin'],{'is_primary':False,'permissions':[],'can_manage_admin':False})
         self.assertNotIn('configured',response.json()['app_admin'])
         self.assertEqual(client.get('/api/admin/authority').status_code,403)
-        self.assertEqual(client.put('/api/admin/delegates/owner-a',json={'permissions':['verify']}).status_code,403)
+        self.assertEqual(client.put('/api/admin/delegates/owner-a',json={'permissions':['verify'],'expected_revision':self.admin_revision()}).status_code,403)
         with self.connect() as c:self.assertIsNone(c.execute('SELECT primary_user_id FROM shadify_app_admin').fetchone()[0])
 
     def test_me_schema_unavailable_stays_error_not_an_unconfigured_summary(self):

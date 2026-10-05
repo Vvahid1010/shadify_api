@@ -191,8 +191,12 @@ class Layout(Input):
 RESOURCE_MODELS = {'tracks': Track, 'releases': Release, 'videos': Video, 'moments': Moment, 'events': Event}
 
 
-class DelegatePermissions(BaseModel):
+class DelegateRevision(BaseModel):
     model_config = ConfigDict(extra='forbid')
+    expected_revision: int = Field(strict=True, ge=0, le=9223372036854775807)
+
+
+class DelegatePermissions(DelegateRevision):
     permissions: list[Literal['create_artist','edit_profile','manage_content','publish_content',
         'change_owner','suspend','verify','edit_user_profile']] = Field(max_length=8)
 

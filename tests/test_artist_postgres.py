@@ -57,6 +57,19 @@ class ArtistPostgresCase(unittest.TestCase):
             for name in names:
                 c.execute((ROOT / 'migrations' / name).read_text())
 
+    def admin_revision(self):
+        """Explicit isolated fixture revision; never application fallback."""
+        with self.connect() as c:
+            return c.execute('SELECT revision FROM shadify_app_admin').fetchone()[0]
+
+    def primary_fixture(self, target, *, delegates='retain'):
+        """Synthetic isolated state preparation, not a protected runtime adapter."""
+        with self.connect() as c:
+            user=c.execute('SELECT id FROM shadify_users WHERE auth_account_id=%s',(target,)).fetchone()[0]
+            if delegates=='revoke':c.execute('DELETE FROM shadify_app_admin_delegates')
+            else:c.execute('DELETE FROM shadify_app_admin_delegates WHERE user_id=%s',(user,))
+            c.execute('UPDATE shadify_app_admin SET primary_user_id=%s,revision=revision+1',(user,))
+
     def assign(self, artist=None, target='owner-a'):
         return self.repo.change_owner(admitted_actor('admin'), artist or self.artist, action='assign', target=target)
 
