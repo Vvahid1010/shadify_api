@@ -1,4 +1,4 @@
-"""Paired exact Node543 stream and Shadify SQL; synthetic OS/native observations."""
+"""Paired exact Nodeb731 stream and Shadify SQL; synthetic OS/native observations."""
 import asyncio,os,socket,time
 from contextlib import contextmanager
 from pathlib import Path
@@ -115,4 +115,21 @@ class CatalogStreamTests(NominationControlCase):
                     with self.assertRaises(asyncio.CancelledError):await server
                 self.assertTrue(all(d.fileno()==-1 for d in descriptors))
                 self.assertTrue(connections and all(c.closed for c in connections))
+            asyncio.run(run())
+
+
+    def test_paired_ending_match_is_snapshot_comparison_not_mutation_authority(self):
+        with self.paired() as (client,installed,callbacks,tasks,descriptors,requests,connections):
+            async def run():
+                expected=await client.read_owner_state(installed[0])
+                snapshot=callbacks._snapshot;calls=[0]
+                def cleanup(*args):
+                    rows=snapshot(*args);calls[0]+=1
+                    if calls[0]==4:self.repo.bootstrap_primary(self.actor,operator_reference='isolated-paired-postread')
+                    return rows
+                with patch.object(callbacks,'_snapshot',side_effect=cleanup):
+                    self.assertIsNone(await client.require_owner_current(installed[0],expected))
+                self.assertEqual(self.primary(),'admin');self.assertEqual(expected.admin_revision,0)
+                self.assertEqual(len(requests),2);self.assertEqual(calls[0],4)
+                await self.finished(tasks,descriptors,connections)
             asyncio.run(run())

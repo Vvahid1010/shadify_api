@@ -2059,3 +2059,52 @@ log remains separate evidence. Current-state SQL fence/original expiry/read-only
 semantics remain intact. Existing protected browser-origin/provider/access selection,
 independent review, root cleanup/qualification and action-time activation gaps
 remain. No runtime, live database, grant, migration, install, push or other-repo edits.
+
+
+### Clarified bounded catalog snapshot contract and final paired pin (2026-10-05)
+
+Astra withdrew P2 claims based solely on state changing after SELECT/during
+cleanup: those show observation age, not a mutation authorization bypass. This
+clarified contract supersedes any stronger freshness/atomic-return implication
+in preceding catalog stages. No atomic commitment, row-lock read protocol,
+new authority state, retry or reread loop is introduced. Existing finite stability
+check and optional guarded stream hookup remain unchanged; source edits here are
+comments/docstrings and semantic qualification tests only.
+
+read_owner_state supplies a real coherent protected-scope/origin bounded snapshot.
+Observation starts before waits, expires within30 seconds (or earlier pending
+deadline), and cleanup/awaits never restart it. require_owner_current invokes ONE
+fresh independent read_owner_state callback, compares all non-time commitments,
+and checks the ORIGINAL expected deadline before/after that read. None means
+matched at that read, not locked/unchanged until return or response. The preserved
+finite before/after guard SQL stability check may conservatively deny observed
+drift, but is not an atomic promise; no additional rereads are added. A writer
+after the last SELECT may yield an older still-valid coherent observation, a new
+coherent observation or unavailable, never a mixed state or renewed deadline.
+Expected comparison input/cache cannot serve as a fresh read or grant authority.
+
+Mutations remain governed solely by their existing app-owned transaction locks,
+exact primary/admin/pending revisions, current protected authority and fresh
+immutable admitted evidence before commit. Catalog state and successful comparison
+are metadata, not mutation authorization. No contact/proof/session/credential
+disclosure or new ordinary-transfer bypass is introduced.
+
+Final paired pin: Shadify source commit recorded in owner-contract-v4 and exact
+accepted Node b73195f85d7743d40bba2e8c2694e60996cc3b3d immutable test archive.
+57 isolated tests PASS, no skips:6 paired stream,18 catalog,16 immutable receipt
+transport,17 nomination controls. New tests permit post-final-read primary/origin
+changes without claiming response-time authority, reject changes visible BEFORE
+the later independent comparison read, verify exactly one fresh callback, and
+advance time inside actual PostgreSQL Connection.close: even when the fresh read
+has a later deadline, ORIGINAL expected expiry during cleanup rejects. Paired
+Node client/server ending match may return None with a later committed primary,
+showing its precise snapshot semantics; distinct correlation/no cache replay,
+coherence, cancellation, redaction and mutation/receipt regressions still pass.
+Earlier before-final-SQL guard drift tests remain valid conservative denial
+checks, not requirements to fail solely on post-read change.
+Log /tmp/shadify-nomination-catalog-b731-snapshot-semantics-final.log. These use
+disposable SQL/socketpairs, actual peer credentials and synthetic native/OS/install
+settings, not root/live qualification. Accepted WSL/media/live sources remain.
+Actual protected browser-origin/provider/connected-descriptor access, independent
+review, root cleanup/qualification and action-time activation remain unselected.
+No runtime, OS qualification, install, grants, active DB, migration or push.

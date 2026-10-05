@@ -227,7 +227,7 @@ class CatalogTests(NominationControlCase):
                 for thread in threads:thread.join(4);self.assertFalse(thread.is_alive())
 
 
-    def test_primary_change_during_last_blocking_guard_denies_current_and_read(self):
+    def test_primary_change_before_final_sql_verification_denies_current_and_read(self):
         for entry in ('read','current'):
             with self.subTest(entry=entry):
                 # Reset only this isolated fixture; app primary cannot be removed.
@@ -252,7 +252,7 @@ class CatalogTests(NominationControlCase):
                 self.assertEqual(self.primary(),'admin')
                 self.assertTrue(all(c.closed for c in self.connections))
 
-    def test_pending_revision_change_during_last_blocking_guard_denies_current_and_read(self):
+    def test_pending_revision_change_before_final_sql_verification_denies_current_and_read(self):
         command=self.command();self.apply_command(command)
         for entry,revision in (('read',1),('current',2)):
             with self.subTest(entry=entry):
@@ -272,3 +272,47 @@ class CatalogTests(NominationControlCase):
                     self.assertEqual(error.exception.status,409)
                 self.assertEqual(self.row(command.nomination_id)['revision'],revision+1)
                 self.assertTrue(all(c.closed for c in self.connections))
+
+
+    def test_change_after_final_sql_may_return_old_coherent_snapshot(self):
+        snapshot=self.catalog._snapshot;calls=[0]
+        def cleanup(*args):
+            rows=snapshot(*args);calls[0]+=1
+            if calls[0]==2:self.repo.bootstrap_primary(self.actor,operator_reference='isolated-postread-change')
+            return rows
+        with patch.object(self.catalog,'_snapshot',side_effect=cleanup):state=self.read()
+        self.assertEqual(state.admin_revision,0);self.assertIsNone(state.primary_account_id)
+        self.assertEqual(state.actions,['initialize']);self.assertEqual(self.primary(),'admin')
+        # A later independent read sees the new state and rejects old comparison input.
+        with self.assertRaises(MediaError):self.current(state)
+        self.assertTrue(all(c.closed for c in self.connections))
+
+    def test_origin_change_after_final_read_does_not_promise_response_time_authority(self):
+        expected=self.read();snapshot=self.catalog._snapshot;calls=[0]
+        def cleanup(*args):
+            rows=snapshot(*args);calls[0]+=1
+            if calls[0]==2:self.settings=self.settings.model_copy(update={'app_origin':'https://after-read.example.invalid'})
+            return rows
+        with patch.object(self.catalog,'_snapshot',side_effect=cleanup),patch.object(
+                self.catalog,'read_owner_state',wraps=self.catalog.read_owner_state) as fresh:
+            self.assertIsNone(self.current(expected));self.assertEqual(fresh.call_count,1)
+        with self.assertRaises(MediaError):self.current(expected)
+        self.assertTrue(all(c.closed for c in self.connections))
+
+    def test_original_expiry_during_cleanup_denies_even_if_fresh_read_deadline_is_later(self):
+        import psycopg
+        clock=[int(time.time())];closed=set();close=psycopg.Connection.close
+        with patch('shadify_api.nomination_catalog.time.time',side_effect=lambda:clock[0]):
+            expected=self.read();clock[0]+=1
+            def cleanup(connection):
+                result=close(connection)
+                closed.add(id(connection))
+                if len(closed)==2:clock[0]=expected.expires_at
+                return result
+            # The second actual transaction closes before its read completion is
+            # delivered; fresh observed_at+30 is later, original expiry is not.
+            with patch.object(psycopg.Connection,'close',cleanup),patch.object(
+                    self.catalog,'read_owner_state',wraps=self.catalog.read_owner_state) as fresh:
+                with self.assertRaises(MediaError):self.current(expected)
+                self.assertEqual(fresh.call_count,1)
+        self.assertEqual(len(closed),2);self.assertTrue(all(c.closed for c in self.connections))

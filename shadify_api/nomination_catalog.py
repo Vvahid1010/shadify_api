@@ -102,15 +102,17 @@ class NominationCatalogCallbacks:
             primary_account_id=primary,validity_limits=dict(minimumMinutes=1,
                 maximumMinutes=MAX_LEASE//60),actions=actions,nomination=nomination)
         self._guard(selection,settings)
-        # The final installed/provider guard can block. Never compare/return only
-        # the SQL snapshot from before that guard. A distinct bounded READ ONLY
-        # transaction observes current DB state after all blocking guard callbacks.
-        # Do not append another blocking callback after this verification fence.
+        # Preserve the finite conservative stability check across the blocking
+        # provider guard. Drift between these coherent observations is unavailable.
+        # This is snapshot comparison, not an atomic commitment: writers may change
+        # state during cleanup or after the final SELECT. No reread loop or renewed
+        # observation deadline turns catalog metadata into mutation authority.
         if self._snapshot(receipt_connect)!=rows:
             raise MediaError(409,'Catalog state changed')
         return normalize_catalog_state(state,selection.scope,now=time.time)
 
     async def read_owner_state(self,selection):
+        """Bounded coherent observation; state is not locked until response."""
         if self.reader is None:raise MediaError(503,'Protected catalog owner unavailable')
         from functools import partial
         try:
@@ -119,6 +121,11 @@ class NominationCatalogCallbacks:
         except Exception:raise MediaError(503,'Catalog state unavailable') from None
 
     async def require_owner_current(self,selection,expected):
+        """One fresh owner read must match; None means matched at that read.
+
+        Original expiry survives cleanup/awaits. This never authorizes mutation
+        or promises unchanged state after the read or until a response is sent.
+        """
         from node_agent_package_helper.nomination_result_transport import normalize_catalog_state,same_catalog_state
         from node_agent_package_helper.nomination_contract import NominationOwnerState
         try:
