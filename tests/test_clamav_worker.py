@@ -42,7 +42,7 @@ if mode=='probe':
   if config['secret'] in str(dict(os.environ)):raise RuntimeError('environment exposed')
   if Path('/definitions/synthetic-secret.tmp').exists():raise RuntimeError('updater directory exposed')
   if not Path('/proc/self/fd/0').is_fifo():raise RuntimeError('input is not a pipe')
-  for name in ('/usr/bin/clamscan','/definitions/daily.cvd'):
+  for name in ('/usr/bin/clamscan','/definitions/daily.cvd','/definitions/daily-27111.cvd.sign','/etc/clamav/certs/clamav.crt'):
    try:
     with open(name,'ab') as stream:stream.write(b'BAD')
    except OSError:pass
@@ -88,6 +88,7 @@ def fixture_runtime():
    if path.is_file():
     target=RUNTIME/name.lstrip('/');target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,target);target.chmod(0o755)
  for name in ('proc','dev','scratch','definitions','etc'): (RUNTIME/name).mkdir(exist_ok=True)
+ (RUNTIME/'etc/clamav/certs').mkdir(parents=True,exist_ok=True)
  RUNTIME.chmod(0o755)
  unittest.addModuleCleanup(shutil.rmtree,RUNTIME)
  return RUNTIME
@@ -98,14 +99,26 @@ class ClamAVAdapterTests(unittest.TestCase):
   self.runtime=fixture_runtime();self.executable=self.runtime/'usr/bin/clamscan';self.executable.write_text(FAKE);self.executable.chmod(0o755)
   self.mode=self.runtime/'mode';self.mode.write_text('clean')
   self.definitions=self.root/'definitions';self.definitions.mkdir()
-  for name in ('main.cvd','daily.cvd'):
+  for name in ('main.cvd','daily.cvd','bytecode.cvd'):
    (self.definitions/name).write_bytes(('ClamAV-VDB:Fri Oct 2 10-00 +0000 2026:27111:100:90:md5:signature:builder:1').encode().ljust(512,b' ')+b'SYNTHETIC DEFINITIONS NOT A REAL DB')
+  self.trust=self.definitions
+  self.cert=self.runtime/'etc/clamav/certs/clamav.crt'
+  self.cert.write_bytes((Path(__file__).parent/'fixtures/clamav_public_ca.crt').read_bytes())
+  import base64
+  for family in ('main','daily','bytecode'):
+   (self.trust/(family+'-27111.cvd.sign')).write_bytes(b'#clamsign-1.0\n230::pkcs7-pem:'+base64.b64encode(b'\x30'+b'SYNTHETIC NOT A CRYPTOGRAPHIC SIGNATURE'*10)+b'\n')
+  # Synthetic reporter does not do crypto. Only root ownership is substituted;
+  # Fixture ownership/modes are substituted; real path/file/hash/version checks
+  # still run. Strict production ownership/mode denial has its own test.
+  def fixture_owner(info):
+   if info.st_uid not in (0,os.geteuid()):raise ValueError('Unexpected synthetic owner')
+  self.owner_patch=patch('shadify_api.scanner_sandbox._sealed_public',side_effect=fixture_owner);self.owner_patch.start()
   self.input=self.root/'input';self.input.write_bytes(b'SYNTHETIC SAFE INPUT'*100)
   self.fd=os.open(self.input,os.O_RDONLY);self.digest=hashlib.sha256(self.input.read_bytes()).hexdigest()
   self.limits=WorkerLimits(wall_seconds=2,cpu_seconds=2,lease_seconds=122)
   self.scanner=ClamAVScanner(executable=self.executable,prlimit='/usr/bin/prlimit',definitions=self.definitions,
       temp_dir=self.root,engine_version='1.5.4',limits=self.limits,sandbox=NativeSandbox(bwrap='/usr/bin/bwrap',runtime_root=self.runtime))
- def tearDown(self):os.close(self.fd);self.tmp.cleanup()
+ def tearDown(self):self.owner_patch.stop();os.close(self.fd);self.tmp.cleanup()
  def test_real_runner_synthetic_clean_requires_full_input_and_bound_versions(self):
   result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.verdict,'clean');self.assertTrue(result.full_coverage)
@@ -168,7 +181,7 @@ class ClamAVAdapterTests(unittest.TestCase):
   with self.assertRaises(ValueError):safe_path(self.executable,root_owned=True)
 
  def test_payload_and_descendant_cannot_access_credentials_fds_proc_or_host_network(self):
-  secret='SYNTHETIC-SHADIFY-SECRET-DO-NOT-EXPOSE';credentials=self.root/'worker-db.json';credentials.write_text(secret);credentials.chmod(0o600);(self.definitions/'synthetic-secret.tmp').write_text(secret)
+  secret='SYNTHETIC-SHADIFY-SECRET-DO-NOT-EXPOSE';credentials=self.root/'worker-db.json';credentials.write_text(secret);credentials.chmod(0o600)
   fd=os.open(credentials,os.O_RDONLY);os.set_inheritable(fd,True)
   server=socket.socket();server.bind(('127.0.0.1',0));server.listen()
   paths=[str(credentials),'/proc/'+str(os.getpid())+'/environ','/proc/'+str(os.getpid())+'/fd/'+str(fd),'/proc/self/fd/'+str(fd)]
@@ -259,6 +272,87 @@ class ClamAVAdapterTests(unittest.TestCase):
    with self.assertRaises(ValueError):runtime_inventory(closure)
    credential.unlink();link.unlink();link.symlink_to('/etc/passwd')
    with self.assertRaises(ValueError):runtime_inventory(closure)
+
+ def reject_trust_before_launch(self):
+  with patch('shadify_api.clamav_scanner.run_bounded',side_effect=AssertionError('Invalid trust must never launch')) as runner:
+   result=self.scanner.scan(self.fd,sha256=self.digest)
+  runner.assert_not_called()
+  self.assertEqual(result.verdict,'unknown');self.assertFalse(result.full_coverage)
+ def test_wrong_certificate_rejected_by_official_pin(self):
+  self.cert.write_bytes(b'SYNTHETIC WRONG CA');self.reject_trust_before_launch()
+ def test_missing_signature_is_never_clean(self):
+  (self.trust/'main-27111.cvd.sign').unlink();self.reject_trust_before_launch()
+ def test_signature_must_match_family_and_header_version(self):
+  path=self.trust/'daily-27111.cvd.sign';path.rename(self.trust/'daily-27112.cvd.sign')
+  self.reject_trust_before_launch()
+ def test_extra_signature_inventory_rejects_mixed_versions(self):
+  path=self.trust/'daily-27111.cvd.sign';(self.trust/'daily-27112.cvd.sign').write_bytes(path.read_bytes())
+  self.reject_trust_before_launch()
+ def test_corrupt_signature_framing_rejected_before_launch(self):
+  (self.trust/'main-27111.cvd.sign').write_bytes(b'#clamsign-1.0\n230::pkcs7-pem:invalid!\n')
+  self.reject_trust_before_launch()
+ def test_signature_content_changes_evidence_fingerprint(self):
+  from shadify_api.scanner_sandbox import public_trust_snapshot
+  before=public_trust_snapshot(self.runtime,self.definitions,deadline=time.monotonic()+2)
+  path=self.trust/'daily-27111.cvd.sign';path.write_bytes(path.read_bytes().replace(b'230::',b'231::'))
+  after=public_trust_snapshot(self.runtime,self.definitions,deadline=time.monotonic()+2)
+  self.assertNotEqual(before,after) # Real native crypto rejection is separately qualified.
+ def test_signature_replaced_after_scan_rejects_even_identical_bytes(self):
+  from shadify_api import clamav_scanner
+  original=clamav_scanner.run_bounded
+  def replace_after_scan(argv,**kwargs):
+   result=original(argv,**kwargs)
+   if '-' in argv:
+    path=self.trust/'daily-27111.cvd.sign';replacement=self.trust/'replacement.tmp'
+    replacement.write_bytes(path.read_bytes());replacement.replace(path)
+   return result
+  with patch('shadify_api.clamav_scanner.run_bounded',side_effect=replace_after_scan):
+   result=self.scanner.scan(self.fd,sha256=self.digest)
+  self.assertEqual(result.error_code,'scanner_evidence_invalid');self.assertFalse(result.full_coverage)
+ def test_signature_symlink_and_multiple_links_rejected(self):
+  path=self.trust/'main-27111.cvd.sign';outside=self.root/'outside-sign';outside.write_bytes(path.read_bytes())
+  path.unlink();path.symlink_to(outside);self.reject_trust_before_launch()
+  path.unlink();os.link(outside,path);self.reject_trust_before_launch()
+ def test_extra_updater_file_is_rejected_before_launch(self):
+  (self.definitions/'synthetic-secret.tmp').write_text('SYNTHETIC updater residue');self.reject_trust_before_launch()
+ def test_cld_is_explicitly_unsupported(self):
+  (self.definitions/'daily.cvd').rename(self.definitions/'daily.cld');self.reject_trust_before_launch()
+ def test_public_material_requires_real_root_sealed_ownership(self):
+  self.owner_patch.stop()
+  from shadify_api.scanner_sandbox import _sealed_public
+  try:
+   with self.assertRaises(ValueError):_sealed_public(self.trust.stat())
+   info=list(self.trust.stat());info[4]=0;info[0]=0o40777
+   with self.assertRaises(ValueError):_sealed_public(os.stat_result(info))
+  finally:self.owner_patch.start()
+ def test_certificate_missing_without_bare_fallback(self):
+  self.cert.unlink();self.reject_trust_before_launch()
+ def test_public_inventory_fingerprint_uses_content_and_names_not_inodes(self):
+  from shadify_api.scanner_sandbox import public_trust_snapshot
+  before,fingerprint=public_trust_snapshot(self.runtime,self.definitions,deadline=time.monotonic()+2)
+  path=self.trust/'main-27111.cvd.sign';replacement=self.trust/'replacement.tmp'
+  replacement.write_bytes(path.read_bytes());replacement.replace(path)
+  after,again=public_trust_snapshot(self.runtime,self.definitions,deadline=time.monotonic()+2)
+  self.assertEqual(fingerprint,again);self.assertNotEqual(before,after)
+
+ def test_runtime_ca_admits_only_pinned_scanner_leaf_and_not_media(self):
+  closure=self.root/'public-ca-closure';(closure/'usr/bin').mkdir(parents=True)
+  binary=closure/'usr/bin/clamscan';binary.write_bytes(b'\x7fELF SYNTHETIC INVENTORY ONLY');binary.chmod(0o755)
+  certificates=closure/'etc/clamav/certs';certificates.mkdir(parents=True)
+  ca=certificates/'clamav.crt';ca.write_bytes(self.cert.read_bytes())
+  original=Path.lstat
+  def root_owned(path):
+   values=list(original(path));values[4]=0;return os.stat_result(values)
+  with patch.object(Path,'lstat',root_owned):
+   self.assertEqual(len(runtime_inventory(closure)),64)
+   ca.write_bytes(b'SYNTHETIC WRONG PUBLIC CA')
+   with self.assertRaises(ValueError):runtime_inventory(closure)
+   ca.write_bytes(self.cert.read_bytes());extra=certificates/'other.crt';extra.write_bytes(ca.read_bytes())
+   with self.assertRaises(ValueError):runtime_inventory(closure)
+   extra.unlink();binary.unlink()
+   for name in ('ffmpeg','ffprobe'):(closure/'usr/bin'/name).write_bytes(b'\x7fELF SYNTHETIC INVENTORY ONLY')
+   with self.assertRaises(ValueError):runtime_inventory(closure,native_tools=('ffmpeg','ffprobe'))
+   ca.unlink();self.assertEqual(len(runtime_inventory(closure,native_tools=('ffmpeg','ffprobe'))),64)
 
 class WorkerLeaseTests(IngestFoundationTests):
  setUp=IngestFoundationTests.setUp

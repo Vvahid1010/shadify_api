@@ -11,7 +11,7 @@ from .local_storage import LocalAdapter
 from .media import Asset,MediaError
 from .ingest_scanner import scan_input,ScanVerdict
 from .clamav_scanner import ClamAVScanner
-from .scanner_sandbox import NativeSandbox,runtime_inventory
+from .scanner_sandbox import NativeSandbox,runtime_inventory,public_trust_snapshot
 
 LOCK_SQL="SELECT pg_try_advisory_lock(hashtextextended(current_database()||':'||'shadify_ingest_jobs'::regclass::oid::text||':shadify-ingest-worker',0))"
 
@@ -179,7 +179,8 @@ def compose(path):
             raise ValueError('Scanner closure binary differs')
         for excluded in (config.database_file,config.local_root,config.temp_dir,config.state_dir,config.definitions_dir):
             if Path(excluded).resolve().is_relative_to(Path(config.scanner_runtime_root).resolve()):raise ValueError('Runtime contains worker data')
-        safe_path(config.definitions_dir,directory=True)
+        safe_path(config.definitions_dir,directory=True,root_owned=True)
+        public_trust_snapshot(config.scanner_runtime_root,config.definitions_dir,deadline=time.monotonic()+config.limits.wall_seconds)
         if os.stat(config.definitions_dir).st_uid==os.geteuid() and os.geteuid()!=0:
             raise ValueError('Worker must not own writable definitions')
         if config.media_runtime_root is not None:

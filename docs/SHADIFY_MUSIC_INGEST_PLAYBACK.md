@@ -668,3 +668,47 @@ A disposable-PG regression pauses AFTER the initial promotion fence until the
 immutable lease expires, verifies the whole transaction rolled back, then proves
 the next attempt reuses the private manifest/output bytes without re-encoding.
 These corrections do not change011 SQL, roles, config, or activation decisions.
+
+
+### Public CVD trust dependency (2026-10-06)
+
+The production sandbox admits the exact public certificate leaf
+`etc/clamav/certs/clamav.crt` in the existing sealed native runtime, pinned to the
+official1.5.4 package SHA256
+`60200e4b4b1b1b7257bb4550487aeb142034341f3300a8526e77a3134a940e9d`.
+It is included in the existing scanner_runtime_sha256 inventory. No worker
+configuration fields, SQL001..011 or role grants change. Other certificate files
+and the leaf in a media closure are rejected; no generic certificate-store access.
+
+The sealed definitions directory contains exactly six root-owned regular
+single-link files: main.cvd, daily.cvd, bytecode.cvd, and each corresponding
+`<family>-<version>.cvd.sign`. Decimal versions come from each complete512-byte
+CVD header; no everchanging version is hardcoded. All three families are required.
+Each sidecar is at most64KiB. Directories/ancestors and files must be root-owned,
+non-symlink and not group/world writable. CLD is explicitly rejected until a
+separate update/signature contract is qualified. No broad `*.sign` admission.
+
+The certificate remains read-only in the existing root runtime mount; CVDs and
+sidecars are individual read-only binds in /definitions, remounted read-only.
+No new network, credentials, app-source mounts, descriptors or media-sandbox
+access is added. Runtime inventory covers the certificate; scan evidence covers
+CVD and public signing content hashes plus pre/post inode/size/mtime/ctime checks.
+The public signing fingerprint is SHA256 of compact UTF-8 JSON of lexically
+sorted `[basename, byte_count, file_sha256_hex]` arrays. Both CVD and public trust
+fingerprints enter official-sha256 evidence within the original parent deadline.
+Native libclamav still verifies the PKCS7 sidecars against exact CVD bytes and
+the pinned certificate. Filename/hash/framing checks alone are not crypto proof.
+
+The agreed Node collector contract copies the exact official CA leaf into its
+sealed closure, derives sidecar names from CVD headers, seals files root:root0444,
+and revalidates complete inventories on exit and saved-success reentry. Current
+collectors rejecting `*.sign` need a separately owned forward fix and matched
+reviewed tools input; never silently modify accepted owner440 material.
+
+The approved WSL evidence snapshot is main63/daily28145/bytecode339. Versions are
+test observations, not deployment pins. Wrong/missing/corrupt/mixed/changed public
+material fails closed. Negative namespace tests retain private-file, network,
+lock-FD and parent-death boundaries. Actual production NativeSandbox generated
+WAV/PNG/harmless AV marker and native bad-signature evidence is recorded separately;
+it is not FFmpeg, aggregate B-unit or full production pipeline qualification.
+No installation, live definition update, persistent worker or runtime activation.

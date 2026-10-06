@@ -2,6 +2,7 @@
 import hashlib,json,os,re,selectors,signal,stat,subprocess,time,tempfile
 from pathlib import Path
 from .ingest_scanner import ScanVerdict
+from .scanner_sandbox import public_trust_snapshot
 
 class EvidenceInvalid(Exception):pass
 
@@ -53,6 +54,7 @@ def definitions_snapshot(directory,*,deadline):
     directory=Path(directory);items=[];size=0;families=set()
     for path in sorted(directory.iterdir()):
         if path.name in ('freshclam.dat','mirrors.dat') or path.suffix=='.tmp':continue
+        if re.fullmatch(r'(main|daily|bytecode)-[1-9][0-9]{0,9}\.cvd\.sign',path.name):continue
         if re.fullmatch(r'(main|daily|bytecode)\.(cvd|cld)',path.name) is None:raise EvidenceInvalid('Unknown definitions inventory')
         family=path.stem
         if family in families:raise EvidenceInvalid('Duplicate definitions')
@@ -121,6 +123,11 @@ class ClamAVScanner:
             size=os.fstat(fd).st_size
             if size<=0 or size>self.limits.max_input_bytes:raise EvidenceInvalid('Input bounds')
             before,version=definitions_snapshot(self.definitions,deadline=deadline)
+            def trust_snapshot():
+                try:return public_trust_snapshot(self.sandbox.runtime_root,self.definitions,deadline=deadline)
+                except ValueError:raise EvidenceInvalid('Public CVD trust invalid') from None
+            trust_before,trust_fingerprint=trust_snapshot()
+            version='official-sha256:'+hashlib.sha256((version+':'+trust_fingerprint).encode()).hexdigest()
             limits=[self.prlimit,'--cpu='+str(self.limits.cpu_seconds),'--as='+str(self.limits.memory_bytes),
                     '--fsize='+str(self.limits.max_scan_bytes),'--nofile=128','--']
             inherited=() if self.lock_fd is None else (self.lock_fd,)
@@ -144,7 +151,7 @@ class ClamAVScanner:
                 if os.lseek(fd,0,os.SEEK_CUR)!=size:raise EvidenceInvalid('Partial input read')
                 verdict=parse_scan(code,out,err,engine=self.engine_version,sha256=sha256)
             after,_=definitions_snapshot(self.definitions,deadline=deadline)
-            if after!=before:raise EvidenceInvalid('Definitions changed')
+            if after!=before or trust_snapshot()[0]!=trust_before:raise EvidenceInvalid('Definitions or public trust changed')
             return ScanVerdict(verdict,sha256,self.engine_version,version,full_coverage=True)
         except TimeoutError:return ScanVerdict('unknown',sha256,error_code='scanner_timeout')
         except FileNotFoundError:return ScanVerdict('unknown',sha256,error_code='scanner_unavailable')
