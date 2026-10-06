@@ -298,3 +298,86 @@ so legacy or withdrawn covers hide the track and block publication. Disposable
 PostgreSQL HTTP tests positively preserve approved audio, artwork/avatar/header
 public references and reject withdrawn/legacy covers. These remain structural
 fixtures, not a real malware/decode/processing acceptance claim.
+
+
+### Source phase1B: bounded scanner and native worker (2026-10-06)
+
+`python -m shadify_api.ingest_worker --config <absolute protected JSON>` is the
+owning standalone entry. It loads only explicitly selected protected worker DB
+credentials and Local root; it creates no listener, Auth identity, migration,
+role, directory, scanner install or signature update. Select a non-root app OS
+identity, separate least-privilege DB credentials and existing private state/temp
+directories. LocalAdapter currently requires the media root's app UID; Node should
+restrict the worker's filesystem access with ReadOnlyPaths for media/definitions,
+only private worker state/temp writable, no network except its assigned DB.
+No app-media signing key or Auth/replay credentials are needed by this entry.
+
+Additive010_ingest_attempts preserves001..009. Attempts record job/input SHA256,
+claimed revision, server start/expiry, and a once-only completed/abandoned outcome.
+Claim, expired-attempt abandonment and next claim are atomic; scan evidence,
+completion and resulting job state commit together. A stale/expired result cannot
+commit. Committed reply loss cannot rescan a validating/rejected job. Unknown
+scanner infrastructure returns uploaded with a bounded retry delay. Unleased
+historical scanning jobs are not guessed into automatic recovery. There is no
+heartbeat: a fixed lease exceeds the bounded scan deadline by at least120seconds.
+
+Concurrency is exactly one on selected Node B. Worker holds a private flock for
+its lifetime and inherits it into scanner subprocesses; database session advisory
+exclusion additionally covers each complete claim/scan/commit. Expiration alone
+cannot start a parallel scanner while the first session is alive. An orphan child
+retains the host lock until exit; Node's unit packet must kill the whole control
+group on service termination/crash and bound restart/stop handling. Multi-node
+worker deployment is not admitted by this source contract.
+
+ClamAVScanner invokes root-owned explicit clamscan/prlimit paths without a shell,
+ambient environment, daemon or remote scan service. It passes the pinned input
+descriptor as stdin and checks full input consumption plus a strict single-file
+report, zero diagnostics/errors, positive signature count, exact selected1.4.x
+engine version, expected outcome and immutable before/after input/definitions.
+Definitions fingerprint covers all selected main/daily/optional bytecode official
+files and versions; missing, duplicate, changed or unrecognized inventories block.
+Only explicit full-coverage evidence records clean/infected. Exit0 alone, missing
+report, skipped/partial input, any warnings/unknown diagnostics, heuristic size/
+encrypted/coverage alerts and signature changes remain unknown and unapproved.
+Parser is intentionally fail closed on a changed CLI protocol; Node must qualify
+the exact installed release/signatures, not assume compatibility after updates.
+
+Flags disable cache and internal scan-time skipping, enable maximum/encrypted/
+broken-file alerts and full scanning, and explicitly bound input/expanded data.
+The external process group deadline, CPU/address-space/file-size/open-file limits
+and capped stdout/stderr bound execution. Timeout/overflow kills and reaps the
+scanner process group; SIGTERM/interrupt also does so. Missing binary/signatures,
+execution failure and timeout are infrastructure outcomes, not malware verdicts.
+Original bytes remain quarantined; clean advances only to validating. No approval
+writer, synthetic approval endpoint, full decode, extraction, recorded match,
+processing, High/Low validation or promotion is implemented in1B.
+
+Protected JSON fields: database_file, local_root, state_dir, temp_dir, clamscan,
+prlimit, definitions_dir, engine_version, limits. Limits default to input100MiB,
+expanded200MiB, wall/CPU180seconds, memory2GiB, output32KiB, lease360seconds,
+retry30seconds and poll5seconds. These are source upper bounds/proposed settings;
+Node/user must select and review actual resources/paths/version before activation.
+Paths must be absolute, non-symlink, protected and separate; definitions are
+read-only to the worker identity. No directory is provisioned automatically.
+
+Exact proposed worker DB privileges, qualified with a disposable NOLOGIN role:
+assets SELECT; jobs SELECT and UPDATE(state,revision,last_error,updated_at); scans
+SELECT,INSERT; attempts SELECT,INSERT and UPDATE(finished_at,outcome); schema USAGE
+and normal advisory-lock functions. No approval/artist/admin table access or scan
+deletion. API privileges and approved read/publication checks remain unchanged;
+the API does not need attempt-table privileges. This document grants no real role.
+
+Tests use actual subprocess groups/prlimit, disposable PG and synthetic clamscan
+protocol/definition files. They cover partial/limit/diagnostic/version/change/
+timeout/overflow denial, child termination, inherited host lock, real worker
+process SIGKILL/restart, leases, active-worker exclusion after expiry, stale-result
+denial, transaction failure and minimal privileges. No clamscan/freshclam/ffmpeg/
+ffprobe exists on this WSL PATH, so no real AV/signature or audio-processing
+acceptance is claimed. Exact Node010 installer/SQL receipts/ACL/fingerprint proof
+and actual tooling/settings/authority activation remain outstanding.
+
+Upstream behavior references: [ClamAV scanning options](https://docs.clamav.net/manual/Usage/Scanning.html)
+describe oversized-file skipping; the [1.4.3 stdin implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.4.3/clamscan/manager.c)
+and [CLI implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.4.3/clamscan/clamscan.c)
+ground the strict protocol and explicit coverage controls. Future actual-tool
+proof must confirm the selected Ubuntu package's behavior with safe fixtures.

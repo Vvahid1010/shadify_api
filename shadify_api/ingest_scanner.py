@@ -58,26 +58,7 @@ class IngestScanner:
                 c.execute("UPDATE shadify_ingest_jobs SET state='scanning',last_error=NULL,revision=revision+1,"
                           'updated_at=clock_timestamp() WHERE id=%s',(job['id'],))
         expected=job['input_sha256']
-        verdict=ScanVerdict('unknown',expected,error_code='scanner_unavailable')
-        adapter=self.adapters.get(asset.storage_provider)
-        if self.scanner is not None and isinstance(adapter,LocalAdapter):
-            fd=None
-            try:
-                fd=adapter.open(asset.key)
-                identity=os.fstat(fd)
-                fingerprint=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
-                if identity.st_size!=asset.size or fd_digest(fd)!=expected:
-                    verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
-                else:
-                    verdict=self.scanner.scan(fd,sha256=expected)
-                    if type(verdict) is not ScanVerdict or verdict.sha256!=expected:
-                        verdict=ScanVerdict('unknown',expected,error_code='scanner_evidence_invalid')
-                    elif fd_digest(fd)!=expected or fingerprint(os.fstat(fd))!=fingerprint(identity):
-                        verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
-            except TimeoutError:verdict=ScanVerdict('unknown',expected,error_code='scanner_timeout')
-            except Exception:verdict=ScanVerdict('unknown',expected,error_code='scanner_error')
-            finally:
-                if fd is not None:os.close(fd)
+        verdict=scan_input(asset,expected,adapters=self.adapters,scanner=self.scanner)
         state='validating' if verdict.verdict=='clean' else ('rejected' if verdict.verdict=='infected'
               or verdict.error_code=='bytes_changed' else 'uploaded')
         error='malware_detected' if verdict.verdict=='infected' else verdict.error_code
@@ -93,3 +74,26 @@ class IngestScanner:
                           'WHERE id=%s',(state,error,job['id']))
         return dict(job_id=str(job['id']),state=state,revision=job['revision']+2,
                     approved=False,retryable=state=='uploaded',last_error=error)
+
+def scan_input(asset,expected,*,adapters,scanner):
+    verdict=ScanVerdict('unknown',expected,error_code='scanner_unavailable')
+    adapter=adapters.get(asset.storage_provider)
+    if scanner is not None and isinstance(adapter,LocalAdapter):
+        fd=None
+        try:
+            fd=adapter.open(asset.key)
+            identity=os.fstat(fd)
+            fingerprint=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+            if identity.st_size!=asset.size or fd_digest(fd)!=expected:
+                verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
+            else:
+                verdict=scanner.scan(fd,sha256=expected)
+                if type(verdict) is not ScanVerdict or verdict.sha256!=expected:
+                    verdict=ScanVerdict('unknown',expected,error_code='scanner_evidence_invalid')
+                elif fd_digest(fd)!=expected or fingerprint(os.fstat(fd))!=fingerprint(identity):
+                    verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
+        except TimeoutError:verdict=ScanVerdict('unknown',expected,error_code='scanner_timeout')
+        except Exception:verdict=ScanVerdict('unknown',expected,error_code='scanner_error')
+        finally:
+            if fd is not None:os.close(fd)
+    return verdict
