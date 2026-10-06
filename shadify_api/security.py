@@ -47,6 +47,10 @@ def receiver_catalog():
                    (resource+".delete", "DELETE", path)]
         if resource != "events":
             routes += [(resource+".publication", "PUT", path+"/publication")]
+    routes += [
+        ("artists.uploads.read", "GET", "/api/artists/{artist_id}/uploads"),
+        ("media.match_review.read", "GET", "/api/media/{asset_id}/match-review"),
+        ("media.match_review.edit", "PUT", "/api/media/{asset_id}/match-review")]
     catalog = [dict(endpoint_id="shadify_api." + name, receiver_app="shadify_api",
                  permitted_peer_apps=["authentication"], method=method, path=path,
                  headers=list(HEADERS), off_supported=True, proxy_headers=True)
