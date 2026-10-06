@@ -32,6 +32,9 @@ class PlaybackService:
                                account_id: str | None = None) -> PlaybackAccess:
         target = self.repository.get_playback_target(track_id, preview=preview)
         asset = require_playable(target, track_id, preview=preview)
+        require=getattr(self.repository,'require_ingest_approval',None)
+        if require is None:raise MediaError(503,'Media ingest approval unavailable')
+        require(asset)
         return self.provider.create_playback_access(asset.key)
 
 

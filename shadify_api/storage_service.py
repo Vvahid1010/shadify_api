@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ class StorageService:
         except KeyError: raise StorageUnavailable("Object provider unavailable") from None
 
     def issue(self, asset, purpose, actor=None, *, preview=False):
+        if purpose != 'put': self.repository.require_ingest_approval(asset)
         now = int(time.time())
         lifetime = self.upload_ttl if purpose == 'put' else self.access_ttl
         if purpose != 'put' and asset.storage_provider == 'local':
@@ -78,6 +80,20 @@ class StorageService:
     def inspect_asset(self, asset):
         return self.adapter(asset).inspect(asset.key)
 
+    def checksum_asset(self,asset):
+        from .local_storage import LocalAdapter
+        adapter=self.adapter(asset)
+        if not isinstance(adapter,LocalAdapter):raise StorageUnavailable('Local quarantine ingestion required')
+        return adapter.checksum(asset.key)
+
+    def require_file(self,asset,fd):
+        from .media import MediaError
+        identity=self.repository.require_ingest_approval(asset)
+        info=os.fstat(fd)
+        observed=dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)
+        if observed!=identity:raise MediaError(409,'Approved object changed')
+        return identity
+
     def private_access(self, actor, asset_id):
         from .media import MediaError
         asset = self.repository.get_for_actor(actor, asset_id)
@@ -98,6 +114,7 @@ class StorageService:
     def authorize_read(self, claims, actor, asset):
         from .delivery import require_playable
         from .media import MediaError
+        self.repository.require_ingest_approval(asset)
         if claims['purpose'] == 'playback':
             target = self.repository.get_playback_target(asset.track_id, preview=claims['preview'])
             current = require_playable(target, asset.track_id, preview=claims['preview'])

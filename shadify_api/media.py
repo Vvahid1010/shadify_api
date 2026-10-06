@@ -71,7 +71,7 @@ class MediaService:
         if intent.mime not in allowed[intent.asset_type] or intent.size > self.max_size:
             raise MediaError(422, "Unsupported type or configured size limit exceeded")
         asset_id = uuid4()
-        key = f"artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
+        key = f"quarantine/artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
         asset = Asset(asset_id, owner.account_id, intent.artist_id, intent.track_id, key,
                       intent.asset_type, intent.mime, intent.size,
                       datetime.now(timezone.utc) + timedelta(seconds=self.ttl))
@@ -108,7 +108,11 @@ class MediaService:
             if not self.repository.transition(owner, asset.id, "upload_pending", "failed"):
                 raise MediaError(409, "Upload state or authorization changed; retry")
             raise MediaError(422, "Object size, MIME or container signature mismatch")
-        if not self.repository.transition(owner, asset.id, "upload_pending", "uploaded"):
+        if not isinstance(self.storage, StorageService):
+            raise MediaError(503, "Quarantine ingestion unavailable")
+        byte_sha256=self.storage.checksum_asset(asset)
+        require_fresh_actor(owner)
+        if not self.repository.transition(owner, asset.id, "upload_pending", "uploaded", byte_sha256=byte_sha256):
             raise MediaError(409, "Upload state changed; retry")
         require_fresh_actor(owner)
         return replace(asset, state="uploaded")

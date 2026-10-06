@@ -225,3 +225,66 @@ This is a staged proposal for Astra, not permission to install a scanner, apply
 live migrations, grant accounts, activate a node/runtime or change another owner's
 repository. No separate ingest implementation is shipped in this documentation
 commit. Keep accepted historical source/artifacts intact and use forward commits.
+
+
+### Implemented source phase1: quarantine and scanner interface (2026-10-06)
+
+The forward009_ingest_quarantine migration adds durable jobs, immutable scan
+evidence and immutable approval records. It does not modify001..008 or backfill
+old assets. Completed uploads use quarantine keys and one job per asset with an
+immutable SHA256. Completion and owner metadata return nested `ingest`: job_id,
+state, revision, approved, retryable, last_error, legacy_unregistered. Pending
+uploads have no ingest status; old completed rows have state uploaded, no job,
+approved false and legacy_unregistered true. Draft metadata can retain original
+audio/cover IDs. No job mutation or approval endpoint is exposed publicly.
+
+URL issuance, actual GET/HEAD/Range and streaming, prepared playback, public
+media references and media-backed publication require current approval. Old
+capabilities and primary admins cannot bypass this check. Quarantine/no approval
+returns409; unavailable evidence/schema returns503. Existing identity expiry,
+owner access and other-user404 remain. Ordinary metadata/text flows remain usable.
+
+The internal scanner interface claims jobs atomically using expected_revision;
+one concurrent claimant wins. Evidence binds input SHA256, engine and definitions
+versions, server scan time and explicit full coverage. Absent/error/timeout or
+unknown/partial/skipped coverage cannot be clean. An adapter must bound execution
+and full input coverage; clamscan exit0 alone is insufficient. The current
+composition has no real adapter, runner, installation or automatic invocation.
+Synthetic fixtures prove the interface and guards, not real malware scanning.
+Clean advances only to validating; infected or changed bytes reject; scanner
+infrastructure failures return uploaded with retryable true. Rejected is terminal.
+A process crash can leave scanning durable and blocked; lease/reclaim is future
+worker work. Lost replies reconcile durable status; stale revisions cannot replay.
+
+No approval writer or completed ingest pipeline exists in this phase. Full audio
+decode/validation, extraction, persisted match decision, processing and validated
+High<=320kbps/Low128 outputs must precede approved storage. ffprobe metadata alone
+is not full decode validation. Schema evidence fields reserve this boundary;
+synthetic JSON markers do not demonstrate actual processing. Original input stays
+quarantined; a future trusted publisher must seal approved output hash and Local
+file identity, preserve masters and commit output/job evidence atomically.
+
+Proposed role boundary for later exact Node review: API reads the three ingest
+tables and inserts jobs; PostgreSQL publication row locks additionally require
+UPDATE(id) on jobs, solely for FOR SHARE (identity mutation is trigger-prohibited).
+The API must not receive state/revision/hash UPDATE. Scanner reads assets/jobs,
+updates job state/revision/error/time columns and inserts
+scan evidence; approval publishing is separately trusted and still unimplemented.
+No API approval INSERT/UPDATE or scanner approval write is proposed. No real role,
+grant or worker owner has been selected here. Existing artist/admin ACLs remain.
+
+Tests use disposable PostgreSQL and Local files for HTTP access, old7665 tokens,
+draft persistence, expiry before commit, other-user denial, concurrency, unknown
+results and crash state. Structural synthetic approval fixtures also prove approved
+GET/HEAD/Range, withdrawal of old tokens, file-identity changes and the publication
+row lock; they do not demonstrate real processing. Response loss discards a successful reply; interrupted
+PUT uses a TestClient generator failure, not a real network/browser fault. Historical
+issuer fixture is a byte-for-byte copy of accepted7665 storage_service.py.
+
+Native source packages now truthfully declare009_ingest_quarantine and require
+the new SQL/runtime files. Historical targets remain verifiable. Accepted Node
+a4a920f7 admits only through008: this009 artifact must remain offline until its
+owner reviews installer, migration receipts, reader/runtime ACLs and schema
+fingerprints. No live migration, scanner install, service restart, grant, push or
+publication is authorized by this source receipt. Phase2 actual tools/worker,
+approval/output proof and matching/playback remain outstanding.

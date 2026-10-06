@@ -260,12 +260,15 @@ class AppAdminTests(ArtistPostgresCase):
 
     def test_documented_runtime_table_privileges_suffice_and_legacy_grants_unreadable(self):
         from psycopg import sql
+        self.apply('007_admin_nomination.sql','008_nomination_control.sql','009_ingest_quarantine.sql')
         role='synthetic_'+uuid4().hex
         grants={
           'SELECT,INSERT,UPDATE': ['shadify_users','shadify_artists','shadify_media_assets','artist_memberships'],
           'SELECT,INSERT,UPDATE,DELETE': ['shadify_tracks','shadify_releases','shadify_videos','shadify_moments','shadify_events','shadify_app_admin_delegates'],
           'SELECT,INSERT,DELETE': ['shadify_release_tracks'],
-          'SELECT,INSERT': ['artist_ownership_audit','shadify_app_admin_audit'],
+          'SELECT,INSERT': ['artist_ownership_audit','shadify_app_admin_audit','shadify_ingest_jobs'],
+          'SELECT': ['shadify_ingest_scans','shadify_ingest_approvals'],
+          'UPDATE(id)': ['shadify_ingest_jobs'],
           'SELECT,UPDATE': ['shadify_app_admin']}
         with self.connect() as c:
             c.execute(sql.SQL('CREATE ROLE {} NOLOGIN').format(sql.Identifier(role)))
@@ -288,7 +291,9 @@ class AppAdminTests(ArtistPostgresCase):
         self.assertEqual(error.exception.status,403)
         self.assertEqual(repo.admin_details(primary)['primary_account_id'],'admin')
         for query in ('SELECT * FROM shadify_admin_grants','DELETE FROM shadify_app_admin_audit','DELETE FROM artist_ownership_audit',
-                      'DELETE FROM shadify_app_admin','TRUNCATE shadify_app_admin_delegates'):
+                      'DELETE FROM shadify_app_admin','TRUNCATE shadify_app_admin_delegates',
+                      "UPDATE shadify_ingest_jobs SET state='ready'",'DELETE FROM shadify_ingest_scans',
+                      'DELETE FROM shadify_ingest_approvals','INSERT INTO shadify_ingest_approvals DEFAULT VALUES'):
             with self.assertRaises(psycopg.errors.InsufficientPrivilege):
                 with connect() as c:c.execute(query)
 
@@ -380,6 +385,7 @@ class UnconfiguredAdminTests(ArtistPostgresCase):
         self.apply('006_app_admin.sql')
 
     def test_unconfigured_has_no_primary_first_user_or_legacy_grant_promotion(self):
+        self.apply('007_admin_nomination.sql','008_nomination_control.sql','009_ingest_quarantine.sql')
         with self.connect() as c:
             c.execute("INSERT INTO shadify_admin_grants(user_id,granted_by) SELECT id,'inert-history' FROM shadify_users WHERE auth_account_id='listener'")
         self.repo.observe_identity(admitted_actor('listener'))

@@ -132,6 +132,9 @@ def create_media_app(storage):
         fd = await run_in_threadpool(adapter.open, asset.key)
         try:
             if claims['exp'] <= int(time.time()): raise MediaError(403, 'Media authorization expired')
+            identity = await run_in_threadpool(storage.require_file, asset, fd)
+            if claims['exp'] <= int(time.time()): raise MediaError(403, 'Media authorization expired')
+            if actor is not None: require_fresh_actor(actor)
             size = os.fstat(fd).st_size
             if size != asset.size: raise StorageUnavailable('Object size changed')
             try: start, end, status = byte_range(request.headers.get('range'), size)
@@ -155,9 +158,13 @@ def create_media_app(storage):
                             await run_in_threadpool(storage.authorize_read, claims, actor, asset)
                             last_authority_check = time.monotonic()
                             if claims['exp'] <= int(time.time()): return
+                        info=os.fstat(stream_fd)
+                        if dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)!=identity: return
                         block = await run_in_threadpool(os.read, stream_fd, min(65536, remaining))
                         # A queued filesystem read must not extend the grant.
                         if claims['exp'] <= int(time.time()) or not block: return
+                        info=os.fstat(stream_fd)
+                        if dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)!=identity: return
                         remaining -= len(block)
                         yield block
                 except (MediaError, StorageUnavailable):

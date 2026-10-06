@@ -2169,3 +2169,17 @@ invent success from upload_pending/412; a storage-unavailable503 is still unknow
 An expired pending session409 requires a fresh explicit upload intent. Save only
 stable asset IDs to track references; obtain a new private access URL after refresh.
 Original uploads do not make a track publicly playable or a cover public-ready.
+
+
+### Mandatory ingest quarantine foundation (2026-10-06)
+
+Forward009 adds jobs, immutable scan evidence and approval records without
+rewriting001..008 or approving historical rows. Completion/metadata expose ingest
+status; draft audio/cover IDs persist, but all byte access, old capabilities and
+file publication require current approval. Admin permissions cannot bypass scans.
+The source scanner interface is fail closed and synthetic-tested; no real scanner,
+complete processing pipeline or approval writer exists yet. Phase1 implementation,
+API states, evidence, tests and outstanding worker/Node009 work are recorded in
+[the owning music-ingest contract](SHADIFY_MUSIC_INGEST_PLAYBACK.md#implemented-source-phase1-quarantine-and-scanner-interface-2026-10-06).
+Historical7665 private preview is superseded by mandatory approval. No runtime,
+migration, roles/grants, installation, publication or real authority was activated.

@@ -118,6 +118,33 @@ class NativePackageTests(unittest.TestCase):
             manifest['migration_target']='006_app_admin';write()
             with self.assertRaisesRegex(ValueError,'nomination_target_required'):verify(root,source)
 
+    def test_ingest_target_requires_entire_schema_and_runtime_and_cannot_mislabel_008(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            names=('migrations/003_identity_provenance.sql','migrations/004_artist_memberships.sql',
+                'migrations/005_artist_content.sql','migrations/006_app_admin.sql',
+                'migrations/007_admin_nomination.sql','migrations/008_nomination_control.sql',
+                'migrations/009_ingest_quarantine.sql','shadify_api/access.py','shadify_api/artists.py',
+                'shadify_api/artist_models.py','shadify_api/artist_routes.py','shadify_api/admin.py',
+                'shadify_api/nomination.py','shadify_api/nomination_contract.py',
+                'shadify_api/nomination_control.py','shadify_api/nomination_routes.py',
+                'shadify_api/nomination_transport.py','shadify_api/nomination_catalog.py',
+                'shadify_api/local_primary.py','shadify_api/local_primary_composition.py',
+                'shadify_api/ingest.py','shadify_api/ingest_scanner.py')
+            for name in names:
+                name='source/'+name;path=root/name;path.parent.mkdir(parents=True,exist_ok=True)
+                raw=b'synthetic contract fixture';path.write_bytes(raw)
+                manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            def write(): (root/'build-info.json').write_bytes(canonical(manifest))
+            manifest['migration_target']='009_ingest_quarantine';write();verify(root,source)
+            for name in ('source/migrations/009_ingest_quarantine.sql','source/shadify_api/ingest.py',
+                         'source/shadify_api/ingest_scanner.py'):
+                metadata=manifest['files'].pop(name);write()
+                with self.assertRaisesRegex(ValueError,'incomplete_ingest_package'):verify(root,source)
+                manifest['files'][name]=metadata
+            manifest['migration_target']='008_nomination_control';write()
+            with self.assertRaisesRegex(ValueError,'ingest_target_required'):verify(root,source)
+
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;package(root,source)

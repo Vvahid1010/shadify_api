@@ -6,7 +6,7 @@ from psycopg import IntegrityError
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .artist_models import ArtistProfile, PublicUserProfile, RESOURCE_MODELS
-from .media import MediaError
+from .media import Asset,MediaError
 from .auth import require_fresh_actor
 
 TABLES = {name: 'shadify_' + name for name in RESOURCE_MODELS}
@@ -48,6 +48,7 @@ class ArtistOperations:
             if kind in ('audio_preview','artwork_delivery'):
                 eligible=eligible and row['access_class']=='free'
         if not eligible: raise MediaError(409,'Asset is not technically ready for this use')
+        if not original:self.require_ingest_approval(Asset(**row),cursor=c)
         return row
 
     def _track_artwork(self,c,artist,track,asset_id):
@@ -169,6 +170,9 @@ class ArtistOperations:
                     raise MediaError(409,'Explicit admin suspension action required')
                 if state=='published' and not page['name'].strip():
                     raise MediaError(409,'Page name required')
+                if state=='published':
+                    for field in ('avatar_asset_id','header_asset_id'):
+                        self._asset(c,artist,page[field],'artwork_delivery')
                 c.execute('UPDATE shadify_artists SET publish_state=%s WHERE id=%s',(state,artist))
             page=c.execute('SELECT * FROM shadify_artists WHERE id=%s',(artist,)).fetchone()
             from dataclasses import replace
@@ -294,9 +298,14 @@ class ArtistOperations:
                 return True
             except MediaError: return False
         if resource=='releases':
+            try:self._asset(c,artist,row['cover_asset_id'],'artwork_delivery',lock=lock)
+            except MediaError:return False
             tracks=c.execute('SELECT t.* FROM shadify_release_tracks r JOIN shadify_tracks t ON t.id=r.track_id '
                              'AND t.artist_id=r.artist_id WHERE r.release_id=%s ORDER BY r.position',(row['id'],)).fetchall()
             return bool(tracks) and all(t['publish_state']=='published' and self._publishable(c,artist,'tracks',t,lock=lock) for t in tracks)
+        if resource=='moments':
+            try:self._asset(c,artist,row['image_asset_id'],'artwork_delivery',lock=lock)
+            except MediaError:return False
         return True
 
     def content_publication(self,actor,artist,resource,content_id,state):

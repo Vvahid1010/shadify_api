@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 from psycopg.rows import dict_row
 from .access import ArtistAccessRepository
 from .artists import ArtistOperations
+from .ingest import IngestRepository
 from .media import Asset, MediaError
 from .auth import require_fresh_actor
 
 
-class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
+class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository):
     def __init__(self, connect):
         self.connect=connect
 
@@ -47,16 +48,18 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             return Asset(**row) if row else None
 
-    def transition(self,actor,asset_id,expected,target):
+    def transition(self,actor,asset_id,expected,target,*,byte_sha256=None):
         require_fresh_actor(actor)
         if (expected,target) not in {('upload_pending','uploaded'),('upload_pending','failed')}:
             raise ValueError('Only original upload completion transitions are supported')
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
         with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
-            return c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
+            changed=c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
                 "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original')",
                 (target,asset_id,asset.artist_id,expected)).rowcount==1
+            if changed and target=='uploaded':self.enqueue_ingest(c,asset_id,byte_sha256)
+            return changed
 
     @contextmanager
     def upload_guard(self, actor, asset):
@@ -98,7 +101,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             if row is None: raise MediaError(404,'Asset not found')
             return {**auth.dto(),**{k:(str(row[k]) if k in ('artist_id','track_id') else row[k])
-                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},'asset_id':str(asset_id)}
+                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},'asset_id':str(asset_id),'ingest':self.ingest_status(c,asset_id) if row['state'] in ('uploaded','ready') else None}
 
     def project_user(self,account_id):
         # Admission wrapper owns provenance; this read cannot create or verify an identity.
@@ -121,10 +124,13 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations):
         return result
 
     def ready(self):
-        # Read-only compatibility check for the matching 001..006 schema; no auto-migration.
+        # Read-only compatibility check through009; never auto-migrate.
         with self.connect() as c:
             if c.execute('SELECT primary_user_id,revision FROM shadify_app_admin WHERE singleton=true').fetchone() is None:
                 raise RuntimeError('Application admin state missing')
+            c.execute('SELECT id,input_sha256,state,revision FROM shadify_ingest_jobs LIMIT 0')
+            c.execute('SELECT job_id,verdict,engine_version,definitions_version,full_coverage FROM shadify_ingest_scans LIMIT 0')
+            c.execute('SELECT asset_id,job_id,scan_id,object_identity FROM shadify_ingest_approvals LIMIT 0')
             c.execute('SELECT user_id,permissions FROM shadify_app_admin_delegates LIMIT 0')
             c.execute('SELECT actor_account_id,details FROM shadify_app_admin_audit LIMIT 0')
             c.execute('SELECT u.first_admitted_at,u.active,a.slug,a.publish_state,t.delivery_asset_id,m.storage_provider, '

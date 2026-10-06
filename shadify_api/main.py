@@ -128,7 +128,8 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         context = repository.access_context(owner, asset.artist_id) if repository is not None else {
             "actor_account_id": owner.account_id, "artist_id": str(asset.artist_id)}
         return {**context, "asset_id": str(asset.id), "state": asset.state,
-                "access_class": asset.access_class, "publish_state": asset.publish_state}
+                "access_class": asset.access_class, "publish_state": asset.publish_state,
+                "ingest": repository.media_metadata(owner,asset_id)["ingest"] if repository is not None else None}
 
     def common_storage():
         from .storage_service import StorageService
