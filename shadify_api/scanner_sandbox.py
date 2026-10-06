@@ -2,7 +2,8 @@
 import hashlib,json,os,stat
 from pathlib import Path
 
-def runtime_inventory(root):
+def runtime_inventory(root,*,native_tools=('clamscan',)):
+    if native_tools not in (('clamscan',),('ffmpeg','ffprobe')):raise ValueError('Unsupported native closure')
     root=Path(root)
     if not root.is_absolute() or root.is_symlink():raise ValueError('Protected runtime required')
     inventory=[];total=0
@@ -18,7 +19,7 @@ def runtime_inventory(root):
             if name!='.' and not any(name==v or name.startswith(v+'/') for v in ('usr','lib','lib64','etc','proc','dev','scratch','definitions')):
                 raise ValueError('Unexpected runtime directory')
             inventory.append((name,'directory',info.st_mode&0o777));continue
-        allowed=name=='usr/bin/clamscan' or (name.startswith(('lib/','lib64/','usr/lib/','usr/lib64/')) and '.so' in path.name)
+        allowed=name in {'usr/bin/'+tool for tool in native_tools} or (name.startswith(('lib/','lib64/','usr/lib/','usr/lib64/')) and '.so' in path.name)
         cache=name=='etc/ld.so.cache'
         if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or not (allowed or cache) or info.st_size>134217728:
             raise ValueError('Unexpected runtime file')
@@ -30,7 +31,7 @@ def runtime_inventory(root):
                 raise ValueError('Runtime is not a native scanner closure')
             stream.seek(0);digest=hashlib.file_digest(stream,'sha256').hexdigest()
         inventory.append((name,'file',info.st_mode&0o777,digest))
-    if not (root/'usr/bin/clamscan').is_file():raise ValueError('Scanner missing from closure')
+    if not all((root/'usr/bin'/tool).is_file() for tool in native_tools):raise ValueError('Native tool missing from closure')
     return hashlib.sha256(json.dumps(inventory,separators=(',',':')).encode()).hexdigest()
 
 class NativeSandbox:
@@ -43,7 +44,7 @@ class NativeSandbox:
               '--setenv','TZ','UTC','--setenv','HOME','/nonexistent','--setenv','TMPDIR','/scratch',
               '--ro-bind',self.runtime_root,'/','--proc','/proc','--dev','/dev',
               '--size',str(scratch_bytes),'--tmpfs','/scratch','--chdir','/scratch','--size','1048576','--tmpfs','/definitions']
-        for family in ('main','daily','bytecode'):
+        for family in (() if definitions is None else ('main','daily','bytecode')):
             for suffix in ('cvd','cld'):
                 source=Path(definitions)/(family+'.'+suffix)
                 if source.exists():argv+=['--ro-bind',str(source),'/definitions/'+source.name]

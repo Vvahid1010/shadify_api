@@ -75,7 +75,7 @@ sys.exit(1 if infected else 0)
 RUNTIME=None
 def fixture_runtime():
  global RUNTIME
- if RUNTIME is not None:return RUNTIME
+ if RUNTIME is not None and RUNTIME.exists():return RUNTIME
  RUNTIME=Path(tempfile.mkdtemp(prefix='shadify-scanner-test-closure-'))
  # A disposable Python reporter closure solely for namespace tests, never production.
  shutil.copytree('/usr/lib/python3.14',RUNTIME/'usr/lib/python3.14',ignore=shutil.ignore_patterns('__pycache__'))

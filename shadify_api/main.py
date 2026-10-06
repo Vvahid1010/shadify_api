@@ -150,6 +150,16 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         access = common_storage().playback_access(track_id, preview=preview)
         return {'url': access.url, 'expires_at': access.expires_at}
 
+    from .ingest_review import MatchReview
+    @app.get('/api/media/{asset_id}/match-review')
+    def match_review_read(asset_id:UUID,owner:Identity=Depends(identity)):
+        if repository is None:raise HTTPException(503,'Persistence unavailable')
+        return repository.match_review(owner,asset_id)
+    @app.put('/api/media/{asset_id}/match-review')
+    def match_review_write(asset_id:UUID,body:MatchReview,owner:Identity=Depends(identity)):
+        if repository is None:raise HTTPException(503,'Persistence unavailable')
+        return repository.match_review(owner,asset_id,body)
+
     from .nomination_routes import install_nomination_routes
     install_nomination_routes(app,identity,nomination)
 

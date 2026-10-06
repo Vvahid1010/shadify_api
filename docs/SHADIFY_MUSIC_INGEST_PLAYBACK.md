@@ -471,8 +471,7 @@ Three small app-owned tables, with append-only evidence and no deletion:
   matching_stage_id,method(automatic,reviewed),selected_recording_mbid nullable,
   corrected_metadata JSONB,reason,actor_user_id nullable,decided_at server time.
   The selected MBID must belong to the recorded candidate set. Automatic requires
-  a unique exact ISRC plus consistent title/artist/duration; first slice may use
-  reviewed decisions only. Explicit reviewed no-match requires a completed real
+  a unique exact ISRC plus consistent title/artist/duration; the confident automatic path is required in this slice. Explicit reviewed no-match requires a completed real
   lookup snapshot and reason; unavailable provider is never a no-match decision.
   Artwork records a reference to the resolved audio decision for the SAME track
   and artist, with that referenced audio job ready before artwork approval.
@@ -504,8 +503,10 @@ IDs/metadata and the recorded decision. PUT on that path uses existing
 manage_content authority with expected_revision and a strict body: selection
 (recorded candidate MBID or explicit no_match),reason and bounded corrected title,
 artist,album,track_number,ISRC fields. It can resolve only review_required with a
-completed lookup; it writes immutable decision+existing content audit and advances
-to processing. It cannot approve, publish, change artist/track IDs or submit raw
+completed lookup; it inserts an immutable actor/reason decision audit ONLY (there is no general content-audit
+table); existing authorized admin audit remains independent.
+The worker claims that decision and performs the fenced processing transition;
+the API has no general ingest-state UPDATE privilege. It cannot approve, publish, change artist/track IDs or submit raw
 provider evidence. Foreign page/track denies; stale revision409; expiry401/403.
 Artist -> app authority -> sorted identities -> track -> job locking and actor
 rechecks before audit/commit preserve revocation/account-deactivation separation.
@@ -519,8 +520,9 @@ rechecks before audit/commit preserve revocation/account-deactivation separation
    pass. Extract bounded plain-text tags and honest codec/sample/bit-depth/source
    quality; embedded tags remain suggestions, never authority. Commit immutable
    validation+extraction evidence and matching state atomically.
-2. Matching persists a server provider snapshot before deciding. No external
-   MusicBrainz call is authorized by this plan. Injected deterministic snapshots
+2. Matching persists a server provider snapshot before deciding. Public metadata-only MusicBrainz queries are authorized: fixed HTTPS host,
+   meaningful User-Agent, maximum one request/second, bounded deadline/body,
+   no credentials/audio/keys/account data and no redirects. Injected deterministic snapshots
    can exercise offline tests, explicitly labelled fixtures. Production without
    a qualified provider stays matching/provider_unavailable and cannot approve.
    Real ambiguous/empty results move to review_required. Covers associate with
@@ -566,9 +568,75 @@ expired result,crash between installs/DB commit,lost reply,unchanged master and
 repeat hashes/no re-encode. Real fixture bytes generated locally, no catalog/audio
 downloads. Trusted test snapshots and synthetic tool/scan protocols are NOT real
 provider/AV/encode proof. Tools currently absent here; installation remains with
-the parent/Node owner and requires its own existing authorization. No runtime,
-external lookup, SQL application, role/grant, package feed or cloud activation.
+the parent/Node owner and requires its own existing authorization. Public metadata lookups are permitted; no runtime activation, SQL application,
+role/grant, package feed or cloud activation.
 
 Official tool contracts: [FFmpeg](https://ffmpeg.org/ffmpeg.html),
 [ffprobe](https://ffmpeg.org/ffprobe.html),
 [MusicBrainz metadata API](https://musicbrainz.org/doc/MusicBrainz_API).
+
+Implementation correction: transient provider failures write no matching stage
+or decision and therefore do not occupy its unique success-evidence slot. The
+worker records a retryable job error and retries with a fresh bounded attempt.
+Cover matching evidence is job/input/scan-specific and records an explicit foreign
+key to the resolved audio decision for the same artist AND Track ID. Tools have
+no network; only the bounded public-metadata provider child may reach HTTPS/DNS.
+MusicBrainz requires meaningful application identification and at most one request
+per second: [official API requirements](https://musicbrainz.org/doc/MusicBrainz_API#Application_rate_limiting_and_identification).
+
+### Implemented bounded011 source (2026-10-06)
+
+One additive011_ingest_processing now implements that plan. API review inserts
+decisions only; PipelineWorker observes them and claims processing under the
+existing table/session/host exclusion and durable attempt lease. Successful
+stage/decision/variant rows are append-only. Unknown provider results consume no
+matching slot. Covers keep their own clean-scan/validation/extraction/processing
+evidence plus a same-artist/same-track audio-decision FK, locked/rechecked at
+promotion. Prepared manifests pin actual encoded hashes/role IDs before install;
+ready is a single DB commit with ALL required approvals. Master hash/mime/size
+and owner/artist/track identity are checked by forward approval constraints.
+Source SQL001..010 is preserved byte-for-byte; no real schema is applied.
+
+Media commands use a separate sealed native ffmpeg/ffprobe closure, never a wider
+scanner image. Version preflight, probe, full decode and encode all run in the
+same fixed native namespaces/PIPE boundary. Audio initially supports integer PCM
+WAV and FLAC, one stream,1..2channels,8..96kHz,positive duration<=1hour and decoded
+bytes<=200MiB. Unsupported WAV compressed/float codecs reject honestly. Images
+support one PNG/JPEG frame<=4096x4096, strict PNG CRC/end/no-animation and JPEG end,
+full decoded pixel count and a normalized validated PNG output. Formats/codecs,
+actual input bounds and full decode are checked, not extensions or exit status.
+Encoded outputs are metadata-free MPEG-1 Layer III44.1kHz stereo,CBR320/128kbps;
+every frame header and full probe/decode/duration are checked. No source-quality
+improvement is claimed; the master remains byte-identical and quality is recorded.
+These small-case bounds are explicit, not a full catalog/media platform promise.
+
+MusicBrainz is public metadata only: validated ISRC lookup or escaped title/artist
+recording search on the fixed HTTPS endpoint. Meaningful configured version/contact
+User-Agent, no credentials/proxies/redirects,1MiB HTTP body cap,64KiB normalized
+output and12second parent-enforced deadline including DNS/slow reads. A private
+boot-ID/monotonic rate stamp survives restarts, with1.1seconds between starts;
+only one selected B worker/provider is admitted. Missing/invalid/429/5xx results
+retry without matching evidence. Completed ISRC404 Not Found can become empty
+review suggestions; it never automatically approves. Tool namespaces cannot use
+the provider's network. A successful source-client public metadata request using
+an official example ISRC completed here; no audio, account fields or credentials
+were sent. That proves transport/protocol, not a match for user's audio.
+
+011 API role adds SELECT stages/decisions/variants plus INSERT decisions; existing
+job UPDATE(id) supports row locking, never state/revision writes. Pipeline worker
+adds SELECT/INSERT stages/decisions/variants/approvals/derived media,SELECT(id,name)
+artists and SELECT(id,artist_id,title) tracks; it has NO artist/admin mutation or
+identity-table access. Derived INSERT FK scope locks precede the final job lock,
+avoiding actor lock inversion without granting artist UPDATE. Existing job-state,
+scan and attempt privileges remain narrow. Roles are qualified only with private
+NOLOGIN fixtures; no grant/install/runtime decision follows from this document.
+
+Tests exercise real PG/HTTP/local objects and real Bubblewrap/prlimit with labelled
+synthetic AV/tool/provider reporters: automatic/review/retry,foreign/stale/revoked/
+expired actors,worker/API privilege boundaries,atomic audio+cover approvals,
+inaccessible quarantine,master preservation,expired attempts and crash recovery.
+Synthetic MP3 frames test header mechanics only; they are NOT decoded audio or
+real encoder acceptance. Actual selected ffmpeg/ffprobe/ClamAV plus signatures,
+resource/RSS and B unit/011 installer/ACL/receipt/schema fingerprints remain open.
+2GiB remains proposed and unqualified. No build feed/push/live migration/grant/
+installation/security setting/real authority/UI change is performed by source.

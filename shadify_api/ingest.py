@@ -5,7 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from .media import MediaError
 
-INFRA_ERRORS={'scanner_unavailable','scanner_timeout','scanner_error','scanner_evidence_invalid'}
+INFRA_ERRORS={'scanner_unavailable','scanner_timeout','scanner_error','scanner_evidence_invalid','provider_unavailable','processing_unavailable','processing_timeout','processing_error'}
 
 def digest(value):
     if type(value) is not str or re.fullmatch('[a-f0-9]{64}',value) is None:
@@ -32,6 +32,12 @@ class IngestRepository:
                     approved=row['state']=='ready' and row['approved_asset'] is not None,retryable=row['last_error'] in INFRA_ERRORS,
                     last_error=row['last_error'],legacy_unregistered=False)
 
+    def ingest_outputs(self,c,asset_id):
+        # Older009/010 releases stay compatible; this additive projection is optional.
+        if c.execute("SELECT to_regclass('shadify_ingest_variants') AS name").fetchone()['name'] is None:return []
+        rows=c.execute("SELECT v.role,a.id,a.mime,a.size FROM shadify_ingest_jobs j JOIN shadify_ingest_variants v ON v.job_id=j.id JOIN shadify_media_assets a ON a.id=v.asset_id JOIN shadify_ingest_approvals approved ON approved.asset_id=a.id AND approved.job_id=j.id WHERE (j.asset_id=%s OR a.id=%s) AND j.state='ready' ORDER BY v.role",(asset_id,asset_id)).fetchall()
+        return [dict(role=r['role'],asset_id=str(r['id']),mime=r['mime'],size=r['size']) for r in rows]
+
     def require_ingest_approval(self,asset,*,cursor=None,lock=False):
         if lock and cursor is None:raise ValueError("Approval locking requires an outer transaction cursor")
         if asset.key.startswith('quarantine/'):
@@ -40,6 +46,8 @@ class IngestRepository:
             # A savepoint keeps a missing-schema/permission failure from poisoning
             # an outer artist read transaction; it never grants a compatibility bypass.
             with c.connection.transaction():
+                pipeline_schema=c.execute("SELECT to_regclass('shadify_ingest_stages') AS name").fetchone()['name'] is not None
+                pipeline_clause=(" AND EXISTS(SELECT 1 FROM shadify_ingest_stages stage WHERE stage.job_id=j.id AND stage.input_sha256=j.input_sha256 AND stage.stage='processing' AND stage.payload @> '{\"complete\":true}'::jsonb) AND EXISTS(SELECT 1 FROM shadify_ingest_variants v WHERE v.job_id=j.id AND v.asset_id=a.asset_id AND v.output_sha256=a.output_sha256)" if pipeline_schema else '')
                 return c.execute('SELECT a.object_identity FROM shadify_ingest_approvals a '
                     'JOIN shadify_ingest_jobs j ON j.id=a.job_id '
                     'JOIN shadify_media_assets source ON source.id=j.asset_id '
@@ -48,7 +56,7 @@ class IngestRepository:
                     "WHERE a.asset_id=%s AND j.state='ready' AND a.input_sha256=j.input_sha256 "
                     'AND source.artist_id=%s AND source.track_id=%s '
                     'AND a.storage_key=%s AND a.storage_provider=%s AND a.mime=%s AND a.size=%s' +
-                    (' FOR SHARE OF j' if lock else ''),
+                    pipeline_clause+(' FOR SHARE OF j' if lock else ''),
                     (asset.id,asset.artist_id,asset.track_id,asset.key,asset.storage_provider,asset.mime,asset.size)).fetchone()
         try:
             if cursor is None:

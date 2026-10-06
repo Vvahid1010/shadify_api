@@ -46,6 +46,16 @@ class WorkerConfig(BaseModel):
     scanner_runtime_sha256:str=Field(pattern=r'^[0-9a-f]{64}$')
     engine_version:str=Field(pattern=r'^1\.5\.4$')
     limits:WorkerLimits
+    # Optional as a complete group:010 scanner mode remains source-compatible.
+    media_runtime_root:str|None=None
+    media_runtime_sha256:str|None=Field(default=None,pattern=r'^[0-9a-f]{64}$')
+    media_tool_version:str|None=Field(default=None,pattern=r'^[A-Za-z0-9_.+-]{1,100}$')
+    musicbrainz_user_agent:str|None=None
+    @model_validator(mode='after')
+    def pipeline_fields(self):
+        values=(self.media_runtime_root,self.media_runtime_sha256,self.media_tool_version,self.musicbrainz_user_agent)
+        if any(v is not None for v in values) and not all(v is not None for v in values):raise ValueError('Complete explicit media/provider fields required')
+        return self
 
 def safe_path(path,*,directory=False,private=False,root_owned=False):
     path=Path(path)
@@ -172,6 +182,15 @@ def compose(path):
         safe_path(config.definitions_dir,directory=True)
         if os.stat(config.definitions_dir).st_uid==os.geteuid() and os.geteuid()!=0:
             raise ValueError('Worker must not own writable definitions')
+        if config.media_runtime_root is not None:
+            safe_path(config.media_runtime_root,directory=True,root_owned=True)
+            if runtime_inventory(config.media_runtime_root,native_tools=('ffmpeg','ffprobe'))!=config.media_runtime_sha256:raise ValueError('Media closure changed')
+            roots=[config.local_root,config.temp_dir,config.state_dir,config.definitions_dir,config.database_file,config.scanner_runtime_root]
+            for root in roots:
+                left=Path(root).resolve();right=Path(config.media_runtime_root).resolve()
+                if left.is_relative_to(right) or right.is_relative_to(left):raise ValueError('Media closure must be separate')
+            from .musicbrainz import MusicBrainzProvider
+            MusicBrainzProvider(state_dir=config.state_dir,user_agent=config.musicbrainz_user_agent)
         adapter=LocalAdapter(Path(config.local_root))
         paths=[Path(config.local_root).resolve(),Path(config.temp_dir).resolve(),Path(config.state_dir).resolve(),Path(config.definitions_dir).resolve()]
         for i,left in enumerate(paths):
@@ -190,7 +209,15 @@ def main():
         with host_lock(config.state_dir) as lock_fd:
             scanner=ClamAVScanner(executable=config.clamscan,prlimit=config.prlimit,definitions=config.definitions_dir,
                 temp_dir=config.temp_dir,engine_version=config.engine_version,limits=config.limits,lock_fd=lock_fd,sandbox=NativeSandbox(bwrap=config.bwrap,runtime_root=config.scanner_runtime_root))
-            worker=IngestWorker(connect=lambda:database._connect(5,10000,5000,hostaddr=database_address(database)),adapters={'local':adapter},scanner=scanner,limits=config.limits)
+            arguments=dict(connect=lambda:database._connect(5,10000,5000,hostaddr=database_address(database)),adapters={'local':adapter},scanner=scanner,limits=config.limits)
+            if config.media_runtime_root is None:worker=IngestWorker(**arguments)
+            else:
+                from .media_tools import MediaTools
+                from .musicbrainz import MusicBrainzProvider
+                from .ingest_pipeline import PipelineWorker
+                tools=MediaTools(bwrap=config.bwrap,runtime_root=config.media_runtime_root,prlimit=config.prlimit,temp_dir=config.temp_dir,
+                    version=config.media_tool_version,runtime_sha256=config.media_runtime_sha256,limits=config.limits,lock_fd=lock_fd)
+                worker=PipelineWorker(**arguments,tools=tools,provider=MusicBrainzProvider(state_dir=config.state_dir,user_agent=config.musicbrainz_user_agent))
             while not stopped.is_set():
                 try:
                     result=worker.run_once()

@@ -6,11 +6,12 @@ from psycopg.rows import dict_row
 from .access import ArtistAccessRepository
 from .artists import ArtistOperations
 from .ingest import IngestRepository
+from .ingest_review import IngestReviewRepository
 from .media import Asset, MediaError
 from .auth import require_fresh_actor
 
 
-class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository):
+class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository, IngestReviewRepository):
     def __init__(self, connect):
         self.connect=connect
 
@@ -101,7 +102,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             if row is None: raise MediaError(404,'Asset not found')
             return {**auth.dto(),**{k:(str(row[k]) if k in ('artist_id','track_id') else row[k])
-                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},'asset_id':str(asset_id),'ingest':self.ingest_status(c,asset_id) if row['state'] in ('uploaded','ready') else None}
+                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},'asset_id':str(asset_id),'outputs':self.ingest_outputs(c,asset_id),'ingest':self.ingest_status(c,asset_id) if row['state'] in ('uploaded','ready') else None}
 
     def project_user(self,account_id):
         # Admission wrapper owns provenance; this read cannot create or verify an identity.

@@ -151,6 +151,7 @@ class NativePackageTests(unittest.TestCase):
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
+                    if path.name=='011_ingest_processing.sql':continue
                     name='source/'+folder+'/'+path.name;destination=root/name
                     destination.parent.mkdir(parents=True,exist_ok=True)
                     raw=b'synthetic exact inventory fixture';destination.write_bytes(raw)
@@ -163,6 +164,25 @@ class NativePackageTests(unittest.TestCase):
                 manifest['files'][name]=metadata
             manifest['migration_target']='009_ingest_quarantine';write()
             with self.assertRaisesRegex(ValueError,'attempts_target_required'):verify(root,source)
+
+    def test_pipeline_target_requires_full_stages_provider_tools_and_truthful_target(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            owner=Path(__file__).resolve().parents[1]
+            for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
+                for path in (owner/folder).glob(glob):
+                    name='source/'+folder+'/'+path.name;destination=root/name
+                    destination.parent.mkdir(parents=True,exist_ok=True)
+                    raw=b'synthetic exact inventory fixture';destination.write_bytes(raw)
+                    manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            def write():(root/'build-info.json').write_bytes(canonical(manifest))
+            manifest['migration_target']='011_ingest_processing';write();verify(root,source)
+            for name in ('source/migrations/011_ingest_processing.sql','source/shadify_api/ingest_pipeline.py','source/shadify_api/ingest_review.py','source/shadify_api/media_tools.py','source/shadify_api/musicbrainz.py'):
+                metadata=manifest['files'].pop(name);write()
+                with self.assertRaisesRegex(ValueError,'incomplete_pipeline_package'):verify(root,source)
+                manifest['files'][name]=metadata
+            manifest['migration_target']='010_ingest_attempts';write()
+            with self.assertRaisesRegex(ValueError,'pipeline_target_required'):verify(root,source)
 
     def test_credential_and_symlink_files_cannot_enter_artifact(self):
         with tempfile.TemporaryDirectory() as temporary:
