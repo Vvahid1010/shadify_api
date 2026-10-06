@@ -105,6 +105,12 @@ def create_app(service: MediaService | None = None, identity: Callable = require
                limit: int = Query(20, ge=1, le=100), cursor: UUID | None = None):
         return data.tracks(owner, artist_id, limit, cursor)
 
+    @app.get('/api/artists/{artist_id}/uploads')
+    def studio_uploads(artist_id:UUID,owner:Identity=Depends(identity),track_id:UUID|None=None,
+                       limit:int=Query(20,ge=1,le=20),cursor:UUID|None=None):
+        if repository is None:raise HTTPException(503,'Media persistence integration pending')
+        return repository.studio_uploads(owner,artist_id,track_id=track_id,limit=limit,cursor=cursor)
+
     @app.get("/api/media/{asset_id}")
     def media_metadata(asset_id: UUID, owner: Identity = Depends(identity)):
         if repository is None:

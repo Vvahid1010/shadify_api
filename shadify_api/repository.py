@@ -7,11 +7,12 @@ from .access import ArtistAccessRepository
 from .artists import ArtistOperations
 from .ingest import IngestRepository
 from .ingest_review import IngestReviewRepository
+from .studio_uploads import StudioUploadsRepository
 from .media import Asset, MediaError
 from .auth import require_fresh_actor
 
 
-class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository, IngestReviewRepository):
+class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository, IngestReviewRepository, StudioUploadsRepository):
     def __init__(self, connect):
         self.connect=connect
 

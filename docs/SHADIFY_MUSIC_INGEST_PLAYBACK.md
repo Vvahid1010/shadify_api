@@ -891,3 +891,97 @@ The same validation applies to old recorded cache hits before per-file confidenc
 so an earlier partial cache row cannot produce an automatic decision. No migration,
 TTL, grants, runtime modes or frozen scanner25 source changes. Disposable PostgreSQL
 and mocked transport regressions exercise partial live and old cached responses.
+
+
+### Artist Studio original-upload status read: staged contract
+
+Source-only slice derived from accepted338d970c; independent Astra approved this
+staged contract before implementation, requiring historical partial-stage checks. Existing profile read/edit/layout and paginated
+track CRUD remain the profile foundation. Pending upload intents are not automatically attached to
+a track's approved original/delivery references, so extending those references
+cannot reliably recover the pending single/batch queue after a page refresh.
+
+Add authenticated GET `/api/artists/{artist_id}/uploads` with optional same-page
+`track_id`, UUID cursor and limit1..20 (default20). This pages original audio/artwork
+asset intents by stable UUID, including upload_pending, failed and uploaded/ready
+rows. It never chooses a guessed latest replacement or pages derived output rows,
+including a produced master whose asset_type is also audio_original/artwork_original.
+Original quarantine bytes remain unapproved even when their job is ready; only
+approved output references can subsequently pass existing file-access gates.
+One batch consists of existing per-track intents/jobs; no new batch mutation,
+provider query, worker, job state or pipeline. Existing create/PUT/complete and
+GET/PUT match-review operations remain authoritative.
+
+Response uses existing page authorization context, `items` and `next_cursor`. Each
+item carries only asset_id,track_id,asset_type,mime,size,asset state, and optional
+`ingest`/`matching` projections from that exact original asset's job. No provider
+or storage keys, URLs, uploader/account identifiers, hashes, raw tags, tool
+arguments, private exception text or whole JSON evidence payloads. UI correlates
+asset IDs with the existing match-review endpoint. The read cannot issue file
+access, approve content, change authority or infer readiness from successful upload.
+
+`ingest` follows existing status vocabulary: job_id,state,revision,approved,
+retryable,last_error,legacy_unregistered. Approved is a descriptive persisted
+job/approval projection only, never an access grant; byte/playback/publication
+continue requiring full current server approval. Pending/failed intent without
+a job has ingest=null. An uploaded historical row without registered job uses
+existing uploaded/legacy_unregistered status with approved=false.
+
+`matching` exposes only bounded validated extracted musical metadata
+(title/artist/album/track_number/isrc/duration_ms), lookup_complete, up to5 saved
+public candidates (mbid/title/artist/duration_ms/isrc), and the existing decision
+DTO (id/method/selected_recording_mbid/corrected_metadata). Incomplete/error
+matching stage is not a complete lookup; no completed no-match or automatic
+choice is invented. No provider network/cache mutation occurs. A response may be
+a momentary status snapshot while the worker progresses; existing revision
+checks and fresh page authority still fence any subsequent review/write.
+
+Authorize `read_content` on the requested artist, using immutable admitted identity
+and the same page/admin locks and post-read expiry fence. Ordinary uploader
+identity is not authority. A supplied track must belong to the same artist;
+missing/foreign track returns404 after page authorization. Every asset/job/stage/
+decision join is tied to its exact original, artist and track. A cursor is only
+an exclusive UUID pagination bound and confers no asset/page access. No public
+projection exposes this read. Missing pipeline schema fails503, never complete
+no-match or approval. No new SQL, role grant or schema target; API retains only
+its existing reads. Managed route enrollment and actual Studio UI use belong to
+Node/Web owners after source acceptance; no live enrollment or activation here.
+
+Required isolated proof: owner and narrow manage_content delegate read only their
+page; another owner, listener, verification-only delegate and stale identity deny;
+artist-owned upload from another uploader is visible without creating uploader
+authority. Cursor/filter/limit preserve page boundaries and stable pagination.
+Pending, rejected, retryable provider/scanner error, ambiguous review, approved
+and historical unregistered rows are distinguished. One single or batch uses
+the same durable jobs; a transient provider response grants neither no-match nor
+access. Return no raw storage/worker/private data; no provider dispatch during
+reads; revocation/expiry before completion prevents a successful response.
+
+Completeness requires complete=true, provider=musicbrainz, truncated=false,
+integer total equal to the bounded unique validated candidate count. Historical
+partial/invalid evidence returns lookup_complete=false, candidates=[],decision=null
+for audio; no stored automatic choice is repeated. Covers have no MusicBrainz
+lookup and may expose only their existing independent cover decision.
+
+
+Implemented Studio original-upload read: `studio_uploads.py`, additive main route
+and repository composition. One set query selects at most21 records for a20-row
+page, ties stage/decision evidence to the exact source job/input hash, excludes
+all registered produced variants/masters, and runs within existing page
+authorization/final expiry fences. No provider/cache call, refresh mutation,
+new grant, SQL or migration target. Profile CRUD and file authorization are
+unchanged. No enrolled/live route or real Studio/browser acceptance is claimed.
+
+Eleven new focused isolated-PG/HTTP/projection tests pass: pending/failed/uploaded/
+legacy refresh; ready originals without produced duplicates; artwork's distinct
+decision; ambiguous/provider retry reads without dispatch; historical count2/5
+partial evidence with no repeated automatic choice; batch cursor/track/page
+boundaries; owner/delegate/uploader separation; identity expiry after DTO; actual
+revocation commit ahead of a waiting reader; secret-free/missing-schema503 paths
+with ordinary me/profile reads preserved; malformed/truncated lookup validation.
+Native scanner/provider requests were not rerun. Exact source package and scoped
+existing pipeline/profile regressions follow this implementation; earlier accepted
+25d/338 artifacts remain untouched. Node enrollment, Web consumption, actual
+server AV/full-media qualification and separately approved012 deployment remain
+owner dependencies. Existing single/batch create-upload/PUT/complete operations
+are reused; this source step creates neither a batch endpoint nor a second pipeline.
