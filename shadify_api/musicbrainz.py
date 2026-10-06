@@ -1,5 +1,5 @@
 """Bounded public metadata ONLY. Fixed host, no credentials, uploads or redirects."""
-import argparse,hashlib,json,os,re,sys,time,unicodedata,urllib.parse,urllib.request,urllib.error
+import argparse,hashlib,json,os,re,sys,tempfile,time,unicodedata,urllib.parse,urllib.request,urllib.error
 from datetime import datetime,timezone
 from pathlib import Path
 from uuid import UUID
@@ -103,11 +103,8 @@ class MusicBrainzProvider:
         wait=max(0,last+1.1-time.monotonic(),self.not_before-time.monotonic())
         if wait>2 or time.monotonic()+wait>=deadline:raise ProviderUnavailable('Rate budget unavailable')
         if wait:time.sleep(wait)
-        fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC|os.O_NOFOLLOW,0o600)
-        try:
-            now=time.monotonic();self.not_before=now+1.1
-            os.write(fd,json.dumps({'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'monotonic':now},separators=(',',':')).encode());os.fsync(fd)
-        finally:os.close(fd)
+        now=time.monotonic();self.not_before=now+1.1
+        self._reserve_rate(path,now)
         try:
             code,out,err=run_bounded([sys.executable,'-m','shadify_api.musicbrainz','--query',json.dumps(query,separators=(',',':')),'--user-agent',self.user_agent],
                 deadline=min(deadline,time.monotonic()+12),output_bytes=65536)
@@ -116,6 +113,28 @@ class MusicBrainzProvider:
             if result.get('complete') is not True:raise ProviderUnavailable()
             return result
         except Exception:raise ProviderUnavailable('Provider unavailable') from None
+
+
+    def _reserve_rate(self,path,now):
+        # Caller holds the lifetime flock. Never truncate committed rate state:
+        # a crash preserves the previous complete stamp or the new complete stamp.
+        # No request starts until both the replacement and its directory are durable.
+        parent=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        fd=None;pending=None
+        try:
+            fd,pending=tempfile.mkstemp(prefix='.musicbrainz-rate-',dir=path.parent)
+            data=memoryview(json.dumps({'boot':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),'monotonic':now},separators=(',',':')).encode())
+            while data:
+                written=os.write(fd,data)
+                if written<=0:raise OSError('Incomplete rate state write')
+                data=data[written:]
+            os.fsync(fd);os.close(fd);fd=None
+            os.replace(pending,path);pending=None
+            os.fsync(parent)
+        finally:
+            if fd is not None:os.close(fd)
+            if pending is not None:os.unlink(pending)
+            os.close(parent)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--query',required=True);parser.add_argument('--user-agent',required=True);args=parser.parse_args()

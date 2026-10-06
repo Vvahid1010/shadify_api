@@ -111,6 +111,37 @@ class PipelineTests(IngestFoundationTests):
    claim=self.worker.claim(connection);time.sleep(.03)
    with self.assertRaises(MediaError):self.worker.process(connection,claim)
   with self.connect() as c:self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_approvals').fetchone()[0],0)
+ def test_lease_expiry_after_initial_fence_rolls_back_approval_and_reuses_outputs(self):
+  asset,_,_=self.upload();self.once();self.once();self.once()
+  with self.connect() as c:asset_count=c.execute('SELECT count(*) FROM shadify_media_assets').fetchone()[0]
+  self.worker.limits.lease_seconds=.5;original=self.worker._insert_stage;paused=[]
+  def expire_after_fence(c,job,scan,stage,payload):
+   if stage=='processing':
+    # This hook runs AFTER final _fenced acquired the job/attempt locks.
+    # Real database clock expires the immutable lease while evidence is in flight.
+    remaining=c.execute("SELECT EXTRACT(EPOCH FROM lease_expires_at-clock_timestamp()) FROM shadify_ingest_attempts WHERE job_id=%s AND finished_at IS NULL",(job['id'],)).fetchone()
+    self.assertGreater(remaining['extract'],0)
+    c.execute("SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM lease_expires_at-clock_timestamp()))+.02) FROM shadify_ingest_attempts WHERE job_id=%s AND finished_at IS NULL",(job['id'],))
+    self.assertTrue(c.execute("SELECT lease_expires_at<=clock_timestamp() AS expired FROM shadify_ingest_attempts WHERE job_id=%s AND finished_at IS NULL",(job['id'],)).fetchone()['expired'])
+    paused.append(True)
+   return original(c,job,scan,stage,payload)
+  with patch.object(self.worker,'_insert_stage',side_effect=expire_after_fence):
+   with self.assertRaises(MediaError) as error:self.once()
+  self.assertEqual(error.exception.status,409);self.assertEqual(paused,[True])
+  with self.connect() as c:
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_approvals').fetchone()[0],0)
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_variants').fetchone()[0],0)
+   self.assertEqual(c.execute("SELECT count(*) FROM shadify_ingest_stages WHERE stage='processing'").fetchone()[0],0)
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_media_assets').fetchone()[0],asset_count)
+   self.assertEqual(c.execute("SELECT count(*) FROM shadify_ingest_attempts WHERE stage='processing' AND finished_at IS NULL").fetchone()[0],1)
+   manifest=c.execute("SELECT payload FROM shadify_ingest_stages WHERE stage='prepared_outputs'").fetchone()[0]
+  self.assertEqual(self.job(asset)['state'],'processing');self.assertEqual(self.outputs(asset),[])
+  for output in manifest['outputs'].values():
+   self.assertEqual(self.adapter.checksum(output['key']),output['sha256'])
+   self.assertEqual(self.api.post('/api/media/'+output['asset_id']+'/access').status_code,404)
+  count=len(self.tools.encodes);self.worker.limits.lease_seconds=360
+  self.assertEqual(self.once()['state'],'ready');self.assertEqual(len(self.tools.encodes),count)
+  self.assertIsNone(self.once())
  def test_crash_after_installs_before_db_commit_reuses_verified_outputs_without_encode(self):
   asset,_,_=self.upload();self.once();self.once();self.once()
   original=self.worker._insert_stage

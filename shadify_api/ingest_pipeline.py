@@ -52,8 +52,14 @@ class PipelineWorker(IngestWorker):
         return self._scan(c,job) if require_scan else None
     def _finish(self,c,claim,state,error=None):
         job,attempt=claim
-        c.execute("UPDATE shadify_ingest_attempts SET finished_at=clock_timestamp(),outcome='completed' WHERE id=%s",(attempt['id'],))
-        c.execute("UPDATE shadify_ingest_jobs SET state=%s,last_error=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",(state,error,job['id']))
+        # The initial fence may precede locks/triggers/evidence work. Guard the
+        # final transition with database time too; failure rolls back ALL evidence,
+        # derived rows and approvals in this transaction. Durable manifest/bytes
+        # remain private and can be verified/reused by the next admitted attempt.
+        active=c.execute("UPDATE shadify_ingest_attempts SET finished_at=clock_timestamp(),outcome='completed' WHERE id=%s AND job_id=%s AND claimed_revision=%s AND finished_at IS NULL AND lease_expires_at>clock_timestamp() RETURNING id",(attempt['id'],job['id'],job['revision'])).fetchone()
+        if active is None:raise MediaError(409,'Pipeline attempt changed or expired')
+        current=c.execute("UPDATE shadify_ingest_jobs SET state=%s,last_error=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s AND state=%s AND revision=%s AND EXISTS(SELECT 1 FROM shadify_ingest_attempts a WHERE a.id=%s AND a.job_id=shadify_ingest_jobs.id AND a.claimed_revision=shadify_ingest_jobs.revision AND a.outcome='completed' AND a.lease_expires_at>clock_timestamp()) RETURNING id",(state,error,job['id'],job['state'],job['revision'],attempt['id'])).fetchone()
+        if current is None:raise MediaError(409,'Pipeline attempt changed or expired')
         return dict(job_id=str(job['id']),state=state,revision=job['revision']+1,approved=state=='ready',retryable=error in {'provider_unavailable','processing_unavailable','processing_timeout','processing_error'},last_error=error)
     @contextmanager
     def _input(self,asset,job,deadline):

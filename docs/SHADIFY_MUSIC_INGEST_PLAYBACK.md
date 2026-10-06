@@ -652,3 +652,19 @@ no-match review and verifies actual scan/full decode/High+Low/master/cover/appro
 Its recorded metadata response remains a labelled offline fixture, so success
 would prove AV/encode mechanics, not MusicBrainz acceptance for real user audio.
 Without those fields it explicitly skips, and that skip is not acceptance.
+
+
+Bounded review corrections: the private provider rate stamp is written to a
+same-directory private temporary file, fully written/fsynced, atomically replaced
+and directory-fsynced before any request. Interrupted writes preserve a complete
+old or new reservation, never truncate the committed stamp. Crash-stage tests
+verify restart spacing and no request before durability. Invalid historical rate
+state still fails closed; no automatic reset bypasses the rate limit.
+
+Every pipeline stage's final attempt/job transition now checks database lease
+freshness and the claimed job state/revision again after evidence/approval work.
+Expiration rolls back all approval/variant/derived rows and processing evidence.
+A disposable-PG regression pauses AFTER the initial promotion fence until the
+immutable lease expires, verifies the whole transaction rolled back, then proves
+the next attempt reuses the private manifest/output bytes without re-encoding.
+These corrections do not change011 SQL, roles, config, or activation decisions.
