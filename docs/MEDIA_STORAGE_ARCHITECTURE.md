@@ -1,3 +1,10 @@
+> Current 2026-10-06 user contract: [SHADIFY_MUSIC_INGEST_PLAYBACK.md](SHADIFY_MUSIC_INGEST_PLAYBACK.md)
+> governs music ingest, mandatory server scan/validation/approval and playback.
+> Earlier uploaded-original private preview is superseded: no file use before
+> approval. Local Node B first; metadata-only MusicBrainz; one single/batch pipeline;
+> once-only High/Low MP3 processing; R2 delivery is future and rights-dependent.
+> Retained implementation/history below is not a claim of new pipeline readiness.
+
 # Shadify Media Storage Architecture
 
 > Historical R2 preparation reference: `docs/R2_SIGNED_MEDIA_DELIVERY.md`. Cache and future Worker/CDN policy: `docs/MEDIA_DELIVERY_CACHE_SECURITY.md`. The earlier mandatory public R2 playback/Custom Domain design is replaced.

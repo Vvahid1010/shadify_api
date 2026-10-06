@@ -2,13 +2,31 @@
 
 Use main by default unless the operator explicitly requests another branch.
 
+## Canonical music ingest/playback contract (2026-10-06)
+
+Read docs/SHADIFY_MUSIC_INGEST_PLAYBACK.md before upload, media, matching,
+processing or playback work. It is the canonical eleven-section user contract
+and supersedes conflicting historical media readiness/storage/delivery guidance
+below. ALL uploads, including artist/admin/single/batch/PC/Android, are untrusted:
+quarantine -> mandatory open-source server malware scan -> validation -> extraction
+-> metadata-only MusicBrainz matching/review -> ingest-once processing -> approval.
+No preview, playback, usable file delivery or file publication before server approval;
+uploaded is not ready. Accepted7665ec01 private-preview behavior is historical,
+not activation-compatible under this new mandatory gate. Local Node B first,
+R2 ready; no current R2/Worker/WAF/paid activation, live transcoding or duplicate
+single/batch pipeline. Keep artist/admin authority and other owners independent.
+This documentation stage installs nothing; staged implementation follows parent/
+Astra review. Exact runtime/migration/settings/grant effects remain separately
+coordinated. Preserve accepted artifacts and use isolated forward commits.
+
 ## Repository role
 
 shadify_api will become the server-authoritative backend for Shadify. The repository is still architecture-first. Do not scaffold the API, database, media worker, payments, or production deployment unless that implementation phase is explicitly requested.
 
 Before any media/storage work, read:
 
-- docs/R2_SIGNED_MEDIA_DELIVERY.md (Phase 1 source of truth)
+- docs/SHADIFY_MUSIC_INGEST_PLAYBACK.md (canonical current contract)
+- docs/R2_SIGNED_MEDIA_DELIVERY.md (historical R2 preparation)
 - docs/MEDIA_STORAGE_ARCHITECTURE.md
 - docs/MEDIA_DELIVERY_CACHE_SECURITY.md
 

@@ -1,3 +1,10 @@
+> Current 2026-10-06 user contract: [SHADIFY_MUSIC_INGEST_PLAYBACK.md](SHADIFY_MUSIC_INGEST_PLAYBACK.md)
+> governs music ingest, mandatory server scan/validation/approval and playback.
+> Earlier uploaded-original private preview is superseded: no file use before
+> approval. Local Node B first; metadata-only MusicBrainz; one single/batch pipeline;
+> once-only High/Low MP3 processing; R2 delivery is future and rights-dependent.
+> Retained implementation/history below is not a claim of new pipeline readiness.
+
 > Current 2026-10-04 storage continuation: local-first private objects and
 > expiring app media URLs supersede older direct-R2/no-local-byte statements
 > below. Catalog now has 56 Authentication-only routes. See

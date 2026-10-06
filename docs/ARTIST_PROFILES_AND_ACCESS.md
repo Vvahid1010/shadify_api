@@ -1,3 +1,10 @@
+> Current 2026-10-06 user contract: [SHADIFY_MUSIC_INGEST_PLAYBACK.md](SHADIFY_MUSIC_INGEST_PLAYBACK.md)
+> governs music ingest, mandatory server scan/validation/approval and playback.
+> Earlier uploaded-original private preview is superseded: no file use before
+> approval. Local Node B first; metadata-only MusicBrainz; one single/batch pipeline;
+> once-only High/Low MP3 processing; R2 delivery is future and rights-dependent.
+> Retained implementation/history below is not a claim of new pipeline readiness.
+
 # Artist profiles and access
 
 Status: Stage 1 accepted with corrections by independent Astra review
