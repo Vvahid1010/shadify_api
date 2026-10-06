@@ -2136,3 +2136,29 @@ Historical grant rows stay inactive; no ownership backfill guesses or migration
 rewrites. Combined source/offline qualification receipt is generated separately
 after one full packaged test pass, using pinned Nodeb731 and common7701286 source.
 No publication, service, live schema/grants/credentials, installation or push.
+
+### Local upload draft-cover completion (2026-10-06)
+
+Accepted unified14ac48c1 already supports Local original audio/artwork upload,
+completion and owner-only preview. New isolated forward work permits completed
+private artwork_original in a track's existing artwork_asset_id. It must belong
+to the same artist/track; pending, wrong-kind and other-track references deny.
+Private read DTOs preserve that selection; preview uses the existing asset access
+endpoint. Uploaded source cover is not a ready/published delivery image. A track
+with an original artwork selection cannot publish; remove it or replace it with
+an actual ready free artwork_delivery. Published-track edits cannot substitute
+private originals. Profile avatar/header and release-cover delivery gates remain.
+No schema, grant, permission, Auth/Node dependency or processing change. New real
+SQL/HTTP tests cover PNG PUT/completion/selection/private preview, cross-user and
+cross-track denial, pending and wrong-kind rejection, publication denial and
+rollback of a published edit. All fixture identities/keys/derived audio are
+synthetic; no real runtime or account activated.
+
+For an unknown PUT reply, inspect stable asset metadata and call completion for
+the same asset before retrying bytes. Successful completion validates installed
+length/MIME/container and is idempotent for an uploaded row. A lost completion
+reply can be reconciled with that same endpoint. Never blindly repeat a PUT or
+invent success from upload_pending/412; a storage-unavailable503 is still unknown.
+An expired pending session409 requires a fresh explicit upload intent. Save only
+stable asset IDs to track references; obtain a new private access URL after refresh.
+Original uploads do not make a track publicly playable or a cover public-ready.

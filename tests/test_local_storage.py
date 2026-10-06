@@ -72,6 +72,76 @@ class LocalStorageTests(ArtistPostgresCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()['url']
 
+    def cover(self, *, complete=True):
+        # Actual valid tiny PNG; no derived-image producer is implied.
+        body=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aM6sAAAAASUVORK5CYII=')
+        response=self.api.post('/api/media/uploads',json=dict(artist_id=str(self.artist),track_id=str(self.track),
+            asset_type='artwork_original',mime='image/png',size=len(body)))
+        self.assertEqual(response.status_code,201,response.text);dto=response.json()
+        self.cover_upload=dto['upload']
+        self.assertEqual(self.bytes.put(dto['upload']['url'],content=body,headers=dto['upload']['headers']).status_code,201)
+        asset=self.repo.get(UUID(dto['asset_id']))
+        if complete:self.assertEqual(self.complete(asset).status_code,200)
+        return asset,body
+
+    def test_lost_cover_upload_response_reconciles_completion_before_retry(self):
+        asset,body=self.cover(complete=False)  # PUT committed, client treats its reply as unknown.
+        path='/api/artists/'+str(self.artist)+'/tracks/'+str(self.track)
+        metadata=self.api.get('/api/media/'+str(asset.id)).json()
+        self.assertEqual(metadata['state'],'upload_pending')
+        # Same asset completion inspects the installed bytes; no second PUT/new ID.
+        self.assertEqual(self.complete(asset).json()['state'],'uploaded')
+        self.assertEqual(self.complete(asset).json()['state'],'uploaded')  # Lost completion reply reconciles idempotently.
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':str(asset.id)}).status_code,200)
+        self.assertEqual(self.api.get(path).json()['content']['artwork_asset_id'],str(asset.id))
+        self.assertEqual(self.bytes.get(self.access(asset)).content,body)
+        digest=self.adapter.checksum(asset.key)
+        self.assertEqual(self.bytes.put(self.cover_upload['url'],content=body,headers=self.cover_upload['headers']).status_code,409)
+        self.assertEqual(self.adapter.checksum(asset.key),digest)
+
+    def test_draft_original_cover_attach_preview_and_other_user_denial(self):
+        asset,body=self.cover()
+        path='/api/artists/'+str(self.artist)+'/tracks/'+str(self.track)
+        result=self.api.patch(path,json={'artwork_asset_id':str(asset.id)})
+        self.assertEqual(result.status_code,200,result.text)
+        self.assertEqual(result.json()['content']['artwork_asset_id'],str(asset.id))
+        self.assertEqual(self.api.get(path).json()['content']['artwork_asset_id'],str(asset.id))
+        self.assertEqual(self.bytes.get(self.access(asset)).content,body)
+        self.assertEqual(self.repo.get(asset.id).state,'uploaded')
+        self.assertEqual(self.repo.get(asset.id).access_class,'private')
+        self.actor='owner-b'
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':str(asset.id)}).status_code,404)
+        self.assertEqual(self.api.post('/api/media/'+str(asset.id)+'/access').status_code,404)
+
+    def test_draft_cover_requires_completion_same_track_and_artwork_kind(self):
+        asset,_=self.cover(complete=False)
+        path='/api/artists/'+str(self.artist)+'/tracks/'+str(self.track)
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':str(asset.id)}).status_code,409)
+        self.assertEqual(self.complete(asset).status_code,200)
+        other=self.api.post('/api/artists/'+str(self.artist)+'/tracks',json={'title':'Other draft'}).json()['track_id']
+        other_path='/api/artists/'+str(self.artist)+'/tracks/'+other
+        self.assertEqual(self.api.patch(other_path,json={'artwork_asset_id':str(asset.id)}).status_code,404)
+        audio,upload=self.upload();self.assertEqual(self.put(upload).status_code,201)
+        self.assertEqual(self.complete(audio).status_code,200)
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':str(audio.id)}).status_code,422)
+        self.assertEqual(self.api.patch(path,json={'original_asset_id':str(audio.id)}).status_code,200)
+
+    def test_draft_original_cover_cannot_publish_or_replace_published_cover(self):
+        cover,_=self.cover()
+        # Explicit synthetic ready audio row for the publication gate only.
+        audio=Asset(uuid4(),'owner-a',self.artist,self.track,'delivery/'+uuid4().hex,'audio_delivery','audio/flac',20,
+                    datetime.now(timezone.utc)+timedelta(minutes=5),storage_provider='local',state='ready',
+                    access_class='free',publish_state='published')
+        self.repo.insert(admitted_actor('owner-a'),audio)
+        path='/api/artists/'+str(self.artist)+'/tracks/'+str(self.track)
+        self.assertEqual(self.api.patch(path,json={'delivery_asset_id':str(audio.id),'artwork_asset_id':str(cover.id)}).status_code,200)
+        self.assertEqual(self.api.put(path+'/publication',json={'state':'published'}).status_code,409)
+        self.assertEqual(self.api.get(path).json()['content']['publish_state'],'draft')
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':None}).status_code,200)
+        self.assertEqual(self.api.put(path+'/publication',json={'state':'published'}).status_code,200)
+        self.assertEqual(self.api.patch(path,json={'artwork_asset_id':str(cover.id)}).status_code,409)
+        self.assertIsNone(self.api.get(path).json()['content']['artwork_asset_id'])
+
     def test_actual_put_complete_private_head_range_repeated_reads(self):
         asset, upload = self.upload()
         checksum = base64.b64encode(hashlib.sha256(self.body).digest()).decode()

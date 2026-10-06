@@ -50,6 +50,16 @@ class ArtistOperations:
         if not eligible: raise MediaError(409,'Asset is not technically ready for this use')
         return row
 
+    def _track_artwork(self,c,artist,track,asset_id):
+        """Draft originals stay private; delivery references keep their ready gate."""
+        if asset_id is None: return None
+        row=c.execute('SELECT asset_type FROM shadify_media_assets WHERE id=%s AND artist_id=%s '
+                      'AND track_id=%s FOR SHARE',(asset_id,artist,track)).fetchone()
+        if row is None: raise MediaError(404,'Asset not found')
+        if row['asset_type']=='artwork_original':
+            return self._asset(c,artist,asset_id,'artwork_original',track_id=track,original=True)
+        return self._asset(c,artist,asset_id,'artwork_delivery',track_id=track)
+
     def _content_row(self,c,artist,resource,content_id):
         row=c.execute(f'SELECT * FROM {TABLES[resource]} WHERE id=%s AND artist_id=%s', (content_id,artist)).fetchone()
         if row is None: raise MediaError(404,'Content not found')
@@ -202,7 +212,7 @@ class ArtistOperations:
             self._asset(c,artist,model.original_asset_id,'audio_original',track_id=content_id,original=True)
             self._asset(c,artist,model.delivery_asset_id,'audio_delivery',track_id=content_id)
             self._asset(c,artist,model.preview_asset_id,'audio_preview',track_id=content_id)
-            self._asset(c,artist,model.artwork_asset_id,'artwork_delivery',track_id=content_id)
+            self._track_artwork(c,artist,content_id,model.artwork_asset_id)
         elif resource=='releases':
             self._asset(c,artist,model.cover_asset_id,'artwork_delivery')
             for track in model.track_ids: self._content_row(c,artist,'tracks',track)
@@ -270,6 +280,11 @@ class ArtistOperations:
             if not row['title'].strip() or row['delivery_asset_id'] is None: return False
             try:
                 asset=self._asset(c,artist,row['delivery_asset_id'],'audio_delivery',track_id=row['id'],lock=lock)
+                if row['artwork_asset_id'] is not None:
+                    cover=c.execute('SELECT asset_type FROM shadify_media_assets WHERE id=%s AND artist_id=%s '
+                                    'AND track_id=%s' + (' FOR SHARE' if lock else ''),
+                                    (row['artwork_asset_id'],artist,row['id'])).fetchone()
+                    if cover is not None and cover['asset_type']=='artwork_original': return False
                 return asset['access_class']==row['access_class']
             except MediaError: return False
         if resource=='videos':
