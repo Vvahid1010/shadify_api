@@ -437,3 +437,133 @@ production root-owned native-closure validator. It is not an AV engine or signat
 acceptance test. Official source protocol review and synthetic format tests are
 complete; actual selected package/signatures/RSS and Node010 integration remain
 open pending the parent's package-install authorization and Node ownership.
+
+### Next bounded slice: validation, matching and approved outputs
+
+Source plan after accepted440b9c64, not runtime or migration activation. Keep one
+ingest worker/queue, its resolved-job-table advisory lock, host flock, immutable
+input hashes, expiring revision-fenced attempts and mandatory tool namespaces.
+The first useful case is a short real WAV/FLAC plus PNG/JPEG track cover. Larger
+catalog imports, provider sync, batch optimization, playback preference UI and
+R2 remain queued. No first-user grant, UI edit or independent artist authority.
+
+**One additive schema target:011_ingest_processing.** Preserve001..010 bytes and
+all history. Extend010 attempts with an immutable stage(scan,validation,matching,
+processing), assigning existing attempts scan because010 only ran scans. Extend
+the existing job error CHECK for validation_invalid,metadata_invalid,
+provider_unavailable,match_ambiguous,processing_unavailable,processing_timeout,
+processing_error,output_invalid,pipeline_evidence_invalid. Keep eight existing
+states. Tool/provider infrastructure errors remain retryable; malformed content
+rejects; actual ambiguous/empty matching results require explicit review.
+
+Three small app-owned tables, with append-only evidence and no deletion:
+
+- shadify_ingest_stages: id UUID PK,job_id,input_sha256,scan_id,stage
+  (validation,extraction,matching,processing),payload JSONB,recorded_at server time;
+  UNIQUE(job_id,stage),FK(job_id,input_sha256) to jobs and a composite FK to the
+  exact full clean scan. Payloads have strict bounded server DTOs. Matching payload
+  records request/snapshot SHA256,provider=musicbrainz,fetched_at,complete response
+  and at most five candidate recordings with MBID,normalized metadata and score.
+  Processing payload pins tool/pipeline versions and the required output manifest.
+- shadify_ingest_match_decisions: id UUID PK,job_id UNIQUE,input_sha256,
+  matching_stage_id,method(automatic,reviewed),selected_recording_mbid nullable,
+  corrected_metadata JSONB,reason,actor_user_id nullable,decided_at server time.
+  The selected MBID must belong to the recorded candidate set. Automatic requires
+  a unique exact ISRC plus consistent title/artist/duration; first slice may use
+  reviewed decisions only. Explicit reviewed no-match requires a completed real
+  lookup snapshot and reason; unavailable provider is never a no-match decision.
+  Artwork records a reference to the resolved audio decision for the SAME track
+  and artist, with that referenced audio job ready before artwork approval.
+- shadify_ingest_variants: job_id,role(master,high,low,cover),asset_id UNIQUE,
+  output_sha256,source_quality JSONB,pipeline_version;PK(job_id,role). Asset rows
+  use existing media types/providers/access rules; roles do not replace Track IDs.
+
+Existing009 approvals remain the approval record. Add forward evidence constraints
+requiring the immutable clean scan, passed validation, complete extraction,
+resolved recorded matching and successful processing for the SAME job/input;
+audio needs master+high+low and artwork needs master+cover. No stage alone can
+produce ready. Output rows, variants, all approvals, processing evidence, attempt
+finish and ready transition commit in ONE transaction under job/attempt locks.
+Current/expired attempt checks apply immediately before commit. No public caller
+can write stage evidence, processing manifests or approvals.
+
+**API contract:** keep GET /api/media/{asset_id} and its existing ingest DTO; add
+outputs:[{role,asset_id,mime,size}] only for ready approved outputs, never keys or
+URLs. Original quarantine source remains inaccessible even when its job is ready;
+its current approved boolean still describes that asset, not every output. An
+approved master is a separate immutable copy. This intentionally retains the
+quarantine source for audit/recovery; safe later retention/GC is separately scoped.
+No automatic overwrite of user draft metadata or Track asset references: approved
+IDs can be selected through existing authorized content edits.
+
+GET /api/media/{asset_id}/match-review uses existing read_content authority and
+returns job/revision,bounded persisted extracted metadata,lookup status,candidate
+IDs/metadata and the recorded decision. PUT on that path uses existing
+manage_content authority with expected_revision and a strict body: selection
+(recorded candidate MBID or explicit no_match),reason and bounded corrected title,
+artist,album,track_number,ISRC fields. It can resolve only review_required with a
+completed lookup; it writes immutable decision+existing content audit and advances
+to processing. It cannot approve, publish, change artist/track IDs or submit raw
+provider evidence. Foreign page/track denies; stale revision409; expiry401/403.
+Artist -> app authority -> sorted identities -> track -> job locking and actor
+rechecks before audit/commit preserve revocation/account-deactivation separation.
+
+**Worker implementation order:**
+1. Claim validating using the same attempt table, preserving state and incrementing
+   revision. Full probe+decode verifies actual WAV/FLAC codec, exactly one audio
+   stream, bounded channels/rate/duration and no unexpected stream; images require
+   supported PNG/JPEG, bounded dimensions, exactly one complete decoded frame and
+   no unsupported animation/extra payload. Signature/browser MIME alone cannot
+   pass. Extract bounded plain-text tags and honest codec/sample/bit-depth/source
+   quality; embedded tags remain suggestions, never authority. Commit immutable
+   validation+extraction evidence and matching state atomically.
+2. Matching persists a server provider snapshot before deciding. No external
+   MusicBrainz call is authorized by this plan. Injected deterministic snapshots
+   can exercise offline tests, explicitly labelled fixtures. Production without
+   a qualified provider stays matching/provider_unavailable and cannot approve.
+   Real ambiguous/empty results move to review_required. Covers associate with
+   that track's resolved audio decision instead of pretending to be recordings.
+3. Processing uses fixed FFmpeg commands with metadata stripping, explicit stream
+   mapping, no network protocols or user argv, pinned encoder/version/settings,
+   deterministic role IDs/keys and no on-demand transcode. Preserve master bytes;
+   produce MPEG-1-compatible MP3 High<=320kbps and Low128kbps,44.1kHz,at most two
+   channels. Do not claim source improvement. Normalize a single-frame cover to
+   PNG. Probe AND fully decode each resulting output, verify bitrate/duration,
+   channel/rate/dimensions and hash. Encoder exit0 alone is not validation.
+4. Stage output bytes through LocalAdapter's exclusive install outside quarantine,
+   fsync and verify actual file identity/hash before the final DB transaction.
+   Until approvals commit, installed bytes have no usable asset grant. Use stable
+   job/role/pipeline keys and accept existing outputs only after exact byte checks.
+   Crash after file install leaves inaccessible tracked candidates; restart may
+   reuse verified outputs and must never overwrite immutable keys. Successful
+   ready jobs do not encode again; lost commit replies recover from DB evidence.
+
+**Node changes sent BEFORE011 freeze:** same native unit, concurrency1 and existing
+scanner contract unchanged. Add a separate minimal sealed root-owned ELF closure
+containing only ffmpeg,ffprobe and exact dependencies, explicit version and closure
+hash fields; do not widen scanner closure or mount app/DB credentials. Every media
+tool preflight/probe/decode/encode uses fixed Bubblewrap namespaces, private bounded
+scratch, PIPE input/output, close_fds and PID1-held nonsecret lock. No bare fallback.
+Measure actual codec/definition RAM and aggregate whole-unit MemoryMax/TasksMax;
+2GiB remains unqualified. Limits and output-volume budgets are fixed before final
+source/package proof, not guessed into an installation command. Pipeline writer
+needs only new stage/decision/variant INSERT/read and derived-asset/approval writes
+in addition to current worker privileges; API gains review SELECT/decision INSERT,
+never scan/validation/processing/approval write. Exact grants require disposable
+least-privilege qualification and independent Node review, no live grant here.
+
+**Required proof:** short safe real audio+cover through mandatory scan, full decode,
+extraction, recorded matching/review, deterministic High/Low and cover validation,
+then atomic approval; truncated/corrupt/type-mismatch/oversized/multistream inputs
+never ready. Test low-confidence/provider failure,no-match review,foreign candidate,
+other user/page,stale editor,revocation/expiry while waiting,concurrent attempts,
+expired result,crash between installs/DB commit,lost reply,unchanged master and
+repeat hashes/no re-encode. Real fixture bytes generated locally, no catalog/audio
+downloads. Trusted test snapshots and synthetic tool/scan protocols are NOT real
+provider/AV/encode proof. Tools currently absent here; installation remains with
+the parent/Node owner and requires its own existing authorization. No runtime,
+external lookup, SQL application, role/grant, package feed or cloud activation.
+
+Official tool contracts: [FFmpeg](https://ffmpeg.org/ffmpeg.html),
+[ffprobe](https://ffmpeg.org/ffprobe.html),
+[MusicBrainz metadata API](https://musicbrainz.org/doc/MusicBrainz_API).
