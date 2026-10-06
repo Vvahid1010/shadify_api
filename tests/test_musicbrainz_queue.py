@@ -67,7 +67,7 @@ class QueueTests(unittest.TestCase):
   for total in (2,5):
    with self.subTest(total=total),self.connect() as c:
     c.execute('DELETE FROM shadify_mb_cache')
-    c.execute("INSERT INTO shadify_mb_cache(request_key,request,response,fetched_at,expires_at,response_status) VALUES(%s,%s,%s,clock_timestamp(),clock_timestamp()+interval '24 hours',200)",(key,Jsonb(request),Jsonb(response(count=total))))
+    c.execute("INSERT INTO shadify_mb_cache(request_key,request,response,fetched_at,expires_at,response_status) VALUES(%s,%s,%s,statement_timestamp(),statement_timestamp()+interval '24 hours',200)",(key,Jsonb(request),Jsonb(response(count=total))))
    with patch.object(self.offline,'_transport',side_effect=AssertionError('No cache fallback')) as transport:
     with self.assertRaises(ProviderUnavailable):self.offline.lookup(QUERY,deadline=time.monotonic()+5)
     transport.assert_not_called()
