@@ -5,6 +5,7 @@ from psycopg.types.json import Jsonb
 from .media import MediaError
 from .auth import require_fresh_actor
 from .musicbrainz import text
+from .studio_uploads import matching_projection
 
 class MatchReview(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
@@ -28,17 +29,25 @@ class IngestReviewRepository:
             if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s FOR SHARE',(asset.track_id,asset.artist_id)).fetchone() is None:raise MediaError(404,'Track not found')
             job=c.execute('SELECT * FROM shadify_ingest_jobs WHERE asset_id=%s FOR UPDATE',(asset_id,)).fetchone()
             if job is None:raise MediaError(409,'Ingest unavailable')
-            stage=c.execute("SELECT * FROM shadify_ingest_stages WHERE job_id=%s AND stage='matching'",(job['id'],)).fetchone()
-            decision=c.execute('SELECT * FROM shadify_ingest_match_decisions WHERE job_id=%s',(job['id'],)).fetchone()
-            extraction=c.execute("SELECT payload FROM shadify_ingest_stages WHERE job_id=%s AND stage='extraction'",(job['id'],)).fetchone()
+            stage=c.execute("SELECT * FROM shadify_ingest_stages WHERE job_id=%s AND input_sha256=%s AND stage='matching'",(job['id'],job['input_sha256'])).fetchone()
+            decision=c.execute('SELECT * FROM shadify_ingest_match_decisions WHERE job_id=%s AND input_sha256=%s AND matching_stage_id=%s',(job['id'],job['input_sha256'],stage['id'] if stage else None)).fetchone()
+            extraction=c.execute("SELECT payload FROM shadify_ingest_stages WHERE job_id=%s AND input_sha256=%s AND stage='extraction'",(job['id'],job['input_sha256'])).fetchone()
+            def projection():
+                row=dict(asset_type=asset.asset_type,decision_id=decision['id'] if decision else None,
+                    decision_method=decision['method'] if decision else None,
+                    selected_recording_mbid=decision['selected_recording_mbid'] if decision else None,
+                    corrected_metadata=decision['corrected_metadata'] if decision else {})
+                try:return matching_projection(extraction['payload'] if extraction else None,stage['payload'] if stage else None,row)
+                except (ValueError,TypeError,KeyError,AttributeError):raise MediaError(503,'Upload metadata unavailable') from None
+            view=projection()
             if body is not None:
                 if job['state']!='review_required' or job['revision']!=body.expected_revision or stage is None or decision is not None:raise MediaError(409,'Matching decision or revision changed')
-                if asset.asset_type!='audio_original' or stage['payload'].get('complete') is not True:raise MediaError(409,'Completed audio lookup required')
+                if not view['lookup_complete']:raise MediaError(409,'Completed audio lookup required')
                 selected=body.selected_recording_mbid
                 if selected is not None:
                     try:selected=str(UUID(selected))
                     except ValueError:raise MediaError(422,'Invalid candidate') from None
-                    if selected not in {v['mbid'] for v in stage['payload']['candidates']}:raise MediaError(422,'Candidate not in server lookup')
+                    if selected not in {v['mbid'] for v in view['candidates']}:raise MediaError(422,'Candidate not in server lookup')
                 metadata=corrections(body.corrected_metadata)
                 try:reason=text(body.reason,1000)
                 except ValueError:raise MediaError(422,'Invalid reason') from None
@@ -48,7 +57,4 @@ class IngestReviewRepository:
                     (decision['id'],job['id'],job['input_sha256'],stage['id'],selected,Jsonb(metadata),reason,auth.user_id))
                 require_fresh_actor(actor)
                 require_fresh_actor(actor)
-            return dict(job_id=str(job['id']),revision=job['revision'],state=job['state'],
-                extracted_metadata=extraction['payload'].get('metadata',{}) if extraction else {},
-                lookup_complete=stage is not None,candidates=stage['payload'].get('candidates',[]) if stage else [],
-                decision=None if decision is None else dict(id=str(decision['id']),method=decision['method'],selected_recording_mbid=str(decision['selected_recording_mbid']) if decision['selected_recording_mbid'] else None,corrected_metadata=decision['corrected_metadata']))
+            return dict(job_id=str(job['id']),revision=job['revision'],state=job['state'],**(projection() if body is not None else view))

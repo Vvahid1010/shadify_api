@@ -985,3 +985,37 @@ existing pipeline/profile regressions follow this implementation; earlier accept
 server AV/full-media qualification and separately approved012 deployment remain
 owner dependencies. Existing single/batch create-upload/PUT/complete operations
 are reused; this source step creates neither a batch endpoint nor a second pipeline.
+
+
+### Source continuation: existing match-review completeness (2026-10-06)
+
+GET/PUT `/api/media/{asset_id}/match-review` now reuse the exact Studio matching
+projection and completeness validator without changing the d733 Studio DTO.
+Reads expose bounded musical metadata/candidates and hide historical partial
+decisions. Stage presence or complete=true alone is insufficient: audio evidence
+must have provider=musicbrainz, truncated=false, integer total matching at most5
+unique validated candidates. PUT rejects incomplete/invalid evidence with409
+before inserting a reviewed decision. Complete empty lookup permits explicit
+no-match; a selected recording must belong to the validated saved candidates.
+Stages/decisions additionally join the same immutable job input hash and matching
+stage. Existing artist authority, row locking, expected revision, single-decision
+and identity-before-commit fences remain. Review never approves bytes directly.
+
+Focused disposable-PG/HTTP proof covers incomplete/truncated/count2/count5,
+boolean/missing counts, malformed/duplicate/oversized candidates, historical
+partial automatic decisions, bounded metadata, complete candidate selection,
+complete no-match and absent-stage reads without provider dispatch. Existing
+expiry-after-insert and waiting-delegate-revocation tests remain qualification
+requirements. No schema/grant/provider/Node/Web change; no live deployment.
+This is a separate source candidate awaiting parent-arranged Astra Standard
+review of the combined candidate; prior d733 review mode was unverified.
+Frozen scanner25/target011 release stays independent of later338/d733 target012.
+
+
+Final focused source cohort:27 passed, zero skips (six new completeness tests,
+eleven unchanged Studio tests, five existing review/expiry/revocation/least-
+privilege tests and five ordinary artist/ownership/identity regressions).
+Initial long scratch-path PostgreSQL setup failure and the corrected historical
+automatic fixture failure are retained as local evidence. Production migrations,
+Studio projection/route/composition and the earlier accepted artifacts are
+unchanged. The candidate still awaits the parent's verified Astra Standard review.
