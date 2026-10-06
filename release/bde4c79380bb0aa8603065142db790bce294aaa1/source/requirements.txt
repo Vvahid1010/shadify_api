@@ -1,0 +1,8 @@
+fastapi==0.142.2
+uvicorn==0.53.0
+boto3==1.43.107
+psycopg[binary]==3.3.6
+httpx==0.28.1
+redis==8.1.0
+app-security-shell==0.4.6
+node-agent-local-shell-transport==0.1.9
