@@ -48,7 +48,7 @@ class ArtistOperations:
             if kind in ('audio_preview','artwork_delivery'):
                 eligible=eligible and row['access_class']=='free'
         if not eligible: raise MediaError(409,'Asset is not technically ready for this use')
-        if not original:self.require_ingest_approval(Asset(**row),cursor=c)
+        if not original:self.require_ingest_approval(Asset(**row),cursor=c,lock=lock)
         return row
 
     def _track_artwork(self,c,artist,track,asset_id):
@@ -285,10 +285,8 @@ class ArtistOperations:
             try:
                 asset=self._asset(c,artist,row['delivery_asset_id'],'audio_delivery',track_id=row['id'],lock=lock)
                 if row['artwork_asset_id'] is not None:
-                    cover=c.execute('SELECT asset_type FROM shadify_media_assets WHERE id=%s AND artist_id=%s '
-                                    'AND track_id=%s' + (' FOR SHARE' if lock else ''),
-                                    (row['artwork_asset_id'],artist,row['id'])).fetchone()
-                    if cover is not None and cover['asset_type']=='artwork_original': return False
+                    self._asset(c,artist,row['artwork_asset_id'],'artwork_delivery',
+                                track_id=row['id'],lock=lock)
                 return asset['access_class']==row['access_class']
             except MediaError: return False
         if resource=='videos':

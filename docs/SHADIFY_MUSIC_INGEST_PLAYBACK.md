@@ -288,3 +288,13 @@ owner reviews installer, migration receipts, reader/runtime ACLs and schema
 fingerprints. No live migration, scanner install, service restart, grant, push or
 publication is authorized by this source receipt. Phase2 actual tools/worker,
 approval/output proof and matching/playback remain outstanding.
+
+
+Phase1A Astra follow-up: approval locking is now explicit and follows the owning
+asset operation's lock flag. Publication keeps its job FOR SHARE lock; public
+REPEATABLE READ READ ONLY projections use non-locking approval reads. Track
+publishability validates delivery artwork through the same current approval gate,
+so legacy or withdrawn covers hide the track and block publication. Disposable
+PostgreSQL HTTP tests positively preserve approved audio, artwork/avatar/header
+public references and reject withdrawn/legacy covers. These remain structural
+fixtures, not a real malware/decode/processing acceptance claim.

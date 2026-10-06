@@ -81,16 +81,17 @@ class IngestFoundationTests(ArtistPostgresCase):
     def scanner(self,scanner=None):return IngestScanner(connect=self.connect,adapters={'local':self.adapter},scanner=scanner)
     def job(self,asset):return self.metadata(asset)['ingest']
 
-    def approved_fixture(self):
+    def approved_fixture(self,*,cover=False):
         # Structural gate fixture ONLY: no claim of actual scan/decode/processing.
-        source,_,_=self.upload();job=self.job(source)
-        output=self.asset(self.audio,'audio_delivery','audio/wav','ready','free','draft')
+        source,_,_=self.upload(cover=cover);job=self.job(source)
+        body=PNG if cover else self.audio
+        output=self.asset(body,'artwork_delivery' if cover else 'audio_delivery','image/png' if cover else 'audio/wav','ready','free','published')
         fd=self.adapter.open(output.key)
         try:
             stat=os.fstat(fd)
             identity=dict(device=stat.st_dev,inode=stat.st_ino,size=stat.st_size,mtime_ns=stat.st_mtime_ns,ctime_ns=stat.st_ctime_ns)
         finally:os.close(fd)
-        scan=uuid4();sha=hashlib.sha256(self.audio).hexdigest()
+        scan=uuid4();sha=hashlib.sha256(body).hexdigest()
         with self.connect() as c:
             c.execute("INSERT INTO shadify_ingest_scans(id,job_id,input_sha256,verdict,engine_version,definitions_version,full_coverage) VALUES (%s,%s,%s,'clean','SYNTHETIC','SYNTHETIC',true)",(scan,UUID(job['job_id']),sha))
             c.execute("INSERT INTO shadify_ingest_approvals(asset_id,job_id,scan_id,input_sha256,output_sha256,storage_key,storage_provider,mime,size,object_identity,validation,extraction,match_decision,processing) VALUES (%s,%s,%s,%s,%s,%s,'local',%s,%s,%s,%s,%s,%s,%s)",
@@ -114,7 +115,7 @@ class IngestFoundationTests(ArtistPostgresCase):
         with self.connect() as holder:
             holder.execute("SELECT 1") # Match the already-open artist publication transaction.
             with holder.cursor(row_factory=psycopg.rows.dict_row) as cursor:
-                self.repo.require_ingest_approval(output,cursor=cursor)
+                self.repo.require_ingest_approval(output,cursor=cursor,lock=True)
                 with self.assertRaises(psycopg.errors.LockNotAvailable):
                     with self.connect() as writer:
                         writer.execute("SET LOCAL lock_timeout='100ms'")
@@ -122,6 +123,48 @@ class IngestFoundationTests(ArtistPostgresCase):
         path=Path(self.directory.name)/output.key
         with path.open('r+b') as stream:stream.write(b'BAD!')
         self.assertEqual(self.bytes.get(url).status_code,409)
+
+    def publish_approved_track(self,*,cover=True):
+        audio,audio_job=self.approved_fixture()
+        image,image_job=self.approved_fixture(cover=True) if cover else (None,None)
+        path='/api/artists/'+str(self.artist)
+        fields={'delivery_asset_id':str(audio.id),'access_class':'free'}
+        if image:fields['artwork_asset_id']=str(image.id)
+        response=self.api.patch(path+'/tracks/'+str(self.track),json=fields)
+        self.assertEqual(response.status_code,200,response.text)
+        if image:
+            response=self.api.patch(path,json={'avatar_asset_id':str(image.id),'header_asset_id':str(image.id)})
+            self.assertEqual(response.status_code,200,response.text)
+        response=self.api.put(path+'/tracks/'+str(self.track)+'/publication',json={'state':'published'})
+        self.assertEqual(response.status_code,200,response.text)
+        response=self.api.put(path+'/publication',json={'state':'published'})
+        self.assertEqual(response.status_code,200,response.text)
+        return audio,audio_job,image,image_job
+
+    def test_approved_audio_and_cover_survive_actual_readonly_public_page(self):
+        audio,_,image,_=self.publish_approved_track()
+        response=self.api.get('/api/artists/'+str(self.artist)+'/public')
+        self.assertEqual(response.status_code,200,response.text)
+        dto=response.json();self.assertEqual(len(dto['content']['tracks']),1)
+        track=dto['content']['tracks'][0]
+        self.assertEqual(track['delivery_asset_id'],str(audio.id))
+        self.assertEqual(track['artwork_asset_id'],str(image.id))
+        self.assertEqual(dto['page']['avatar_asset_id'],str(image.id))
+        self.assertEqual(dto['page']['header_asset_id'],str(image.id))
+
+    def test_withdrawn_or_legacy_cover_blocks_track_publication_and_public_projection(self):
+        audio,_,image,job=self.publish_approved_track()
+        path='/api/artists/'+str(self.artist)
+        with self.connect() as c:
+            c.execute("UPDATE shadify_ingest_jobs SET state='rejected',revision=revision+1 WHERE id=%s",(UUID(job['job_id']),))
+        self.assertEqual(self.api.get(path+'/public').json()['content']['tracks'],[])
+        response=self.api.put(path+'/tracks/'+str(self.track)+'/publication',json={'state':'published'})
+        self.assertEqual(response.status_code,409,response.text)
+        legacy=self.asset(PNG,'artwork_delivery','image/png','ready','free','published')
+        # Emulate a persisted pre009 reference without inventing approval.
+        with self.connect() as c:c.execute('UPDATE shadify_tracks SET artwork_asset_id=%s WHERE id=%s',(legacy.id,self.track))
+        self.assertEqual(self.api.get(path+'/public').json()['content']['tracks'],[])
+        self.assertEqual(self.api.put(path+'/tracks/'+str(self.track)+'/publication',json={'state':'published'}).status_code,409)
 
     def test_adapter_cannot_claim_clean_with_unknown_or_partial_coverage(self):
         class PartialScanner:

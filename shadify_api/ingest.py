@@ -32,7 +32,8 @@ class IngestRepository:
                     approved=row['state']=='ready' and row['approved_asset'] is not None,retryable=row['last_error'] in INFRA_ERRORS,
                     last_error=row['last_error'],legacy_unregistered=False)
 
-    def require_ingest_approval(self,asset,*,cursor=None):
+    def require_ingest_approval(self,asset,*,cursor=None,lock=False):
+        if lock and cursor is None:raise ValueError("Approval locking requires an outer transaction cursor")
         if asset.key.startswith('quarantine/'):
             raise MediaError(409,'Media ingest approval required')
         def read(c):
@@ -47,7 +48,7 @@ class IngestRepository:
                     "WHERE a.asset_id=%s AND j.state='ready' AND a.input_sha256=j.input_sha256 "
                     'AND source.artist_id=%s AND source.track_id=%s '
                     'AND a.storage_key=%s AND a.storage_provider=%s AND a.mime=%s AND a.size=%s' +
-                    (' FOR SHARE OF j' if cursor is not None else ''),
+                    (' FOR SHARE OF j' if lock else ''),
                     (asset.id,asset.artist_id,asset.track_id,asset.key,asset.storage_provider,asset.mime,asset.size)).fetchone()
         try:
             if cursor is None:
