@@ -34,6 +34,26 @@ replace a Track ID, artist ID or other Shadify ID. Matching/sync may update meta
 without rewriting identity. Provider API details and schema decisions belong to
 their implementation stage, not an invented playback dependency.
 
+User-confirmed continuation, voice11:18: ArtistStudio Upload and ManageWorks must
+combine validated embedded tags with MusicBrainz artist/album/track suggestions.
+Use saved Shadify metadata in ordinary screens, including provider outages; show
+pending/review and explicit no-match/offline outcomes without repetitive manual
+batch edits. A metadata match never grants artist ownership, membership, admin,
+publication rights or account identity. Single and batch uploads retain one
+mandatory quarantine/scan/validation/extraction/matching/processing pipeline.
+
+All Shadify-controlled calls sharing a public egress IP, including WSL and B,
+share one sustained request budget. Use at most one request per second with a
+meaningful application/version/contact User-Agent. Independent local worker
+limiters, separate app databases, different User-Agents or concurrent album/search
+operations do not create independent allowances. Searches, lookups, retries and
+pagination consume the same budget; do not hide retry bursts behind averages.
+Official requirements: [API](https://musicbrainz.org/doc/MusicBrainz_API) and
+[rate limiting](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting).
+Public JSON GETs only; do not send audio, file paths/keys, account credentials or
+private account identifiers. No Node Agent business-rule gating is introduced.
+
+
 ## 3. Single and batch use the same pipeline
 
 Support one track and batches of many tracks/albums through one ingest pipeline.
@@ -712,3 +732,86 @@ lock-FD and parent-death boundaries. Actual production NativeSandbox generated
 WAV/PNG/harmless AV marker and native bad-signature evidence is recorded separately;
 it is not FFmpeg, aggregate B-unit or full production pipeline qualification.
 No installation, live definition update, persistent worker or runtime activation.
+
+
+### MusicBrainz audit and smallest shared-egress proposal (2026-10-06)
+
+This audit is against accepted source25d0504. It does not change that matched
+scanner package or authorize live requests, a shared DB connection, new helper,
+endpoint, daemon or runtime configuration. WSL and B app databases remain separate.
+The official API page was read directly on2026-10-06: one call/second and proper
+User-Agent are required. The dedicated rate-limiting page returned HTTP429 to
+the documentation browser; its indexed official result identifies Source IP
+as a limiting dimension. This is evidence retrieval, not a provider load test.
+The aggregate WSL+B requirement is also an explicit user contract.
+
+| Requirement | Actual25d0504 implementation | Remaining source work |
+| --- | --- | --- |
+| Meaningful identity/bounded public requests | Shadify/version plus HTTPS contact URL validation; fixed host, no proxy/redirects,8s IO/12s parent deadline,1MiB body/64KiB normalized result | Select a real monitored contact at deployment; no value guessed here. |
+| Sustained same-egress rate | Private boot-ID/monotonic1.1s stamp under one host worker lifetime flock; atomic/fsynced replacement survives crash | Local state directories and host/table locks do not coordinate WSL+B or different DBs. Stamp precedes child/HTTP start; conservative completion spacing and durable inflight recovery must cover delayed/orphan requests. |
+| Embedded metadata | Full validation/decode before bounded title/artist/album/track/ISRC extraction; decoded duration; draft title/page name fallback | Preserve untrusted provenance and expose useful durable suggestions through the API/UI owners. No provider ownership inference. |
+| Confident vs ambiguous | Only one complete nontruncated ISRC candidate, exact normalized title+artist and duration within2s automatically matches; other completed results require review | Preserve this conservative rule until stronger album/track evidence is tested; provider search rank or title alone is not sufficient. |
+| Durable metadata/review | Job-specific matching stages and append-only decisions in app PostgreSQL; API returns stored suggestions and corrections | No general provider-cache reuse, imported artist/album/release catalog or release tracklist exists. Corrected metadata is persisted in decisions, not automatically applied as catalog/ownership edits. |
+| Batch/album deduplication | Existing single job pipeline, at most5 recording candidates per lookup | Same query may fetch repeatedly per track/job; album/release lookup, unique request keys and fanout reuse are absent. |
+| Rate errors/offline | Provider failures create retryable matching errors and no fake successful matching evidence; ordinary saved metadata is local | HTTP429/503 Retry-After is discarded; generic30s job retry is not a shared bounded exponential cooldown. Outages must keep upload/job state and saved metadata usable, without approval or false no-match. |
+
+Minimal recommendation before any new dependency: select ONE Shadify-owned
+metadata requester for the WSL+B shared-egress group, using the existing app
+worker and its own PostgreSQL. Keep WSL on recorded/cached metadata until its
+requests can reach that same app-owned queue/requester through an explicitly
+reviewed app route. No cross-environment direct database access or shared private
+ratefile mount. If both environments require independent live requesters at once,
+an explicitly selected common app-owned coordinator is necessary; two independent
+rate rows, Redis instances, host flocks or per-worker sleeps cannot prove the
+aggregate limit. Do not add a broker/Redis/service or modify Node Agent first.
+
+The next bounded implementation should use the existing PostgreSQL and a small
+provider cache/request queue, not a generic metadata platform. Unique canonical
+provider resource/query/include/page/schema keys deduplicate cache misses, retries
+and concurrent album lookups. A release lookup can return artist credits, medium
+and ordered tracklist once, reused by the batch; bounded pagination remains in
+the same budget. Cache public normalized metadata, provenance, fetched/expiry
+times and complete/no-match status; persist imported artist/album/recording MBIDs
+as external references alongside stable Shadify IDs. Partial/error results never
+become complete or negative cache entries. Define bounded positive/negative TTL,
+row/body counts and retention in that source stage instead of inventing deploy
+values now. A cache hit needs no network allowance.
+
+Cache reuse must recompute confidence for EACH upload's own validated tags,
+decoded duration, album edition and track position. Do not reuse another job's
+automatic decision or approval. Missing tags, conflicting artist/album editions,
+duplicate ISRCs, truncated results and ambiguous candidates remain durable review.
+Manual corrections require the existing page/content authority and current
+identity/revision checks. ArtistStudio shows embedded values, saved suggestions,
+confidence/review and sync status; provider outages show cached data and queued
+refresh. Metadata lookup cannot grant authority or bypass media readiness.
+
+A single dispatcher serializes actual HTTP activity and spaces completion/start
+conservatively by at least1.1s; do not reserve future slots and then permit delayed
+requests to bunch together. Durably record inflight attempts before dispatch,
+their bounded12s deadline and cooldown so a killed parent/restarted worker cannot
+overlap an orphan request. Uncertain outcomes consume their reservation and retry
+only after the conservative recovery window; never reset rate state automatically.
+Database time/locks protect the shared queue; local monotonic time bounds each
+process. Cache/queue mutation and provider waits stay outside ingest promotion
+transactions; existing input hash, claimed revision, expiry/lease and authority
+checks still fence the final per-job evidence commit.
+
+HTTP429/503 impose one persisted egress cooldown. Parse bounded Retry-After delta
+seconds or HTTP date, honor a longer valid server delay, and schedule the queued
+job rather than sleeping inside an ingest lease. Otherwise use bounded exponential
+backoff with jitter, maximum attempts/elapsed budget and no immediate retry loop.
+An implausibly long delay leaves the queue paused for review rather than silently
+clipping it to a faster retry. Invalid Retry-After follows conservative backoff.
+Rate denial, cache unavailable and transient network errors are distinct internal
+retry outcomes, never an authoritative no-match. All API/worker/provider lookups
+must use the selected requester; no local fallback bypass when it is unavailable.
+
+Required future proof: two processes/environment clients sharing the selected
+requester never exceed one actual start per second over sustained batches/restarts;
+cache hits produce zero traffic; one album miss fans out to multiple jobs;
+same-egress429 cooldown and Retry-After survive restart; partial/failed results
+cannot become no-match; ambiguous metadata cannot autoapprove; cached DTOs and
+ManageWorks remain usable offline; per-page ownership and immutable input/lease
+fences remain unchanged. Current local rate-crash and pipeline regression tests
+prove their existing narrow guarantees, not this unimplemented coordination.
