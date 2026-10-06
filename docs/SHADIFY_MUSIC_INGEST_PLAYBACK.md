@@ -815,3 +815,63 @@ cannot become no-match; ambiguous metadata cannot autoapprove; cached DTOs and
 ManageWorks remain usable offline; per-page ownership and immutable input/lease
 fences remain unchanged. Current local rate-crash and pipeline regression tests
 prove their existing narrow guarantees, not this unimplemented coordination.
+
+
+### Implemented bounded012 MusicBrainz recording/ISRC coordination
+
+Forward012 adds only public-response cache, deduplicated request queue and one
+dispatch/cooldown row.001..011 remains byte-identical; no live migration/grant.
+Protected worker `musicbrainz_mode` defaults to `cache_only` (explicit WSL mode);
+`b_live` is selected only for the sole existing B app worker. This is a source
+composition choice, not a selected real setting or new Node Agent business gate.
+No new dependency/service, B database secret sharing or cross-environment DB
+access. WSL reads its OWN seeded/recorded PostgreSQL public metadata; a miss
+neither enqueues nor dispatches and cannot fall back to direct HTTP.
+
+The existing B worker drains at most one queued request BEFORE claiming a file
+attempt. Its host lifetime lock and additional DB session advisory exclusion
+serialize dispatch. Reservations commit before send; network runs without an
+open DB transaction/file lease. A14s persisted inflight window covers the12s
+subprocess deadline; the child sets Linux parent-death SIGKILL then verifies its
+expected parent PID before network, preventing delayed orphan dispatch. A fixed
+monotonic deadline established before reservation is passed to the child, which
+rejects expired starts and installs kernel-default SIGALRM termination within
+12s. Delayed surviving parents/DB-session loss cannot renew an expired send. Restart
+honors inflight/cooldown; unknown outcome consumes an attempt and never becomes
+no-match. The next start is at least1.1s AFTER the previous completion, without
+blocking sleeps inside the file attempt. Legacy filesystem rate code remains
+for prior compatibility tests but is no longer wired into worker composition.
+
+Recording search/ISRC resource, public query, includes, page and format-version
+form a unique SHA256 request key. Job/account/authority/input hashes and per-file
+duration are excluded. Only validated bounded public responses/provenance enter
+cache; automatic_mbid and job approval never do. Each cache reader recomputes
+the existing unique ISRC/exact names/2s duration rule for its own extracted data.
+Positive TTL24h; explicit ISRC404 no-match TTL1h. Cache capacity500 and queue1000;
+oldest public cache rows evict, expired responses delete, completed/paused queue
+rows retain at most7days. Completed expired keys can requeue; pending duplicates
+remain one request. No release/album lookup is implemented in012; it is the next
+bounded query kind and can reuse this queue without a separate batch pipeline.
+
+HTTP429/503 status and bounded Retry-After delta/date survive the child boundary
+and become a persisted singleton cooldown. Other transient failures use30s
+exponential backoff capped1hour plus up to3s jitter, at most5attempts/24h. A valid
+server delay longer than24h pauses the group for explicit review rather than
+retrying faster. Timeout/error/partial/inconsistent response never caches a fake
+no-match. Cache and queue errors cannot bypass mandatory matching/approval.
+Existing immutable input, lease/revision, actor/page and review fences remain.
+
+Isolated tests cover concurrent miss/deduplicated dispatch, per-file confidence,
+cache hit/WSL miss zero traffic, completion spacing, late429/restart cooldown,
+long503 delay, inflight recovery, strict TTL/capacity/retention/retry budgets,
+network outside transactions, and actual subprocess parent-death behavior.
+All HTTP is mocked; these are source mechanics proof, not live provider/B unit
+activation or release/album UX acceptance. Ordinary UI reads persisted job metadata;
+artist/album suggestions and ManageWorks sync still require their API/Web stage.
+Later role proposal: pipeline worker SELECT/INSERT/UPDATE/DELETE on cache/queue,
+SELECT/UPDATE on the singleton rate table only; API needs no new cache/queue mutation privilege.
+Node owner must separately review012 package/SQL/role/runtime pairing; frozen25d
+scanner package/Node AV proof is unaffected and should continue independently.
+
+Unrepresentable oversized numeric Retry-After is an indefinite persisted pause,
+never default short backoff; representable long delays retain their full deadline.

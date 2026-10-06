@@ -4,6 +4,7 @@ from ipaddress import ip_address
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
+from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field,model_validator
 from psycopg.rows import dict_row
 from .config import load_protected_json,load_database_config
@@ -51,10 +52,12 @@ class WorkerConfig(BaseModel):
     media_runtime_sha256:str|None=Field(default=None,pattern=r'^[0-9a-f]{64}$')
     media_tool_version:str|None=Field(default=None,pattern=r'^[A-Za-z0-9_.+-]{1,100}$')
     musicbrainz_user_agent:str|None=None
+    musicbrainz_mode:Literal['cache_only','b_live']='cache_only'
     @model_validator(mode='after')
     def pipeline_fields(self):
         values=(self.media_runtime_root,self.media_runtime_sha256,self.media_tool_version,self.musicbrainz_user_agent)
         if any(v is not None for v in values) and not all(v is not None for v in values):raise ValueError('Complete explicit media/provider fields required')
+        if self.musicbrainz_mode=='b_live' and self.media_runtime_root is None:raise ValueError('Live metadata mode requires pipeline composition')
         return self
 
 def safe_path(path,*,directory=False,private=False,root_owned=False):
@@ -214,11 +217,11 @@ def main():
             if config.media_runtime_root is None:worker=IngestWorker(**arguments)
             else:
                 from .media_tools import MediaTools
-                from .musicbrainz import MusicBrainzProvider
+                from .musicbrainz_queue import QueuedMusicBrainzProvider
                 from .ingest_pipeline import PipelineWorker
                 tools=MediaTools(bwrap=config.bwrap,runtime_root=config.media_runtime_root,prlimit=config.prlimit,temp_dir=config.temp_dir,
                     version=config.media_tool_version,runtime_sha256=config.media_runtime_sha256,limits=config.limits,lock_fd=lock_fd)
-                worker=PipelineWorker(**arguments,tools=tools,provider=MusicBrainzProvider(state_dir=config.state_dir,user_agent=config.musicbrainz_user_agent))
+                worker=PipelineWorker(**arguments,tools=tools,provider=QueuedMusicBrainzProvider(connect=arguments['connect'],user_agent=config.musicbrainz_user_agent,mode=config.musicbrainz_mode))
             while not stopped.is_set():
                 try:
                     result=worker.run_once()

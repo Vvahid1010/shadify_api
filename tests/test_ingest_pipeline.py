@@ -59,6 +59,23 @@ class PipelineTests(IngestFoundationTests):
   states=[self.once()['state'] for _ in range(4)]
   self.assertEqual(states,['validating','matching','processing','ready']);return asset
  def outputs(self,asset):return self.metadata(asset)['outputs']
+ def test_cached_conflict_remains_review_and_cannot_copy_approval(self):
+  from shadify_api.musicbrainz_queue import QueuedMusicBrainzProvider
+  self.apply('012_musicbrainz_coordination.sql')
+  self.worker.provider=QueuedMusicBrainzProvider(connect=self.connect,user_agent='Shadify/test (https://shadify.org)',mode='b_live')
+  asset,_,_=self.upload();self.assertEqual(self.once()['state'],'validating');self.assertEqual(self.once()['state'],'matching')
+  self.assertEqual(self.once()['last_error'],'provider_unavailable')
+  document={'isrc':'USAAA2600001','recordings':[{'id':MBID,'title':'Conflicting unrelated recording','length':2,'artist-credit':[{'name':'Other Artist'}]}]}
+  response={'status':200,'document':document,'response_sha256':hashlib.sha256(json.dumps(document).encode()).hexdigest()}
+  time.sleep(1.05) # Respect the actual job retry delay and its immutable trigger.
+  with patch.object(self.worker.provider,'_transport',return_value=response) as transport:
+   self.assertEqual(self.once()['state'],'review_required');transport.assert_called_once()
+  self.assertEqual(self.metadata(asset)['ingest']['approved'],False)
+  with self.connect() as c:
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_approvals').fetchone()[0],0)
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_match_decisions').fetchone()[0],0)
+  self.assertEqual(self.api.post('/api/media/'+str(asset.id)+'/access').status_code,409)
+
  def test_audio_and_cover_have_complete_atomic_approvals_and_immutable_masters(self):
   audio=self.audio_ready();self.assertEqual({v['role'] for v in self.outputs(audio)},{'master','high','low'})
   self.assertEqual(self.adapter.checksum(audio.key),hashlib.sha256(self.audio).hexdigest())

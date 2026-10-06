@@ -14,6 +14,10 @@ from .musicbrainz import ProviderUnavailable
 
 class PipelineWorker(IngestWorker):
     def __init__(self,*,tools,provider,**kwargs):super().__init__(**kwargs);self.tools=tools;self.provider=provider
+    def run_once(self):
+        # Metadata traffic is drained before claiming any file attempt/lease.
+        if hasattr(self.provider,'dispatch_once'):self.provider.dispatch_once()
+        return super().run_once()
     def claim(self,connection):
         with connection.transaction():
             with connection.cursor(row_factory=dict_row) as c:

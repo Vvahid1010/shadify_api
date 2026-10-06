@@ -151,7 +151,7 @@ class NativePackageTests(unittest.TestCase):
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
-                    if path.name=='011_ingest_processing.sql':continue
+                    if path.name in ('011_ingest_processing.sql','012_musicbrainz_coordination.sql'):continue
                     name='source/'+folder+'/'+path.name;destination=root/name
                     destination.parent.mkdir(parents=True,exist_ok=True)
                     raw=b'synthetic exact inventory fixture';destination.write_bytes(raw)
@@ -165,12 +165,30 @@ class NativePackageTests(unittest.TestCase):
             manifest['migration_target']='009_ingest_quarantine';write()
             with self.assertRaisesRegex(ValueError,'attempts_target_required'):verify(root,source)
 
+    def test_coordination_target_requires_cache_queue_source_and_cannot_mislabel_011(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            owner=Path(__file__).resolve().parents[1]
+            for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
+                for path in (owner/folder).glob(glob):
+                    name='source/'+folder+'/'+path.name;destination=root/name;destination.parent.mkdir(parents=True,exist_ok=True)
+                    raw=b'synthetic exact inventory';destination.write_bytes(raw);manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            def write():(root/'build-info.json').write_bytes(canonical(manifest))
+            manifest['migration_target']='012_musicbrainz_coordination';write();verify(root,source)
+            for name in ('source/migrations/012_musicbrainz_coordination.sql','source/shadify_api/musicbrainz_queue.py'):
+                metadata=manifest['files'].pop(name);write()
+                with self.assertRaisesRegex(ValueError,'incomplete_coordination_package'):verify(root,source)
+                manifest['files'][name]=metadata
+            manifest['migration_target']='011_ingest_processing';write()
+            with self.assertRaisesRegex(ValueError,'coordination_target_required'):verify(root,source)
+
     def test_pipeline_target_requires_full_stages_provider_tools_and_truthful_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source='a'*40;manifest=package(root,source)
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
+                    if path.name=='012_musicbrainz_coordination.sql':continue
                     name='source/'+folder+'/'+path.name;destination=root/name
                     destination.parent.mkdir(parents=True,exist_ok=True)
                     raw=b'synthetic exact inventory fixture';destination.write_bytes(raw)
