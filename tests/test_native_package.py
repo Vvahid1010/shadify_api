@@ -157,7 +157,7 @@ class NativePackageTests(unittest.TestCase):
                     manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
             def write():(root/'build-info.json').write_bytes(canonical(manifest))
             manifest['migration_target']='010_ingest_attempts';write();verify(root,source)
-            for name in ('source/migrations/010_ingest_attempts.sql','source/shadify_api/clamav_scanner.py','source/shadify_api/ingest_worker.py'):
+            for name in ('source/migrations/010_ingest_attempts.sql','source/shadify_api/clamav_scanner.py','source/shadify_api/ingest_worker.py','source/shadify_api/scanner_sandbox.py'):
                 metadata=manifest['files'].pop(name);write()
                 with self.assertRaisesRegex(ValueError,'incomplete_attempts_package'):verify(root,source)
                 manifest['files'][name]=metadata

@@ -1,11 +1,12 @@
 """Real subprocess/PG mechanics with synthetic ClamAV protocol; NOT AV proof."""
-import hashlib,multiprocessing,os,subprocess,tempfile,time,unittest
+import hashlib,multiprocessing,os,subprocess,tempfile,time,unittest,shutil,re,socket,json
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 from unittest.mock import patch
 import psycopg
-from shadify_api.clamav_scanner import ClamAVScanner,run_bounded,EvidenceInvalid
+from shadify_api.clamav_scanner import ClamAVScanner,run_bounded,EvidenceInvalid,parse_scan
+from shadify_api.scanner_sandbox import NativeSandbox,runtime_inventory
 from shadify_api.ingest_worker import IngestWorker,WorkerLimits,WorkerConfig,host_lock,safe_path
 from shadify_api.ingest_scanner import ScanVerdict,scan_input
 from shadify_api.media import MediaError
@@ -13,30 +14,57 @@ from test_artist_postgres import ArtistPostgresCase
 from test_ingest_foundation import IngestFoundationTests,FixtureScanner
 
 FAKE="""#!/usr/bin/python3
-import os,sys,time,subprocess
+import os,sys,time,subprocess,hashlib,json,socket,stat
 from pathlib import Path
-mode=Path(__file__).with_suffix('.mode').read_text()
+mode=Path('/mode').read_text()
 if '--version' in sys.argv:
- print('ClamAV 1.4.3/27111/Fri Oct 2 10:00:00 2026');sys.exit(0)
+ print('ClamAV 1.5.4/27111/Fri Oct 2 10:00:00 2026');sys.exit(0)
+if mode=='lock_probe':
+ for entry in Path('/proc/self/fd').iterdir():
+  try:
+   if stat.S_ISREG(entry.stat().st_mode) and b'SYNTHETIC-LOCK-FD-MARKER' in entry.read_bytes():raise RuntimeError('lock fd leaked to payload')
+  except OSError:pass
 data=os.read(0,1) if mode=='partial' else sys.stdin.buffer.read()
 Path(next(v.split('=',1)[1] for v in sys.argv if v.startswith('--tempdir=')),'synthetic-residue').write_bytes(b'SYNTHETIC SCAN SCRATCH')
 if mode=='timeout':time.sleep(10)
 if mode=='flood':print('X'*100000);sys.exit(0)
 if mode=='descendant':
  child=subprocess.Popen(['/usr/bin/python3','-c','import time;time.sleep(10)'])
- Path(__file__).with_suffix('.pid').write_text(str(child.pid))
-if mode=='change_defs':
- with (Path(next(v.split('=',1)[1] for v in sys.argv if v.startswith('--database=')))/'daily.cvd').open('ab') as f:f.write(b'changed')
+ child=subprocess.Popen(['/usr/bin/python3','-c','import time;time.sleep(10)','shadify-sandbox-descendant-'+mode]);time.sleep(10)
+if mode=='probe':
+ config=json.loads(Path('/probe').read_text())
+ def probe():
+  for name in config['paths']:
+   try:
+    value=Path(name).read_bytes()
+    if config['secret'].encode() in value:raise RuntimeError('credential exposed')
+   except (FileNotFoundError,PermissionError,IsADirectoryError,OSError):pass
+  if config['secret'] in str(dict(os.environ)):raise RuntimeError('environment exposed')
+  if Path('/definitions/synthetic-secret.tmp').exists():raise RuntimeError('updater directory exposed')
+  if not Path('/proc/self/fd/0').is_fifo():raise RuntimeError('input is not a pipe')
+  for name in ('/usr/bin/clamscan','/definitions/daily.cvd'):
+   try:
+    with open(name,'ab') as stream:stream.write(b'BAD')
+   except OSError:pass
+   else:raise RuntimeError('readonly mount writable')
+  client=socket.socket();client.settimeout(.2)
+  try:client.connect(('127.0.0.1',config['port']))
+  except OSError:pass
+  else:raise RuntimeError('host network exposed')
+  finally:client.close()
+ probe()
+ child=subprocess.run(['/usr/bin/python3','-c',Path('/probe-child').read_text()],check=True)
 infected=mode in ('infected','multi','limit')
 print('stdin: '+('SYNTHETIC.Test FOUND' if mode in ('infected','multi') else 'Heuristics.Limits.Exceeded FOUND' if mode=='limit' else 'OK'))
 if mode=='multi':print('stdin: SYNTHETIC.Other FOUND')
 if mode=='warning':print('WARNING: skipped input',file=sys.stderr)
 if mode=='empty':sys.exit(0)
+print('/scratch/clamav-synthetic.tmp FileHash: '+hashlib.sha256(data).hexdigest()+' (sha2-256)')
 print('----------- SCAN SUMMARY -----------')
 print('Known viruses: 100')
-print('Engine version: 1.4.3')
+print('Engine version: 1.5.4')
 print('Scanned directories: 0')
-print('Scanned files: '+('0' if mode=='skipped' else '1'))
+print('Scanned files: '+('0' if mode=='skipped' else '1' if infected or mode=='trusted' else '2'))
 print('Infected files: '+('1' if infected else '0'))
 print('Data scanned: 0.01 MB')
 print('Data read: 0.01 MB (ratio 1.00:1)')
@@ -44,11 +72,31 @@ print('Time: 0.01 sec (0 m 0 s)')
 sys.exit(1 if infected else 0)
 """
 
+RUNTIME=None
+def fixture_runtime():
+ global RUNTIME
+ if RUNTIME is not None:return RUNTIME
+ RUNTIME=Path(tempfile.mkdtemp(prefix='shadify-scanner-test-closure-'))
+ # A disposable Python reporter closure solely for namespace tests, never production.
+ shutil.copytree('/usr/lib/python3.14',RUNTIME/'usr/lib/python3.14',ignore=shutil.ignore_patterns('__pycache__'))
+ (RUNTIME/'usr/bin').mkdir(parents=True);shutil.copy2('/usr/bin/python3.14',RUNTIME/'usr/bin/python3')
+ binaries=[Path('/usr/bin/python3.14'),*Path('/usr/lib/python3.14/lib-dynload').glob('*.so')]
+ for binary in binaries:
+  result=subprocess.run(['/usr/bin/ldd',str(binary)],capture_output=True,text=True,check=True)
+  for name in re.findall(r'(/[^ \n]+)',result.stdout):
+   path=Path(name)
+   if path.is_file():
+    target=RUNTIME/name.lstrip('/');target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(path,target);target.chmod(0o755)
+ for name in ('proc','dev','scratch','definitions','etc'): (RUNTIME/name).mkdir(exist_ok=True)
+ RUNTIME.chmod(0o755)
+ unittest.addModuleCleanup(shutil.rmtree,RUNTIME)
+ return RUNTIME
+
 class ClamAVAdapterTests(unittest.TestCase):
  def setUp(self):
   self.tmp=tempfile.TemporaryDirectory(prefix='shadify-clamav-interface-');self.root=Path(self.tmp.name)
-  self.executable=self.root/'synthetic_clamscan';self.executable.write_text(FAKE);self.executable.chmod(0o700)
-  self.mode=self.executable.with_suffix('.mode');self.mode.write_text('clean')
+  self.runtime=fixture_runtime();self.executable=self.runtime/'usr/bin/clamscan';self.executable.write_text(FAKE);self.executable.chmod(0o755)
+  self.mode=self.runtime/'mode';self.mode.write_text('clean')
   self.definitions=self.root/'definitions';self.definitions.mkdir()
   for name in ('main.cvd','daily.cvd'):
    (self.definitions/name).write_bytes(('ClamAV-VDB:Fri Oct 2 10-00 +0000 2026:27111:100:90:md5:signature:builder:1').encode().ljust(512,b' ')+b'SYNTHETIC DEFINITIONS NOT A REAL DB')
@@ -56,19 +104,19 @@ class ClamAVAdapterTests(unittest.TestCase):
   self.fd=os.open(self.input,os.O_RDONLY);self.digest=hashlib.sha256(self.input.read_bytes()).hexdigest()
   self.limits=WorkerLimits(wall_seconds=2,cpu_seconds=2,lease_seconds=122)
   self.scanner=ClamAVScanner(executable=self.executable,prlimit='/usr/bin/prlimit',definitions=self.definitions,
-      temp_dir=self.root,engine_version='1.4.3',limits=self.limits)
+      temp_dir=self.root,engine_version='1.5.4',limits=self.limits,sandbox=NativeSandbox(bwrap='/usr/bin/bwrap',runtime_root=self.runtime))
  def tearDown(self):os.close(self.fd);self.tmp.cleanup()
  def test_real_runner_synthetic_clean_requires_full_input_and_bound_versions(self):
   result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.verdict,'clean');self.assertTrue(result.full_coverage)
   self.assertEqual(list(self.root.glob('shadify-scan-*')),[])
-  self.assertEqual(result.engine_version,'1.4.3');self.assertTrue(result.definitions_version.startswith('official-sha256:'))
+  self.assertEqual(result.engine_version,'1.5.4');self.assertTrue(result.definitions_version.startswith('official-sha256:'))
  def test_safe_synthetic_infected_report_is_distinct_from_unknown(self):
   for mode in ('infected','multi'):
    self.mode.write_text(mode);result=self.scanner.scan(self.fd,sha256=self.digest)
    self.assertEqual(result.verdict,'infected');self.assertTrue(result.full_coverage)
  def test_exit_zero_partial_skipped_empty_warning_or_limit_never_clean(self):
-  for mode in ('partial','skipped','empty','warning','limit'):
+  for mode in ('partial','skipped','empty','warning','limit','trusted'):
    with self.subTest(mode=mode):
     self.mode.write_text(mode);result=self.scanner.scan(self.fd,sha256=self.digest)
     self.assertEqual(result.verdict,'unknown');self.assertFalse(result.full_coverage)
@@ -81,15 +129,21 @@ class ClamAVAdapterTests(unittest.TestCase):
  def test_descendant_pipe_timeout_kills_entire_process_group(self):
   self.mode.write_text('descendant');result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.error_code,'scanner_timeout')
-  pid=int(self.executable.with_suffix('.pid').read_text());status=Path('/proc')/str(pid)/'stat'
+  # Host proc identifies the unique synthetic descendant argument, not namespace PIDs.
   def running():
-   try:return status.read_text().split()[2]!='Z'
-   except FileNotFoundError:return False
+   for entry in Path('/proc').glob('[0-9]*/cmdline'):
+    try:
+     if b'shadify-sandbox-descendant-descendant' in entry.read_bytes():return True
+    except OSError:pass
+   return False
   deadline=time.monotonic()+1
   while running() and time.monotonic()<deadline:time.sleep(.01)
   self.assertFalse(running())
  def test_definitions_change_missing_or_symlink_never_clean(self):
-  self.mode.write_text('change_defs');self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_evidence_invalid')
+  from shadify_api.clamav_scanner import definitions_snapshot
+  before=definitions_snapshot(self.definitions,deadline=time.monotonic()+2)
+  with patch('shadify_api.clamav_scanner.definitions_snapshot',side_effect=[before,([], 'changed')]):
+   self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_evidence_invalid')
   self.mode.write_text('clean');daily=self.definitions/'daily.cvd';daily.unlink()
   self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_unavailable')
   daily.symlink_to(self.definitions/'main.cvd');self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).verdict,'unknown')
@@ -112,6 +166,99 @@ class ClamAVAdapterTests(unittest.TestCase):
   link=self.root/'link';link.symlink_to(self.input)
   with self.assertRaises(OSError):safe_path(link)
   with self.assertRaises(ValueError):safe_path(self.executable,root_owned=True)
+
+ def test_payload_and_descendant_cannot_access_credentials_fds_proc_or_host_network(self):
+  secret='SYNTHETIC-SHADIFY-SECRET-DO-NOT-EXPOSE';credentials=self.root/'worker-db.json';credentials.write_text(secret);credentials.chmod(0o600);(self.definitions/'synthetic-secret.tmp').write_text(secret)
+  fd=os.open(credentials,os.O_RDONLY);os.set_inheritable(fd,True)
+  server=socket.socket();server.bind(('127.0.0.1',0));server.listen()
+  paths=[str(credentials),'/proc/'+str(os.getpid())+'/environ','/proc/'+str(os.getpid())+'/fd/'+str(fd),'/proc/self/fd/'+str(fd)]
+  (self.runtime/'probe').write_text(json.dumps(dict(secret=secret,paths=paths,port=server.getsockname()[1])))
+  # Reuse the same assertions in an independently executed descendant.
+  child='import json,os,socket\nfrom pathlib import Path\n'+ '\n'.join(line[1:] for line in FAKE[FAKE.index(" config=json.loads"):FAKE.index("\n probe()\n")].splitlines())+'\nprobe()\n'
+  (self.runtime/'probe-child').write_text(child)
+  self.mode.write_text('probe')
+  try:
+   with patch.dict(os.environ,SHADIFY_SYNTHETIC_DB_PASSWORD=secret):result=self.scanner.scan(self.fd,sha256=self.digest)
+   self.assertEqual(result.verdict,'clean',result)
+  finally:os.close(fd);server.close()
+ def test_no_sandbox_or_sandbox_failure_has_no_bare_scanner_fallback(self):
+  self.scanner.sandbox=None
+  self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_unavailable')
+  self.scanner.sandbox=NativeSandbox(bwrap='/usr/bin/false',runtime_root=self.runtime)
+  self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_evidence_invalid')
+ def test_namespace_pid1_retains_lock_and_payload_does_not_inherit_it(self):
+  state=self.root/'sandbox-state';state.mkdir(mode=0o700);self.mode.write_text('timeout')
+  with host_lock(state) as lock_fd:
+   command=self.scanner.sandbox.argv(definitions=self.definitions,workspace=self.root,
+       options=['--database=/definitions','--tempdir=/scratch'],lock_fd=lock_fd)
+   child=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,close_fds=True,pass_fds=(lock_fd,))
+   time.sleep(.1)
+  try:
+   self.assertIsNone(child.poll())
+   with self.assertRaises(RuntimeError):
+    with host_lock(state):pass
+  finally:child.kill();child.communicate(timeout=2)
+  deadline=time.monotonic()+2
+  while True:
+   try:
+    with host_lock(state):break
+   except RuntimeError:
+    if time.monotonic()>deadline:raise
+    time.sleep(.01)
+
+ def test_lock_descriptor_is_closed_before_payload_exec(self):
+  state=self.root/'payload-state';state.mkdir(mode=0o700);self.mode.write_text('lock_probe')
+  with host_lock(state) as fd:
+   os.write(fd,b'SYNTHETIC-LOCK-FD-MARKER');self.scanner.lock_fd=fd
+   self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).verdict,'clean')
+ def test_actual_worker_parent_death_kills_namespace_and_releases_host_lock(self):
+  state=self.root/'death-state';state.mkdir(mode=0o700);self.mode.write_text('descendant')
+  context=multiprocessing.get_context('fork');parent,child=context.Pipe()
+  def launch():
+   parent.close();original=subprocess.Popen
+   def spawn(*args,**kwargs):
+    process=original(*args,**kwargs);child.send(process.pid);return process
+   with host_lock(state) as fd,patch('shadify_api.clamav_scanner.subprocess.Popen',side_effect=spawn):
+    command=self.scanner.sandbox.argv(definitions=self.definitions,workspace=self.root,options=['--tempdir=/scratch'],lock_fd=fd)
+    run_bounded(command,deadline=time.monotonic()+10,output_bytes=32768,pass_fds=(fd,))
+  worker=context.Process(target=launch);worker.start();child.close()
+  try:
+   self.assertTrue(parent.poll(3));sandbox_pid=parent.recv();time.sleep(.2);worker.kill();worker.join(2)
+   deadline=time.monotonic()+2
+   while True:
+    try:
+     with host_lock(state):break
+    except RuntimeError:
+     if time.monotonic()>deadline:raise
+     time.sleep(.01)
+   status=Path('/proc')/str(sandbox_pid)/'stat'
+   try:self.assertEqual(status.read_text().split()[2],'Z')
+   except FileNotFoundError:pass
+   for entry in Path('/proc').glob('[0-9]*/cmdline'):
+    try:self.assertNotIn(b'shadify-sandbox-descendant-descendant',entry.read_bytes())
+    except OSError:pass
+  finally:
+   parent.close()
+   if worker.is_alive():worker.kill();worker.join(2)
+
+ def test_runtime_closure_rejects_user_owned_tree(self):
+  with self.assertRaises(ValueError):runtime_inventory(self.runtime)
+
+ def test_native_closure_inventory_hashes_relative_links_and_rejects_credentials(self):
+  closure=self.root/'native-closure';(closure/'usr/bin').mkdir(parents=True);(closure/'lib').mkdir();(closure/'etc').mkdir()
+  binary=closure/'usr/bin/clamscan';binary.write_bytes(b'\x7fELF SYNTHETIC INVENTORY ONLY');binary.chmod(0o755)
+  link=closure/'lib/libsynthetic.so';link.symlink_to('../usr/bin/clamscan')
+  original=Path.lstat
+  def root_owned(path):
+   info=original(path);values=list(info);values[4]=0;return os.stat_result(values)
+  # Only ownership is synthetic; test real file/link/inventory validation. No root changes.
+  with patch.object(Path,'lstat',root_owned):
+   before=runtime_inventory(closure);self.assertEqual(len(before),64)
+   binary.write_bytes(binary.read_bytes()+b'changed');self.assertNotEqual(runtime_inventory(closure),before)
+   credential=closure/'etc/worker-db.json';credential.write_text('SYNTHETIC credential inventory')
+   with self.assertRaises(ValueError):runtime_inventory(closure)
+   credential.unlink();link.unlink();link.symlink_to('/etc/passwd')
+   with self.assertRaises(ValueError):runtime_inventory(closure)
 
 class WorkerLeaseTests(IngestFoundationTests):
  setUp=IngestFoundationTests.setUp
@@ -149,7 +296,7 @@ class WorkerLeaseTests(IngestFoundationTests):
    self.assertEqual(result['state'],'validating');self.assertFalse(result['approved'])
    with self.connect() as c:
     row=c.execute('SELECT input_sha256,engine_version,definitions_version,full_coverage FROM shadify_ingest_scans').fetchone()
-    self.assertEqual(row[0],self.adapter.checksum(asset.key));self.assertEqual(row[1],'1.4.3')
+    self.assertEqual(row[0],self.adapter.checksum(asset.key));self.assertEqual(row[1],'1.5.4')
     self.assertTrue(row[2].startswith('official-sha256:'));self.assertTrue(row[3])
   finally:fixture.tearDown()
  def test_actual_worker_process_kill_releases_exclusion_and_expired_attempt_recovers(self):

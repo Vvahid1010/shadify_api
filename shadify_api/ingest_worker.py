@@ -11,6 +11,7 @@ from .local_storage import LocalAdapter
 from .media import Asset,MediaError
 from .ingest_scanner import scan_input,ScanVerdict
 from .clamav_scanner import ClamAVScanner
+from .scanner_sandbox import NativeSandbox,runtime_inventory
 
 LOCK_SQL="SELECT pg_try_advisory_lock(hashtextextended(current_database()||':'||'shadify_ingest_jobs'::regclass::oid::text||':shadify-ingest-worker',0))"
 
@@ -40,7 +41,10 @@ class WorkerConfig(BaseModel):
     clamscan:str
     prlimit:str
     definitions_dir:str
-    engine_version:str=Field(pattern=r'^1\.4\.[0-9]{1,3}$')
+    bwrap:str
+    scanner_runtime_root:str
+    scanner_runtime_sha256:str=Field(pattern=r'^[0-9a-f]{64}$')
+    engine_version:str=Field(pattern=r'^1\.5\.4$')
     limits:WorkerLimits
 
 def safe_path(path,*,directory=False,private=False,root_owned=False):
@@ -52,6 +56,8 @@ def safe_path(path,*,directory=False,private=False,root_owned=False):
             flags=os.O_RDONLY|os.O_NOFOLLOW
             if i<len(path.parts)-2 or directory:flags|=os.O_DIRECTORY
             child=os.open(part,flags,dir_fd=fd);os.close(fd);fd=child
+            ancestor=os.fstat(fd)
+            if root_owned and (ancestor.st_uid!=0 or ancestor.st_mode&0o022):raise ValueError('Executable/runtime ancestors must be protected')
         info=os.fstat(fd)
         if (not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)) or
             info.st_mode & (0o077 if private else 0o022) or
@@ -156,6 +162,13 @@ def compose(path):
         safe_path(config.state_dir,directory=True,private=True)
         safe_path(config.temp_dir,directory=True,private=True)
         safe_path(config.clamscan,root_owned=True);safe_path(config.prlimit,root_owned=True)
+        safe_path(config.bwrap,root_owned=True);safe_path(config.scanner_runtime_root,directory=True,root_owned=True)
+        if runtime_inventory(config.scanner_runtime_root)!=config.scanner_runtime_sha256:raise ValueError('Scanner closure changed')
+        import hashlib
+        if hashlib.sha256(Path(config.clamscan).read_bytes()).digest()!=hashlib.sha256((Path(config.scanner_runtime_root)/'usr/bin/clamscan').read_bytes()).digest():
+            raise ValueError('Scanner closure binary differs')
+        for excluded in (config.database_file,config.local_root,config.temp_dir,config.state_dir,config.definitions_dir):
+            if Path(excluded).resolve().is_relative_to(Path(config.scanner_runtime_root).resolve()):raise ValueError('Runtime contains worker data')
         safe_path(config.definitions_dir,directory=True)
         if os.stat(config.definitions_dir).st_uid==os.geteuid() and os.geteuid()!=0:
             raise ValueError('Worker must not own writable definitions')
@@ -176,7 +189,7 @@ def main():
     try:
         with host_lock(config.state_dir) as lock_fd:
             scanner=ClamAVScanner(executable=config.clamscan,prlimit=config.prlimit,definitions=config.definitions_dir,
-                temp_dir=config.temp_dir,engine_version=config.engine_version,limits=config.limits,lock_fd=lock_fd)
+                temp_dir=config.temp_dir,engine_version=config.engine_version,limits=config.limits,lock_fd=lock_fd,sandbox=NativeSandbox(bwrap=config.bwrap,runtime_root=config.scanner_runtime_root))
             worker=IngestWorker(connect=lambda:database._connect(5,10000,5000,hostaddr=database_address(database)),adapters={'local':adapter},scanner=scanner,limits=config.limits)
             while not stopped.is_set():
                 try:

@@ -329,36 +329,52 @@ retains the host lock until exit; Node's unit packet must kill the whole control
 group on service termination/crash and bound restart/stop handling. Multi-node
 worker deployment is not admitted by this source contract.
 
-ClamAVScanner invokes root-owned explicit clamscan/prlimit paths without a shell,
-ambient environment, daemon or remote scan service. It passes the pinned input
-descriptor as stdin and checks full input consumption plus a strict single-file
-report, zero diagnostics/errors, positive signature count, exact selected1.4.x
-engine version, expected outcome and immutable before/after input/definitions.
-Definitions fingerprint covers all selected main/daily/optional bytecode official
-files and versions; missing, duplicate, changed or unrecognized inventories block.
-Only explicit full-coverage evidence records clean/infected. Exit0 alone, missing
-report, skipped/partial input, any warnings/unknown diagnostics, heuristic size/
-encrypted/coverage alerts and signature changes remain unknown and unapproved.
-Parser is intentionally fail closed on a changed CLI protocol; Node must qualify
-the exact installed release/signatures, not assume compatibility after updates.
+ClamAVScanner requires an explicit root-owned Bubblewrap executable for EVERY
+invocation, including --version. There is no bare scanner fallback. Node prepares
+a sealed root-owned minimal native ELF closure: /usr/bin/clamscan and only its
+loader/shared-library dependencies, optionally ld.so.cache. The API validates its
+bounded inventory/hash and the selected scanner's binary hash; no arbitrary host
+/usr, /etc, home, app, media, socket or credential directory may be mounted.
+The fixed command unshares user/PID/network/IPC/UTS/cgroup namespaces, disables
+nested user namespaces, drops capabilities, clears the environment, mounts that
+closure read-only, creates its own /proc and /dev, mounts only the selected main/daily/bytecode definition FILES read-only and
+uses a private size-limited tmpfs /scratch. It never binds the whole updater
+directory, freshclam state or ignored temporary files. All descendants share this boundary.
+Node must qualify Bubblewrap/kernel/AppArmor compatibility on actual B; failure
+is unknown/unapproved, never an instruction to relax isolation or use a fallback.
 
-Flags disable cache and internal scan-time skipping, enable maximum/encrypted/
-broken-file alerts and full scanning, and explicitly bound input/expanded data.
-The external process group deadline, CPU/address-space/file-size/open-file limits
-and capped stdout/stderr bound execution. Timeout/overflow kills and reaps the
-scanner process group; SIGTERM/interrupt also does so. Missing binary/signatures,
-execution failure and timeout are infrastructure outcomes, not malware verdicts.
-Original bytes remain quarantined; clean advances only to validating. No approval
-writer, synthetic approval endpoint, full decode, extraction, recorded match,
-processing, High/Low validation or promotion is implemented in1B.
+The parent feeds admitted bytes over stdin PIPE; the original asset descriptor,
+worker database descriptors and ambient inheritable descriptors are not passed.
+Only stdio and the non-secret host lock descriptor enter Bubblewrap. --sync-fd
+retains that lock in namespace PID1 and closes it before payload exec. Tests prove
+payload and descendants cannot read synthetic DB/app credentials, host parent
+/proc environment/descriptors, an ambient inheritable secret descriptor or a host
+loopback socket; they cannot write runtime/definitions. Lock exclusion persists
+until namespace teardown. Timeout/interrupt kill the outer process group;
+--die-with-parent and PID namespace teardown remove detached descendants. Node's
+unit must still use KillMode=control-group and qualify crash/stop/restart cleanup.
+
+The selected Ubuntu package is 1.5.4+dfsg-0ubuntu0.26.04.1; this source accepts only
+the exact engine protocol 1.5.4. Its upstream stdin path counts a full clean scan
+as two Scanned files, infection as one; trusted-shortcut OK with one is unknown.
+--log-hash --hash-alg=sha2-256 requests the computed original-input SHA256, never
+a hash hint. The report must contain exactly that admitted hash, positive known
+signatures, zero diagnostics/errors, the exact version and expected full outcome.
+Exit0 alone, missing hash, skipped/partial/trusted input, warnings, heuristic
+size/encryption/coverage alerts and changed definitions remain unknown. Definition
+fingerprints cover main/daily/optional bytecode versions and full byte hashes.
+No clean verdict approves media: clean advances only to validating.
 
 Protected JSON fields: database_file, local_root, state_dir, temp_dir, clamscan,
-prlimit, definitions_dir, engine_version, limits. Limits default to input100MiB,
-expanded200MiB, wall/CPU180seconds, memory2GiB, output32KiB, lease360seconds,
-retry30seconds and poll5seconds. These are source upper bounds/proposed settings;
-Node/user must select and review actual resources/paths/version before activation.
-Paths must be absolute, non-symlink, protected and separate; definitions are
-read-only to the worker identity. No directory is provisioned automatically.
+prlimit, bwrap, scanner_runtime_root, scanner_runtime_sha256, definitions_dir,
+engine_version, limits. Runtime/executable ancestors must also be root owned and
+non-writable. Config/state/temp/media/definitions are outside the scanner closure.
+Limits propose input100MiB, expanded/scratch200MiB, wall/CPU180seconds,
+memory2GiB per process, output32KiB, lease360seconds, retry30seconds, poll5seconds.
+2GiB IS NOT qualified sufficient with real signatures. Node must measure actual
+definitions and review the whole-unit MemoryMax/TasksMax plus size-bounded scratch
+before activation; per-process prlimit alone is not an aggregate descendant cap.
+No service, cgroup/security setting, package or directory is installed by source.
 
 Exact proposed worker DB privileges, qualified with a disposable NOLOGIN role:
 assets SELECT; jobs SELECT and UPDATE(state,revision,last_error,updated_at); scans
@@ -377,8 +393,8 @@ acceptance is claimed. Exact Node010 installer/SQL receipts/ACL/fingerprint proo
 and actual tooling/settings/authority activation remain outstanding.
 
 Upstream behavior references: [ClamAV scanning options](https://docs.clamav.net/manual/Usage/Scanning.html)
-describe oversized-file skipping; the [1.4.3 stdin implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.4.3/clamscan/manager.c)
-and [CLI implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.4.3/clamscan/clamscan.c)
+describe oversized-file skipping; the [1.5.4 stdin implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.5.4/clamscan/manager.c)
+and [CLI implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.5.4/clamscan/clamscan.c)
 ground the strict protocol and explicit coverage controls. Future actual-tool
 proof must confirm the selected Ubuntu package's behavior with safe fixtures.
 
@@ -392,13 +408,13 @@ hostaddr with existing5s connect/10s statement/5s lock bounds, avoiding unbounde
 DNS resolution. Tests cover growth, oversize and already-expired shared deadlines.
 
 
-Each actual scan uses a new private scratch directory beneath the selected temp
-root; normal success, unknown results, timeout and interrupt clean that directory
-after process termination. Protected roots are not provisioned. SIGKILL cannot
-execute parent cleanup: Node's exact unit/temp-storage packet must bound and clean
-stale private scan scratch after complete process-group shutdown; this source does
-not guess or delete unrelated files or automatically recover filesystem residue.
-
+Each invocation creates only a temporary empty host workspace placeholder; scanner
+scratch bytes exist in its private bounded tmpfs and disappear on namespace
+teardown, including SIGKILL. Normal parent cleanup removes the empty placeholder;
+Node may clear abandoned placeholders only after whole-unit shutdown. Protected
+roots are never provisioned or guessed. Historical unsandboxed010 artifacts remain
+preserved for evidence but are superseded for activation; new010 package validation
+requires scanner_sandbox.py. SQL001..010 bytes and Web DTOs are unchanged.
 
 Session exclusion uses the resolved shadify_ingest_jobs relation identity and
 database, rather than current_schema: different leading search-path schemas still
@@ -414,3 +430,10 @@ Retry eligibility and lease/advisory fencing are unchanged. A real PG regression
 scales180s/30s to60ms/10ms, queues freshC after oldA's timeout and proves repeated
 oldA/oldB timeouts produceA,B,A,C, giving the fresh job a turn. No migration,
 DTO, entry, privileges, paths or resource setting changes are required.
+
+Sandbox source qualification uses real Bubblewrap0.11.1/prlimit and a disposable
+Python reporter/ELF fixture closure; this fixture is deliberately rejected by the
+production root-owned native-closure validator. It is not an AV engine or signature
+acceptance test. Official source protocol review and synthetic format tests are
+complete; actual selected package/signatures/RSS and Node010 integration remain
+open pending the parent's package-install authorization and Node ownership.

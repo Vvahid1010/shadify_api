@@ -71,7 +71,7 @@ def verify(root, source):
     attempts_sql='source/migrations/010_ingest_attempts.sql'
     if attempts_sql in files and data['migration_target']!='010_ingest_attempts':raise ValueError('attempts_target_required')
     if data['migration_target']=='010_ingest_attempts':
-        required={attempts_sql,'source/shadify_api/clamav_scanner.py','source/shadify_api/ingest_worker.py'}
+        required={attempts_sql,'source/shadify_api/clamav_scanner.py','source/shadify_api/ingest_worker.py','source/shadify_api/scanner_sandbox.py'}
         if not required<=files.keys():raise ValueError('incomplete_attempts_package')
     actual=set()
     for path in root.rglob("*"):
