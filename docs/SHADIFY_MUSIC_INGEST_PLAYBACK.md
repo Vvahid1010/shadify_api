@@ -640,3 +640,15 @@ real encoder acceptance. Actual selected ffmpeg/ffprobe/ClamAV plus signatures,
 resource/RSS and B unit/011 installer/ACL/receipt/schema fingerprints remain open.
 2GiB remains proposed and unqualified. No build feed/push/live migration/grant/
 installation/security setting/real authority/UI change is performed by source.
+
+The reproducible real-tool qualification entry is `python -m unittest
+test_ingest_real_tools -v` with PYTHONPATH=.:tests. It runs ONLY when all six
+explicit SHADIFY_TEST_SCANNER_ROOT/SCANNER_SHA256/MEDIA_ROOT/MEDIA_SHA256/
+MEDIA_VERSION/DEFINITIONS fields name already staged read-only native closures
+and real official signatures. It never installs/provisions them or reads a live
+DB/profile: the test creates an isolated PG/root and synthetic owner/primary,
+generates a one-second sine WAV and small PNG locally, requires the ordinary
+no-match review and verifies actual scan/full decode/High+Low/master/cover/approval.
+Its recorded metadata response remains a labelled offline fixture, so success
+would prove AV/encode mechanics, not MusicBrainz acceptance for real user audio.
+Without those fields it explicitly skips, and that skip is not acceptance.
