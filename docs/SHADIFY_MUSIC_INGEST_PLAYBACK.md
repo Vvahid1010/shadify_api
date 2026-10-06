@@ -405,3 +405,12 @@ database, rather than current_schema: different leading search-path schemas stil
 share the same lock when they resolve to the same jobs. A real PG test keeps the
 first scan session active after expiry and proves the alternate-search-path worker
 cannot reclaim/process in parallel.
+
+
+Astra fairness correction: eligible claims order by updated_at, created_at, id.
+A timeout or reclaimed attempt advances updated_at, sending that job behind older
+waiting work rather than preserving permanent priority by original creation time.
+Retry eligibility and lease/advisory fencing are unchanged. A real PG regression
+scales180s/30s to60ms/10ms, queues freshC after oldA's timeout and proves repeated
+oldA/oldB timeouts produceA,B,A,C, giving the fresh job a turn. No migration,
+DTO, entry, privileges, paths or resource setting changes are required.

@@ -182,6 +182,23 @@ class WorkerLeaseTests(IngestFoundationTests):
   self.assertTrue(result['retryable']);self.assertIsNone(self.worker().run_once())
   result=self.worker(FixtureScanner('infected'),retry=0).run_once();self.assertEqual(result['state'],'rejected')
   self.assertEqual(result['last_error'],'malware_detected');self.assertFalse(result['retryable'])
+ def test_two_repeated_old_timeouts_cannot_starve_fresh_job(self):
+  first,_,_=self.upload();second,_,_=self.upload()
+  first_job=self.job(first)['job_id'];second_job=self.job(second)['job_id']
+  class SlowTimeout:
+   def scan(self,fd,*,sha256,deadline=None):
+    # Scale180s scan/30s retry to60ms/10ms; real DB clocks/transactions remain.
+    time.sleep(.06);raise TimeoutError('synthetic repeatable scanner timeout')
+  worker=self.worker(SlowTimeout(),retry=.01)
+  seen=[worker.run_once()['job_id']]
+  self.assertEqual(seen,[first_job])
+  fresh,_,_=self.upload();fresh_job=self.job(fresh)['job_id']
+  for _ in range(3):seen.append(worker.run_once()['job_id'])
+  self.assertEqual(seen,[first_job,second_job,first_job,fresh_job])
+  with self.connect() as c:
+   self.assertEqual(c.execute('SELECT count(*) FROM shadify_ingest_attempts WHERE job_id=%s',(UUID(fresh_job),)).fetchone()[0],1)
+   self.assertEqual(c.execute('SELECT state,last_error FROM shadify_ingest_jobs WHERE id=%s',(UUID(fresh_job),)).fetchone(),('uploaded','scanner_timeout'))
+
  def test_same_job_table_excludes_worker_with_different_leading_search_path(self):
   from psycopg import sql
   from uuid import uuid4

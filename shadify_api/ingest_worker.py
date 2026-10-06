@@ -94,7 +94,7 @@ class IngestWorker:
                     "(j.state='uploaded' AND (j.last_error IS NULL OR j.updated_at<=clock_timestamp()-%s*interval '1 second')) OR "
                     "(j.state='scanning' AND EXISTS(SELECT 1 FROM shadify_ingest_attempts a WHERE a.job_id=j.id "
                     "AND a.claimed_revision=j.revision AND a.finished_at IS NULL AND a.lease_expires_at<=clock_timestamp())) "
-                    'ORDER BY j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1',(self.limits.retry_seconds,)).fetchone()
+                    'ORDER BY j.updated_at,j.created_at,j.id FOR UPDATE OF j SKIP LOCKED LIMIT 1',(self.limits.retry_seconds,)).fetchone()
                 if job is None:return None
                 if job['state']=='scanning':
                     c.execute("UPDATE shadify_ingest_attempts SET finished_at=clock_timestamp(),outcome='abandoned' "
