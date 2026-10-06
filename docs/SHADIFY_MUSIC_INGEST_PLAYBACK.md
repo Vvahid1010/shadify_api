@@ -459,12 +459,14 @@ rejects; actual ambiguous/empty matching results require explicit review.
 Three small app-owned tables, with append-only evidence and no deletion:
 
 - shadify_ingest_stages: id UUID PK,job_id,input_sha256,scan_id,stage
-  (validation,extraction,matching,processing),payload JSONB,recorded_at server time;
+  (validation,extraction,matching,prepared_outputs,processing),payload JSONB,recorded_at server time;
   UNIQUE(job_id,stage),FK(job_id,input_sha256) to jobs and a composite FK to the
   exact full clean scan. Payloads have strict bounded server DTOs. Matching payload
   records request/snapshot SHA256,provider=musicbrainz,fetched_at,complete response
   and at most five candidate recordings with MBID,normalized metadata and score.
-  Processing payload pins tool/pipeline versions and the required output manifest.
+  prepared_outputs pins tool/pipeline versions, deterministic role IDs/keys and
+  actual encoded output SHA256/size before any install; processing records verified
+  installed identities and refers to that prepared manifest.
 - shadify_ingest_match_decisions: id UUID PK,job_id UNIQUE,input_sha256,
   matching_stage_id,method(automatic,reviewed),selected_recording_mbid nullable,
   corrected_metadata JSONB,reason,actor_user_id nullable,decided_at server time.
@@ -530,12 +532,15 @@ rechecks before audit/commit preserve revocation/account-deactivation separation
    channels. Do not claim source improvement. Normalize a single-frame cover to
    PNG. Probe AND fully decode each resulting output, verify bitrate/duration,
    channel/rate/dimensions and hash. Encoder exit0 alone is not validation.
-4. Stage output bytes through LocalAdapter's exclusive install outside quarantine,
+4. Persist the append-only prepared_outputs manifest after actual encode/hash and
+   before install, then stage bytes through LocalAdapter's exclusive install outside quarantine,
    fsync and verify actual file identity/hash before the final DB transaction.
    Until approvals commit, installed bytes have no usable asset grant. Use stable
    job/role/pipeline keys and accept existing outputs only after exact byte checks.
-   Crash after file install leaves inaccessible tracked candidates; restart may
-   reuse verified outputs and must never overwrite immutable keys. Successful
+   Crash after file install leaves inaccessible candidates bound to the persisted
+   prepared manifest; restart reuses only exact hash/size/pipeline matches and
+   never overwrites immutable keys. A crash before install may require regenerating
+   missing output bytes and checking they match that same deterministic manifest. Successful
    ready jobs do not encode again; lost commit replies recover from DB evidence.
 
 **Node changes sent BEFORE011 freeze:** same native unit, concurrency1 and existing
