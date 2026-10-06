@@ -59,6 +59,25 @@ class PipelineTests(IngestFoundationTests):
   states=[self.once()['state'] for _ in range(4)]
   self.assertEqual(states,['validating','matching','processing','ready']);return asset
  def outputs(self,asset):return self.metadata(asset)['outputs']
+ def test_partial_exact_isrc_candidate_cannot_create_decision_or_approval(self):
+  from shadify_api.musicbrainz_queue import QueuedMusicBrainzProvider
+  self.apply('012_musicbrainz_coordination.sql')
+  self.worker.provider=QueuedMusicBrainzProvider(connect=self.connect,user_agent='Shadify/test (https://shadify.org)',mode='b_live')
+  asset,_,_=self.upload();self.once();self.once()
+  self.assertEqual(self.once()['last_error'],'provider_unavailable')
+  document={'isrc':'USAAA2600001','count':2,'recordings':[{'id':MBID,'title':'Quarantine proof','length':2,'artist-credit':[{'name':'Test'}]}]}
+  response={'status':200,'document':document,'response_sha256':hashlib.sha256(json.dumps(document).encode()).hexdigest()}
+  time.sleep(1.05)
+  with patch.object(self.worker.provider,'_transport',return_value=response) as transport:
+   result=self.once();transport.assert_called_once()
+  self.assertEqual(result['state'],'matching');self.assertEqual(result['last_error'],'provider_unavailable')
+  self.assertEqual(self.metadata(asset)['ingest']['approved'],False)
+  with self.connect() as c:
+   for table in ('shadify_mb_cache','shadify_ingest_match_decisions','shadify_ingest_approvals'):
+    self.assertEqual(c.execute('SELECT count(*) FROM '+table).fetchone()[0],0)
+   self.assertEqual(c.execute("SELECT count(*) FROM shadify_ingest_stages WHERE stage='matching'").fetchone()[0],0)
+  self.assertEqual(self.api.post('/api/media/'+str(asset.id)+'/access').status_code,409)
+
  def test_cached_conflict_remains_review_and_cannot_copy_approval(self):
   from shadify_api.musicbrainz_queue import QueuedMusicBrainzProvider
   self.apply('012_musicbrainz_coordination.sql')

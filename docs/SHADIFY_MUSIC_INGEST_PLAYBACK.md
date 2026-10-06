@@ -875,3 +875,19 @@ scanner package/Node AV proof is unaffected and should continue independently.
 
 Unrepresentable oversized numeric Retry-After is an indefinite persisted pause,
 never default short backoff; representable long delays retain their full deadline.
+
+
+### Complete MusicBrainz response fence (2026-10-06)
+
+A public response becomes012 cache/evidence only when every supplied count equals
+the actual returned recording count, the first-page offset is zero, and at most
+five recordings are returned. Recording search requires a count; fixed ISRC
+lookup may omit it. Optional recording-count/recording-offset are validated too.
+Boolean, string, negative, fractional and conflicting counts/offsets fail closed.
+A count2 or5 with one returned candidate is partial, never unique automatic match
+or completed no-match. Unsupported paginated/truncated results remain provider
+unavailable with bounded queue retry; pagination remains a later query stage.
+The same validation applies to old recorded cache hits before per-file confidence,
+so an earlier partial cache row cannot produce an automatic decision. No migration,
+TTL, grants, runtime modes or frozen scanner25 source changes. Disposable PostgreSQL
+and mocked transport regressions exercise partial live and old cached responses.

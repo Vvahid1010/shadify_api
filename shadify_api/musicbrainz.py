@@ -46,9 +46,18 @@ def snapshot(raw,query):
             if type(duration) is not int or not 1<=duration<=3600000:duration=None
             candidates.append(dict(mbid=mbid,title=title,artist=artist,duration_ms=duration,isrc=query['isrc']))
         if len({c['mbid'] for c in candidates})!=len(candidates):raise ValueError()
-        total=document.get('count',len(document['recordings']))
-        if type(total) is not int or total<len(candidates) or not candidates and total!=0:raise ValueError()
-        truncated=total>5 or len(document['recordings'])>5
+        # Only a complete first-page response can become durable evidence. ISRC
+        # lookup may omit count; recording search must supply its total. Never
+        # infer uniqueness from a partial nonempty page or a sliced candidate list.
+        returned=len(document['recordings'])
+        totals=[document[key] for key in ('count','recording-count') if key in document]
+        if not totals and not query['isrc']:raise ValueError()
+        if any(type(value) is not int or value<0 or value!=returned for value in totals):raise ValueError()
+        for key in ('offset','recording-offset'):
+            if key in document and (type(document[key]) is not int or document[key]!=0):raise ValueError()
+        if returned>5:raise ValueError()
+        total=totals[0] if totals else returned
+        truncated=False
         # Unique returned ISRC recording + exact normalized names + <=2sec duration.
         automatic=None
         if not truncated and len(candidates)==1 and query['isrc']:

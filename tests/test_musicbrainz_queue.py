@@ -10,7 +10,7 @@ import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
 from isolated_postgres import IsolatedPostgres
-from shadify_api.musicbrainz import ProviderUnavailable,fetch_response,query_metadata
+from shadify_api.musicbrainz import ProviderUnavailable,fetch_response,query_metadata,snapshot
 from shadify_api.musicbrainz_queue import QueuedMusicBrainzProvider,canonical_request,retry_seconds
 
 QUERY=dict(title='Synthetic song',artist='Fixture Artist',isrc='USAAA2600001',duration_ms=1000)
@@ -51,6 +51,27 @@ class QueueTests(unittest.TestCase):
    first=pool.submit(self.live.dispatch_once);self.assertTrue(entered.wait(3))
    self.assertIsNone(pool.submit(self.live.dispatch_once).result(3));release.set();self.assertEqual(first.result(3),'cached')
   fetch_mock.assert_called_once()
+ def test_partial_nonempty_response_retries_without_cache_or_automatic_match(self):
+  for total in (2,5):
+   with self.subTest(total=total):
+    self.enqueue();self.ready()
+    with patch.object(self.live,'_transport',return_value=response(count=total)):
+     self.assertEqual(self.live.dispatch_once(),'retry')
+    self.assertEqual(self.scalar('SELECT count(*) FROM shadify_mb_cache'),0)
+    self.assertEqual(self.scalar('SELECT state FROM shadify_mb_queue'),'queued')
+    self.assertEqual(self.scalar('SELECT last_error FROM shadify_mb_queue'),'provider_unavailable')
+    with self.assertRaises(ProviderUnavailable):self.offline.lookup(QUERY,deadline=time.monotonic()+5)
+
+ def test_old_recorded_partial_cache_is_rejected_per_file_without_traffic(self):
+  key,request,_=canonical_request(QUERY)
+  for total in (2,5):
+   with self.subTest(total=total),self.connect() as c:
+    c.execute('DELETE FROM shadify_mb_cache')
+    c.execute("INSERT INTO shadify_mb_cache(request_key,request,response,fetched_at,expires_at,response_status) VALUES(%s,%s,%s,clock_timestamp(),clock_timestamp()+interval '24 hours',200)",(key,Jsonb(request),Jsonb(response(count=total))))
+   with patch.object(self.offline,'_transport',side_effect=AssertionError('No cache fallback')) as transport:
+    with self.assertRaises(ProviderUnavailable):self.offline.lookup(QUERY,deadline=time.monotonic()+5)
+    transport.assert_not_called()
+
  def test_cache_reuses_response_recomputes_each_file_confidence_and_never_network(self):
   self.enqueue()
   with patch.object(self.live,'_transport',return_value=response()):self.assertEqual(self.live.dispatch_once(),'cached')
@@ -189,6 +210,30 @@ class QueueTests(unittest.TestCase):
    with self.connect() as c:c.execute(sql.SQL('DROP OWNED BY {}; DROP ROLE {}').format(sql.Identifier(role),sql.Identifier(role)))
 
 class TransportTests(unittest.TestCase):
+ def test_snapshot_rejects_partial_nonempty_and_malformed_counts_and_pages(self):
+  document=response()['document']
+  for fields in ({'count':2},{'count':5},{'count':0},{'count':-1},{'count':True},{'count':'1'},
+                 {'count':None},{'count':1.0},{'count':1,'recording-count':2},
+                 {'offset':1},{'offset':-1},{'offset':True},{'offset':'0'},
+                 {'recording-offset':1}):
+   with self.subTest(fields=fields),self.assertRaises(ProviderUnavailable):
+    snapshot(json.dumps({**document,**fields}).encode(),query_metadata(QUERY))
+  search=query_metadata({**QUERY,'isrc':''})
+  with self.assertRaises(ProviderUnavailable):snapshot(json.dumps({'recordings':document['recordings']}).encode(),search)
+  self.assertIsNone(snapshot(json.dumps(document).encode(),search)['automatic_mbid'])
+  self.assertEqual(snapshot(json.dumps(document).encode(),query_metadata(QUERY))['automatic_mbid'],MBID)
+  with self.assertRaises(ProviderUnavailable):snapshot(json.dumps({**document,'count':6,'recordings':document['recordings']*6}).encode(),query_metadata(QUERY))
+
+ def test_transport_partial_response_never_normalizes_into_cacheable_evidence(self):
+  from email.message import Message
+  for total in (2,5):
+   headers=Message();headers['Content-Type']='application/json'
+   with self.subTest(total=total),patch('shadify_api.musicbrainz.urllib.request.build_opener') as builder:
+    remote=builder.return_value.open.return_value.__enter__.return_value
+    remote.status=200;remote.headers=headers
+    remote.read.return_value=json.dumps(response(count=total)['document']).encode()
+    with self.assertRaises(ProviderUnavailable):fetch_response(query_metadata(QUERY),AGENT)
+
  def test_expired_dispatch_child_deadline_prevents_network(self):
   code="from shadify_api.musicbrainz import bind_request_deadline; import time; bind_request_deadline(time.monotonic()-1); raise AssertionError('expired reservation admitted')"
   result=subprocess.run([sys.executable,'-c',code],capture_output=True)
