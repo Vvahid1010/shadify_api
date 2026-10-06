@@ -1,6 +1,6 @@
 """Internal scanner interface only. No installer, CLI, approval or HTTP grant."""
 from dataclasses import dataclass
-import hashlib,os,re
+import hashlib,os,re,time
 from uuid import UUID,uuid4
 from typing import Protocol
 import psycopg
@@ -34,9 +34,18 @@ class Scanner(Protocol):
     """
     def scan(self,fd:int,*,sha256:str)->ScanVerdict: ...
 
-def fd_digest(fd):
+class InputChanged(Exception):pass
+
+def fd_digest(fd,*,size=None,deadline=None):
     os.lseek(fd,0,os.SEEK_SET);hash_=hashlib.sha256()
-    while block:=os.read(fd,1024*1024):hash_.update(block)
+    count=0
+    while True:
+        if deadline is not None and time.monotonic()>=deadline:raise TimeoutError('Input hashing deadline')
+        block=os.read(fd,1024*1024 if size is None else min(1024*1024,size-count+1))
+        if not block:break
+        count+=len(block)
+        if size is not None and count>size:raise InputChanged('Input grew')
+        hash_.update(block)
     os.lseek(fd,0,os.SEEK_SET)
     return hash_.hexdigest()
 
@@ -75,7 +84,10 @@ class IngestScanner:
         return dict(job_id=str(job['id']),state=state,revision=job['revision']+2,
                     approved=False,retryable=state=='uploaded',last_error=error)
 
-def scan_input(asset,expected,*,adapters,scanner):
+def scan_input(asset,expected,*,adapters,scanner,deadline=None,max_bytes=104857600):
+    if asset.size<=0 or asset.size>max_bytes:
+        return ScanVerdict("unknown",expected,error_code="scanner_evidence_invalid")
+    hash_deadline=deadline if deadline is not None else time.monotonic()+180
     verdict=ScanVerdict('unknown',expected,error_code='scanner_unavailable')
     adapter=adapters.get(asset.storage_provider)
     if scanner is not None and isinstance(adapter,LocalAdapter):
@@ -84,14 +96,15 @@ def scan_input(asset,expected,*,adapters,scanner):
             fd=adapter.open(asset.key)
             identity=os.fstat(fd)
             fingerprint=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
-            if identity.st_size!=asset.size or fd_digest(fd)!=expected:
+            if identity.st_size!=asset.size or fd_digest(fd,size=asset.size,deadline=hash_deadline)!=expected:
                 verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
             else:
-                verdict=scanner.scan(fd,sha256=expected)
+                verdict=scanner.scan(fd,sha256=expected) if deadline is None else scanner.scan(fd,sha256=expected,deadline=deadline)
                 if type(verdict) is not ScanVerdict or verdict.sha256!=expected:
                     verdict=ScanVerdict('unknown',expected,error_code='scanner_evidence_invalid')
-                elif fd_digest(fd)!=expected or fingerprint(os.fstat(fd))!=fingerprint(identity):
+                elif fd_digest(fd,size=asset.size,deadline=hash_deadline)!=expected or fingerprint(os.fstat(fd))!=fingerprint(identity):
                     verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
+        except InputChanged:verdict=ScanVerdict('unknown',expected,error_code='bytes_changed')
         except TimeoutError:verdict=ScanVerdict('unknown',expected,error_code='scanner_timeout')
         except Exception:verdict=ScanVerdict('unknown',expected,error_code='scanner_error')
         finally:

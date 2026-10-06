@@ -29,7 +29,7 @@ class FixtureScanner:
     """Safe synthetic decisions; not a ClamAV implementation/result claim."""
     def __init__(self,verdict='clean',error=None,bad_hash=False):
         self.verdict=verdict;self.error=error;self.bad_hash=bad_hash
-    def scan(self,fd,*,sha256):
+    def scan(self,fd,*,sha256,deadline=None):
         if self.error:raise self.error
         data=b''
         while part:=os.read(fd,4096):data+=part
@@ -168,7 +168,7 @@ class IngestFoundationTests(ArtistPostgresCase):
 
     def test_adapter_cannot_claim_clean_with_unknown_or_partial_coverage(self):
         class PartialScanner:
-            def scan(self,fd,*,sha256):
+            def scan(self,fd,*,sha256,deadline=None):
                 return ScanVerdict('clean',sha256,'SYNTHETIC-engine','SYNTHETIC-definitions')
         asset,_,_=self.upload();job=self.job(asset)
         result=self.scanner(PartialScanner()).scan_job(job['job_id'],expected_revision=job['revision'])

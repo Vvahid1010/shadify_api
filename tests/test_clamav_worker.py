@@ -7,7 +7,7 @@ from unittest.mock import patch
 import psycopg
 from shadify_api.clamav_scanner import ClamAVScanner,run_bounded,EvidenceInvalid
 from shadify_api.ingest_worker import IngestWorker,WorkerLimits,WorkerConfig,host_lock,safe_path
-from shadify_api.ingest_scanner import ScanVerdict
+from shadify_api.ingest_scanner import ScanVerdict,scan_input
 from shadify_api.media import MediaError
 from test_artist_postgres import ArtistPostgresCase
 from test_ingest_foundation import IngestFoundationTests,FixtureScanner
@@ -19,6 +19,7 @@ mode=Path(__file__).with_suffix('.mode').read_text()
 if '--version' in sys.argv:
  print('ClamAV 1.4.3/27111/Fri Oct 2 10:00:00 2026');sys.exit(0)
 data=os.read(0,1) if mode=='partial' else sys.stdin.buffer.read()
+Path(next(v.split('=',1)[1] for v in sys.argv if v.startswith('--tempdir=')),'synthetic-residue').write_bytes(b'SYNTHETIC SCAN SCRATCH')
 if mode=='timeout':time.sleep(10)
 if mode=='flood':print('X'*100000);sys.exit(0)
 if mode=='descendant':
@@ -60,6 +61,7 @@ class ClamAVAdapterTests(unittest.TestCase):
  def test_real_runner_synthetic_clean_requires_full_input_and_bound_versions(self):
   result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.verdict,'clean');self.assertTrue(result.full_coverage)
+  self.assertEqual(list(self.root.glob('shadify-scan-*')),[])
   self.assertEqual(result.engine_version,'1.4.3');self.assertTrue(result.definitions_version.startswith('official-sha256:'))
  def test_safe_synthetic_infected_report_is_distinct_from_unknown(self):
   for mode in ('infected','multi'):
@@ -75,6 +77,7 @@ class ClamAVAdapterTests(unittest.TestCase):
   for mode,expected in [('timeout','scanner_timeout'),('flood','scanner_evidence_invalid')]:
    self.mode.write_text(mode);started=time.monotonic();result=self.scanner.scan(self.fd,sha256=self.digest)
    self.assertLess(time.monotonic()-started,4);self.assertEqual(result.error_code,expected);self.assertEqual(result.verdict,'unknown')
+   self.assertEqual(list(self.root.glob('shadify-scan-*')),[])
  def test_descendant_pipe_timeout_kills_entire_process_group(self):
   self.mode.write_text('descendant');result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.error_code,'scanner_timeout')
@@ -117,6 +120,25 @@ class WorkerLeaseTests(IngestFoundationTests):
  def worker(self,scanner=None,*,lease=360,retry=30,connect=None):
   return IngestWorker(connect=connect or self.connect,adapters={'local':self.adapter},scanner=scanner,
       limits=SimpleNamespace(lease_seconds=lease,retry_seconds=retry))
+ def test_oversized_worker_input_is_bounded_before_hash_or_scanner(self):
+  self.upload();worker=self.worker(FixtureScanner());worker.limits.max_input_bytes=1
+  with patch('shadify_api.ingest_scanner.fd_digest',side_effect=AssertionError('must not hash oversize')):
+   result=worker.run_once()
+  self.assertEqual(result['state'],'uploaded');self.assertEqual(result['last_error'],'scanner_evidence_invalid')
+ def test_input_growth_during_hash_rejects_without_unbounded_read(self):
+  asset,_,_=self.upload();job=self.job(asset);read=os.read;grew=[False]
+  def growing(fd,size):
+   if not grew[0]:
+    grew[0]=True
+    with (Path(self.directory.name)/asset.key).open('ab') as stream:stream.write(b'SYNTHETIC GROWTH')
+   return read(fd,size)
+  with patch('shadify_api.ingest_scanner.os.read',side_effect=growing):result=self.worker(FixtureScanner()).run_once()
+  self.assertEqual(result['state'],'rejected');self.assertEqual(result['last_error'],'bytes_changed')
+ def test_expired_shared_deadline_never_calls_scanner(self):
+  asset,_,_=self.upload();job=self.job(asset)
+  with patch.object(FixtureScanner,'scan',side_effect=AssertionError('must not scan after deadline')):
+   verdict=scan_input(asset,self.adapter.checksum(asset.key),adapters={'local':self.adapter},scanner=FixtureScanner(),deadline=time.monotonic()-1)
+  self.assertEqual(verdict.verdict,'unknown');self.assertEqual(verdict.error_code,'scanner_timeout')
  def test_real_subprocess_adapter_result_is_committed_with_durable_attempt(self):
   fixture=ClamAVAdapterTests();fixture.setUp()
   try:

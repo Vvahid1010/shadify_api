@@ -1,5 +1,5 @@
 """Bounded one-shot ClamAV adapter. Never installs tools or updates signatures."""
-import hashlib,json,os,re,selectors,signal,stat,subprocess,time
+import hashlib,json,os,re,selectors,signal,stat,subprocess,time,tempfile
 from pathlib import Path
 from .ingest_scanner import ScanVerdict
 
@@ -51,9 +51,11 @@ def definitions_snapshot(directory,*,deadline):
             if not stat.S_ISREG(before.st_mode) or before.st_size<512 or size>536870912:raise EvidenceInvalid('Definitions bounds')
             header=os.read(fd,512).decode('ascii').strip();parts=header.split(':')
             if len(parts)<9 or parts[0]!='ClamAV-VDB' or not parts[2].isdigit():raise EvidenceInvalid('Definitions version missing')
-            os.lseek(fd,0,os.SEEK_SET);digest=hashlib.sha256()
+            os.lseek(fd,0,os.SEEK_SET);digest=hashlib.sha256();read_size=0
             while block:=os.read(fd,1048576):
                 if time.monotonic()>=deadline:raise TimeoutError('Definitions deadline')
+                read_size+=len(block)
+                if read_size>before.st_size:raise EvidenceInvalid('Definitions grew')
                 digest.update(block)
             after=os.fstat(fd)
             if (before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns):raise EvidenceInvalid('Definitions changed')
@@ -94,8 +96,9 @@ class ClamAVScanner:
         self.executable=str(executable);self.prlimit=str(prlimit);self.definitions=str(definitions)
         self.temp_dir=str(temp_dir);self.engine_version=engine_version;self.limits=limits;self.lock_fd=lock_fd
 
-    def scan(self,fd,*,sha256):
-        deadline=time.monotonic()+self.limits.wall_seconds
+    def scan(self,fd,*,sha256,deadline=None):
+        own_deadline=time.monotonic()+self.limits.wall_seconds
+        deadline=own_deadline if deadline is None else min(deadline,own_deadline)
         try:
             if not all(Path(p).is_file() and os.access(p,os.X_OK) for p in (self.executable,self.prlimit)):
                 raise FileNotFoundError("Scanner executable unavailable")
@@ -112,16 +115,17 @@ class ClamAVScanner:
             if code or err or re.fullmatch(rb'ClamAV '+re.escape(self.engine_version.encode())+rb'/[0-9]+/[^\r\n]+\n?',out) is None:
                 raise EvidenceInvalid('Scanner version unavailable')
             os.lseek(fd,0,os.SEEK_SET)
-            code,out,err=run(['--database='+self.definitions,'--tempdir='+self.temp_dir,
-                '--official-db-only=yes','--disable-cache','--allmatch=yes','--heuristic-alerts=yes',
-                '--alert-exceeds-max=yes','--alert-encrypted=yes','--alert-broken=yes',
-                '--max-filesize='+str(self.limits.max_input_bytes),'--max-scansize='+str(self.limits.max_scan_bytes),
-                '--max-scantime=0','--bytecode-timeout='+str(self.limits.wall_seconds*1000),
-                '--pcre-max-filesize='+str(self.limits.max_input_bytes),
-                '--max-htmlnormalize='+str(self.limits.max_input_bytes),'--max-htmlnotags='+str(self.limits.max_input_bytes),
-                '--max-embeddedpe='+str(self.limits.max_input_bytes),'--max-scriptnormalize='+str(self.limits.max_input_bytes),'-'],stdin=fd)
-            if os.lseek(fd,0,os.SEEK_CUR)!=size:raise EvidenceInvalid('Partial input read')
-            verdict=parse_scan(code,out,err,engine=self.engine_version)
+            with tempfile.TemporaryDirectory(prefix='shadify-scan-',dir=self.temp_dir) as workspace:
+                code,out,err=run(['--database='+self.definitions,'--tempdir='+workspace,
+                    '--official-db-only=yes','--disable-cache','--allmatch=yes','--heuristic-alerts=yes',
+                    '--alert-exceeds-max=yes','--alert-encrypted=yes','--alert-broken=yes',
+                    '--max-filesize='+str(self.limits.max_input_bytes),'--max-scansize='+str(self.limits.max_scan_bytes),
+                    '--max-scantime=0','--bytecode-timeout='+str(self.limits.wall_seconds*1000),
+                    '--pcre-max-filesize='+str(self.limits.max_input_bytes),
+                    '--max-htmlnormalize='+str(self.limits.max_input_bytes),'--max-htmlnotags='+str(self.limits.max_input_bytes),
+                    '--max-embeddedpe='+str(self.limits.max_input_bytes),'--max-scriptnormalize='+str(self.limits.max_input_bytes),'-'],stdin=fd)
+                if os.lseek(fd,0,os.SEEK_CUR)!=size:raise EvidenceInvalid('Partial input read')
+                verdict=parse_scan(code,out,err,engine=self.engine_version)
             after,_=definitions_snapshot(self.definitions,deadline=deadline)
             if after!=before:raise EvidenceInvalid('Definitions changed')
             return ScanVerdict(verdict,sha256,self.engine_version,version,full_coverage=True)

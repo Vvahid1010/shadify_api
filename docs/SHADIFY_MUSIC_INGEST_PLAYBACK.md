@@ -381,3 +381,20 @@ describe oversized-file skipping; the [1.4.3 stdin implementation](https://githu
 and [CLI implementation](https://github.com/Cisco-Talos/clamav/blob/clamav-1.4.3/clamscan/clamscan.c)
 ground the strict protocol and explicit coverage controls. Future actual-tool
 proof must confirm the selected Ubuntu package's behavior with safe fixtures.
+
+
+Worker bound tightening: pre/post input hashing shares the scanner's wall deadline
+and enforces the admitted byte count, detecting growth before reading more than
+one extra byte. Oversized metadata is rejected before hashing/scanning. Definition
+hashes also cannot read beyond their initial admitted size. Worker DB composition
+requires one explicit numeric endpoint (localhost maps to127.0.0.1) and supplies
+hostaddr with existing5s connect/10s statement/5s lock bounds, avoiding unbounded
+DNS resolution. Tests cover growth, oversize and already-expired shared deadlines.
+
+
+Each actual scan uses a new private scratch directory beneath the selected temp
+root; normal success, unknown results, timeout and interrupt clean that directory
+after process termination. Protected roots are not provisioned. SIGKILL cannot
+execute parent cleanup: Node's exact unit/temp-storage packet must bound and clean
+stale private scan scratch after complete process-group shutdown; this source does
+not guess or delete unrelated files or automatically recover filesystem residue.

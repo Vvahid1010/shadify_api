@@ -1,5 +1,6 @@
 """Native Shadify scanner worker. No HTTP/Auth listener, installation or approval."""
-import argparse,fcntl,os,signal,stat,threading
+import argparse,fcntl,os,signal,stat,threading,time
+from ipaddress import ip_address
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -130,7 +131,9 @@ class IngestWorker:
         with connection.cursor(row_factory=dict_row) as c:
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s',(job['asset_id'],)).fetchone()
         asset=Asset(**row)
-        verdict=scan_input(asset,job['input_sha256'],adapters=self.adapters,scanner=self.scanner) if asset.state=='uploaded' else ScanVerdict('unknown',job['input_sha256'],error_code='bytes_changed')
+        deadline=time.monotonic()+getattr(self.limits,'wall_seconds',180)
+        verdict=scan_input(asset,job['input_sha256'],adapters=self.adapters,scanner=self.scanner,deadline=deadline,
+            max_bytes=getattr(self.limits,'max_input_bytes',104857600)) if asset.state=='uploaded' else ScanVerdict('unknown',job['input_sha256'],error_code='bytes_changed')
         return self.finish(connection,claim,verdict)
 
     def run_once(self):
@@ -139,6 +142,9 @@ class IngestWorker:
             claim=self.claim(connection)
             return None if claim is None else self.process(connection,claim)
 
+def database_address(database):
+    return '127.0.0.1' if database.host=='localhost' else str(ip_address(database.host))
+
 def compose(path):
     # No path discovery, service provision, migrations, roles or signature update.
     try:
@@ -146,6 +152,7 @@ def compose(path):
         config=WorkerConfig.model_validate(load_protected_json(Path(path)))
         safe_path(config.database_file,private=True)
         database=load_database_config(Path(config.database_file))
+        database_address(database) # Reject DNS/multi-host lookups; one assigned numeric endpoint.
         safe_path(config.state_dir,directory=True,private=True)
         safe_path(config.temp_dir,directory=True,private=True)
         safe_path(config.clamscan,root_owned=True);safe_path(config.prlimit,root_owned=True)
@@ -170,7 +177,7 @@ def main():
         with host_lock(config.state_dir) as lock_fd:
             scanner=ClamAVScanner(executable=config.clamscan,prlimit=config.prlimit,definitions=config.definitions_dir,
                 temp_dir=config.temp_dir,engine_version=config.engine_version,limits=config.limits,lock_fd=lock_fd)
-            worker=IngestWorker(connect=database.connect,adapters={'local':adapter},scanner=scanner,limits=config.limits)
+            worker=IngestWorker(connect=lambda:database._connect(5,10000,5000,hostaddr=database_address(database)),adapters={'local':adapter},scanner=scanner,limits=config.limits)
             while not stopped.is_set():
                 try:
                     result=worker.run_once()
