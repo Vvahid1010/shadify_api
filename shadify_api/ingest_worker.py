@@ -12,7 +12,7 @@ from .media import Asset,MediaError
 from .ingest_scanner import scan_input,ScanVerdict
 from .clamav_scanner import ClamAVScanner
 
-LOCK_SQL="SELECT pg_try_advisory_lock(hashtextextended(current_database()||':'||current_schema()||':shadify-ingest-worker',0))"
+LOCK_SQL="SELECT pg_try_advisory_lock(hashtextextended(current_database()||':'||'shadify_ingest_jobs'::regclass::oid::text||':shadify-ingest-worker',0))"
 
 class WorkerLimits(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)

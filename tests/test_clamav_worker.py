@@ -82,9 +82,12 @@ class ClamAVAdapterTests(unittest.TestCase):
   self.mode.write_text('descendant');result=self.scanner.scan(self.fd,sha256=self.digest)
   self.assertEqual(result.error_code,'scanner_timeout')
   pid=int(self.executable.with_suffix('.pid').read_text());status=Path('/proc')/str(pid)/'stat'
+  def running():
+   try:return status.read_text().split()[2]!='Z'
+   except FileNotFoundError:return False
   deadline=time.monotonic()+1
-  while status.exists() and status.read_text().split()[2]!='Z' and time.monotonic()<deadline:time.sleep(.01)
-  self.assertTrue(not status.exists() or status.read_text().split()[2]=='Z')
+  while running() and time.monotonic()<deadline:time.sleep(.01)
+  self.assertFalse(running())
  def test_definitions_change_missing_or_symlink_never_clean(self):
   self.mode.write_text('change_defs');self.assertEqual(self.scanner.scan(self.fd,sha256=self.digest).error_code,'scanner_evidence_invalid')
   self.mode.write_text('clean');daily=self.definitions/'daily.cvd';daily.unlink()
@@ -179,6 +182,20 @@ class WorkerLeaseTests(IngestFoundationTests):
   self.assertTrue(result['retryable']);self.assertIsNone(self.worker().run_once())
   result=self.worker(FixtureScanner('infected'),retry=0).run_once();self.assertEqual(result['state'],'rejected')
   self.assertEqual(result['last_error'],'malware_detected');self.assertFalse(result['retryable'])
+ def test_same_job_table_excludes_worker_with_different_leading_search_path(self):
+  from psycopg import sql
+  from uuid import uuid4
+  self.upload();shadow='shadow_'+uuid4().hex
+  with self.connect() as c:c.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(shadow)))
+  def connect_shadow():
+   return psycopg.connect(**self.server.connection,options='-c search_path='+shadow+','+self.schema)
+  try:
+   worker=self.worker(lease=.1)
+   with worker.session() as session:
+    worker.claim(session);time.sleep(.2)
+    self.assertIsNone(self.worker(FixtureScanner(),connect=connect_shadow).run_once())
+  finally:
+   with self.connect() as c:c.execute(sql.SQL('DROP SCHEMA {}').format(sql.Identifier(shadow)))
  def test_live_worker_excludes_second_even_after_lease_expiry(self):
   self.upload();worker=self.worker(lease=.1)
   with worker.session() as session:

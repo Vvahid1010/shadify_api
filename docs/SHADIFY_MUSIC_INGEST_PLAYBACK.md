@@ -398,3 +398,10 @@ after process termination. Protected roots are not provisioned. SIGKILL cannot
 execute parent cleanup: Node's exact unit/temp-storage packet must bound and clean
 stale private scan scratch after complete process-group shutdown; this source does
 not guess or delete unrelated files or automatically recover filesystem residue.
+
+
+Session exclusion uses the resolved shadify_ingest_jobs relation identity and
+database, rather than current_schema: different leading search-path schemas still
+share the same lock when they resolve to the same jobs. A real PG test keeps the
+first scan session active after expiry and proves the alternate-search-path worker
+cannot reclaim/process in parallel.
