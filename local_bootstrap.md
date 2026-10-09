@@ -158,3 +158,57 @@ and the Node owner's generated nginx/ExecStart source pairing proof. See
 ARTIST_PROFILES_AND_ACCESS.md for hashes,103 targeted packaged tests and precise
 synthetic/remapped limits. This supersedes the earlier pending source-pairing
 note, not the separate live custody/installation/public TLS/browser/cloud gates.
+
+
+## Node B protected JSON projection candidate — 2026-10-09
+
+Source-only compatibility correction, based on installed API
+`bde4c79380bb0aa8603065142db790bce294aaa1`. Node B's existing systemd
+LoadCredential projection has root-owned file mode 0440 and directory mode
+0550. Their POSIX ACLs grant only root and the named service UID read/read-search;
+owning-group and other permissions are zero. The filesystem is read-only and
+nosuid. Mode group bits represent the named-user ACL mask, not group sharing.
+
+`load_protected_json` retains ordinary owner-only admission. Its narrow exception
+requires the exact current `/run/credentials/*.service` directory, resolved
+non-symlink path, root UID/GID, exact modes and exact root/service ACLs, matching
+opened-file/directory-member identity, and read-only/nosuid mount flags. No file
+permissions, protected custody, units, groups, grants, catalog, schema, business
+behavior or native policy changes are made. Authentication already reads its
+credential projection; native key admission independently recognizes the same
+root/service ACL shape on read-only tmpfs/ramfs.
+
+Validation: 20 focused tests pass, including real JSON descriptor/path checks
+and a full synthetic five-file, 61-route app factory/checkpoint/fresh-holder
+restore. Root ACL/mount metadata for Python JSON is explicitly a fixture; native
+key admission uses its normal real owner-only file fixture. Existing 18 app
+composition and 5 managed-ingress tests pass. This is not full real systemd
+projection qualification. That isolated local test remains pending because the
+normal WSL sudo path denied execution; no alternative privilege path was used.
+No Node B app update, shared publication or pairing retry is authorized here.
+
+Live current failure: operation `8ba32098-5969-4cbc-858d-1aab34f4be47`, helper
+plan `79160f7448e948389d4475583e6d9d5a`, remains recovery_required after inactive
+configuration validation rejected the mode bits. Its existing read-only
+abandonment assessor passed on 2026-10-09 at 15:12 UTC: unchanged active custody,
+metadata and source audit, receiver stopped, no sender grant or pair receipts.
+This is recovery safety evidence, not executed recovery authority. Close that
+exact precommit attempt while the original APIbde binding remains installed,
+before changing its package binding. Keep both inactive generations and all
+audit/history evidence. Never replay this failed pair.
+
+Later deployment requires a separately reviewed immutable Shadify API package
+and exact Node B app update. Node Agent and Authentication releases, installed
+credentials and schema stay unchanged. Shared Shadify main/build publication
+may affect other consumers and needs separate containment/approval; B-only app
+update approval does not authorize shared publication. Before pairing, verify
+rollback to original APIbde through the existing installer. After receiver or
+sender commit, follow exact receipt recovery; no unproven post-pair rollback.
+
+Authentication's management `observe` does not compute readiness and leaves the
+model default false. Actual local /health/ready returns 200/ready/configured with
+schema0013; both existing API/worker process-mounted config/profile/Resend/
+Turnstile bytes match expected unchanged custody with stable process identities.
+No actual Authentication outage was observed. No user login/email/task was
+executed for this observation. Separate WSL Shadify capacity was already approved
+and tested; its current PostgreSQL peer-auth blocker is owned separately.
