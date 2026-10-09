@@ -8,13 +8,16 @@ from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr
 
-from .auth import require_account
-from .config import load_protected_json, load_database_config, load_storage_config
+from .auth import observed_account
+from .config import load_protected_json, load_database_config, load_storage_config, compose_storage
 from .domain import DomainService
 from .media import MediaService
 from .repository import PostgresMediaRepository
 from .security import create_binding, ManagedReceiver
 from .storage import R2Storage
+from .nomination_contract import Scope
+from .nomination_control import NominationControl
+from .media import MediaError
 
 
 class RuntimeConfig(BaseModel):
@@ -25,6 +28,7 @@ class RuntimeConfig(BaseModel):
     app_security: dict
     app_security_binding: dict
     app_security_transport: dict | None = None
+    nomination_scope: Scope | None = None
 
 
 def replay_address(directory):
@@ -53,7 +57,7 @@ def replay_factory(directory, address=None):
     return factory
 
 
-def create_runtime_app(directory: Path, *, binding=None):
+def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None, nomination_composition=None):
     directory = Path(directory)
     receiver = None
     try:
@@ -87,16 +91,41 @@ def create_runtime_app(directory: Path, *, binding=None):
     service = None
     if (directory / config.storage_file).exists():
         try:
-            storage = load_storage_config(directory / config.storage_file)
             if repository is not None:
-                service = MediaService(repository, R2Storage(storage), storage.max_upload_bytes, storage.upload_ttl_seconds)
+                storage, settings = compose_storage(directory, repository)
+                service = MediaService(repository, storage, settings.max_upload_bytes, settings.upload_ttl_seconds)
         except Exception:
             if receiver is not None:
                 receiver.close()
             raise RuntimeError("Shadify storage configuration invalid; values redacted") from None
 
+    nomination = None
+    if config.nomination_scope is not None and repository is not None:
+        selected_scope = config.nomination_scope
+        def native_identity_provider():
+            if receiver is None or not receiver.current():
+                raise MediaError(503,'Installed nomination binding unavailable')
+            native = binding.acquire()
+            # Existing installed binding tuple, not configuration/request input.
+            identity = tuple(binding.checkpoint()['identity'])
+            if (len(identity) != 3 or any(type(value) is not str for value in identity)
+                    or identity[1:] != native.status()[:2]
+                    or identity[1:] != ('shadify_api',selected_scope.app_instance_id)):
+                raise MediaError(503,'Installed nomination identity mismatch')
+            return identity
+        def scope_provider():
+            native_identity_provider()
+            return selected_scope
+        if nomination_provider is not None and nomination_composition is not None:
+            raise RuntimeError("Select one protected nomination composition")
+        nomination = NominationControl(database.connect,scope_provider,nomination_provider)
+        if nomination_composition is not None:
+            nomination.provider = nomination_composition.prepare(
+                nomination, scope_provider, database.connect_nomination_receipt,
+                native_identity_provider=native_identity_provider)
+
     async def readiness():
-        checks = {"authentication": binding.status().get("state"),
+        checks = {"scope": "profile_database", "authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
                   "storage": "configured_unverified" if service else "missing"}
         checks["replay_admission"] = "unavailable"
@@ -118,16 +147,25 @@ def create_runtime_app(directory: Path, *, binding=None):
             except Exception:
                 pass
         ready = (checks["authentication"] == "Active" and checks["database"] == "schema_ready"
-                 and service is not None and checks["managed_ingress"] == "installed"
+                 and checks["managed_ingress"] == "installed"
                  and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
                  and checks["replay_admission"] == "ready")
-        # Metadata can be served independently while overall upload readiness is
-        # pending. Configured storage remains explicitly unverified cloud access.
+        if nomination is not None:
+            try:
+                nomination.scope()
+                await asyncio.to_thread(nomination.ready)
+                checks['nomination']='schema_ready'
+            except Exception:
+                checks['nomination']='unavailable'
+                ready=False
+        # Initial profile/database readiness is independent of optional media.
+        # Missing storage keeps media operations closed; configured storage is
+        # explicitly unverified cloud access, never a real R2 readiness claim.
         return ready, checks
 
     from .main import create_app
-    return create_app(service, require_account, domain=DomainService(repository) if repository else None,
-                      repository=repository, binding=binding, readiness=readiness, receiver=receiver)
+    return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
+                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination)
 
 
 def app_factory():
