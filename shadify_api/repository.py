@@ -58,7 +58,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
         if asset is None: raise MediaError(404,'Asset not found')
         with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
             changed=c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
-                "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original')",
+                "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original','video_original')",
                 (target,asset_id,asset.artist_id,expected)).rowcount==1
             if changed and target=='uploaded':self.enqueue_ingest(c,asset_id,byte_sha256)
             return changed

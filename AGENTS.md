@@ -1,6 +1,46 @@
 # Shadify API Repository Guidance
 
+## Shared DEV policy
+
+For this operator's DEV work, read and apply the
+[shared DEV simplicity policy](../node_agent/AGENTS.md#dev-simplicity-policy---operator-decision-2026-10-10).
+It preserves existing security and runtime authorization boundaries.
+
 Use main by default unless the operator explicitly requests another branch.
+
+## Agreed scope policy
+
+- State the current user outcome and a concrete done criterion before work.
+  If no goal is agreed, do not invent one.
+- Reuse the existing proven application or workflow pattern first.
+- Fix only direct blockers to the agreed outcome. Park unrelated improvements
+  separately; do not implement them as prerequisites.
+- Before material changes to architecture, infrastructure, dependencies,
+  security policy or agreed scope, explain the concrete need and smallest
+  change, then coordinate with the user before implementation.
+- Continue ordinary work within the agreed goal autonomously. Routine bug fixes
+  and minor dependency updates do not require another approval by default.
+- Preserve existing security requirements and defaults; never weaken them for
+  convenience. Existing runtime and deployment authorization still applies.
+- Carry the outcome, done criterion, scope/exclusions, owner boundaries and
+  unresolved blockers into delegated tasks and handoffs.
+- Report the actual usable result and remaining blockers with evidence.
+  Passing tests alone does not establish that the requested flow works.
+
+## Current Shadify outcome — dev WSL
+
+The agreed goal is actual upload, ingest and playback plus a sample artist
+profile in dev WSL, reusing the proven central Authentication pattern. This
+defines the current outcome over historical phase descriptions; it does not
+claim completion or grant new runtime, credential or deployment authority.
+
+Done means the authorized dev WSL flow demonstrates a real upload through
+the existing server approval/security gates, ingested content that plays, and
+the sample artist profile using central Authentication. Report missing proof
+as a blocker; fixtures and passing tests alone are insufficient.
+Node Agent remains only the execution platform. Do not add shared Topology
+redesign or generic fault-harness qualification gates to this goal; coordinate
+direct blockers with the owning project.
 
 ## Canonical music ingest/playback contract (2026-10-06)
 

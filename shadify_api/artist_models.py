@@ -102,7 +102,20 @@ class Work(Input):
         return value
 
 
+MOOD_IDS = ('calm', 'romantic', 'happy', 'party')
+MoodId = Literal['calm', 'romantic', 'happy', 'party']
+
+
 class Track(Work):
+    mood_ids: list[MoodId] = Field(default_factory=list, max_length=4)
+
+    @field_validator('mood_ids')
+    @classmethod
+    def distinct_moods(cls, values):
+        if len(values) != len(set(values)):
+            raise ValueError('Distinct mood identifiers required')
+        return [mood for mood in MOOD_IDS if mood in values]
+
     genre: str = Field(default='', max_length=64)
     access_class: Literal['free','paid'] = 'free'
     original_asset_id: UUID | None = None

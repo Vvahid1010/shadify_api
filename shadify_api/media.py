@@ -19,8 +19,8 @@ class UploadIntent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     artist_id: UUID
     track_id: UUID
-    asset_type: Literal["audio_original", "artwork_original"]
-    mime: Literal["audio/wav", "audio/flac", "image/jpeg", "image/png"]
+    asset_type: Literal["audio_original", "artwork_original", "video_original"]
+    mime: Literal["audio/wav", "audio/flac", "audio/mpeg", "video/mp4", "image/jpeg", "image/png"]
     size: int = Field(gt=0)
 
 
@@ -52,6 +52,8 @@ def valid_signature(mime, data):
     return {
         "audio/wav": data[:4] == b"RIFF" and data[8:12] == b"WAVE",
         "audio/flac": data[:4] == b"fLaC",
+        "audio/mpeg": data[:3] == b"ID3" or (len(data)>=2 and data[0]==255 and data[1]&0xe6==0xe2),
+        "video/mp4": len(data)>=12 and data[4:8]==b"ftyp" and data[8:12] in (b"isom",b"iso2",b"iso3",b"iso4",b"iso5",b"iso6",b"iso7",b"iso8",b"iso9",b"mp41",b"mp42",b"avc1"),
         "image/jpeg": data[:3] == b"\xff\xd8\xff",
         "image/png": data[:8] == b"\x89PNG\r\n\x1a\n",
     }.get(mime, False)
@@ -66,8 +68,9 @@ class MediaService:
         require_fresh_actor(owner)
         if not self.repository.owns_track(owner, intent.artist_id, intent.track_id):
             raise MediaError(404, "Artist/track not found")
-        allowed = {"audio_original": {"audio/wav", "audio/flac"},
-                   "artwork_original": {"image/jpeg", "image/png"}}
+        allowed = {"audio_original": {"audio/wav", "audio/flac", "audio/mpeg"},
+                   "artwork_original": {"image/jpeg", "image/png"},
+                   "video_original": {"video/mp4"}}
         if intent.mime not in allowed[intent.asset_type] or intent.size > self.max_size:
             raise MediaError(422, "Unsupported type or configured size limit exceeded")
         asset_id = uuid4()

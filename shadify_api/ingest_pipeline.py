@@ -111,7 +111,7 @@ class PipelineWorker(IngestWorker):
     def _matching(self,connection,claim,asset,stages,deadline):
         job,_=claim
         if 'extraction' not in stages:raise ToolFailure('pipeline_evidence_invalid')
-        if asset.asset_type=='audio_original':
+        if asset.asset_type in ('audio_original','video_original'):
             metadata=dict(stages['extraction']['payload']['metadata'])
             with connection.cursor(row_factory=dict_row) as c:
                 row=c.execute("SELECT t.title,a.name FROM shadify_tracks t JOIN shadify_artists a ON a.id=t.artist_id WHERE t.id=%s AND t.artist_id=%s",(asset.track_id,asset.artist_id)).fetchone()
@@ -173,7 +173,7 @@ class PipelineWorker(IngestWorker):
                     output_id=uuid5(job['id'],PIPELINE_VERSION+':'+role)
                     key=(f'artists/{asset.artist_id}/tracks/{asset.track_id}/{output_id}/master' if role=='master' else f'delivery/{output_id}/{role}')
                     outputs[role]=dict(asset_id=str(output_id),key=key,mime=mime,size=len(data),sha256=hashlib.sha256(data).hexdigest())
-                required={'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover'}
+                required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover'}
                 if set(outputs)!=required:raise ToolFailure('output_invalid')
                 manifest=dict(pipeline_version=PIPELINE_VERSION,tool_identity=self.tools.identity,outputs=outputs)
                 with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
@@ -203,7 +203,7 @@ class PipelineWorker(IngestWorker):
         with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
             targets={}
             for role,output in manifest['outputs'].items():
-                master=role=='master';kind=asset.asset_type if master else 'audio_delivery' if role in ('high','low') else 'artwork_delivery'
+                master=role=='master';kind=asset.asset_type if master else 'audio_delivery' if role in ('high','low') else 'video_delivery' if role=='video' else 'artwork_delivery'
                 target=Asset(UUID(output['asset_id']),asset.owner_id,asset.artist_id,asset.track_id,output['key'],kind,output['mime'],output['size'],datetime.now(timezone.utc)+timedelta(days=3650),'local','ready','private' if master else 'free','draft' if master else 'published')
                 c.execute('INSERT INTO shadify_media_assets(id,owner_id,artist_id,track_id,key,asset_type,mime,size,expires_at,storage_provider,state,access_class,publish_state) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',tuple(getattr(target,name) for name in Asset.__dataclass_fields__))
                 targets[role]=target

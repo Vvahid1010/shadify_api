@@ -17,7 +17,7 @@ def musical_metadata(values):
 def matching_projection(extraction,evidence,row):
     metadata=musical_metadata(extraction.get('metadata',{})) if extraction and extraction.get('complete') is True else {}
     candidates=[];complete=False
-    if row['asset_type']=='audio_original' and evidence and evidence.get('complete') is True and evidence.get('provider')=='musicbrainz':
+    if row['asset_type'] in ('audio_original','video_original') and evidence and evidence.get('complete') is True and evidence.get('provider')=='musicbrainz':
         try:
             saved=evidence.get('candidates');total=evidence.get('total')
             if type(saved) is not list or len(saved)>5 or type(total) is not int or total!=len(saved) or evidence.get('truncated') is not False:raise ValueError()
@@ -54,7 +54,7 @@ class StudioUploadsRepository:
                 LEFT JOIN shadify_ingest_stages extraction ON extraction.job_id=j.id AND extraction.input_sha256=j.input_sha256 AND extraction.stage='extraction'
                 LEFT JOIN shadify_ingest_stages matching ON matching.job_id=j.id AND matching.input_sha256=j.input_sha256 AND matching.stage='matching'
                 LEFT JOIN shadify_ingest_match_decisions d ON d.job_id=j.id AND d.input_sha256=j.input_sha256 AND d.matching_stage_id=matching.id
-                WHERE a.artist_id=%s AND a.asset_type IN ('audio_original','artwork_original')
+                WHERE a.artist_id=%s AND a.asset_type IN ('audio_original','artwork_original','video_original')
                 AND (%s::uuid IS NULL OR a.track_id=%s) AND (%s::uuid IS NULL OR a.id>%s)
                 AND NOT EXISTS(SELECT 1 FROM shadify_ingest_variants v WHERE v.asset_id=a.id)
                 ORDER BY a.id LIMIT %s""",(artist_id,track_id,track_id,cursor,cursor,limit+1)).fetchall()
