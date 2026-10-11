@@ -2,6 +2,7 @@
 import json
 import os
 import stat
+import struct
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -38,13 +39,52 @@ class StorageConfig(BaseModel):
         return self
 
 
+SYSTEMD_CREDENTIALS_ROOT = Path("/run/credentials")
+
+
+def _systemd_projection(path: Path, fd: int, info) -> bool:
+    """Recognize the existing root/service-only ACL projection, not group sharing."""
+    directory = path.parent
+    if (os.environ.get("CREDENTIALS_DIRECTORY") != str(directory)
+            or directory.parent != SYSTEMD_CREDENTIALS_ROOT
+            or directory.resolve() != directory
+            or not directory.name.endswith(".service")
+            or info.st_uid != 0 or info.st_gid != 0
+            or stat.S_IMODE(info.st_mode) != 0o440):
+        return False
+    # Linux ACL mode group bits are the named-user mask. The owning group and
+    # other users must have no permissions; only root and this service may read.
+    def expected_acl(permissions):
+        return struct.pack("<I", 2) + b"".join(
+            struct.pack("<HHI", tag, bits, identity) for tag, bits, identity in (
+                (1, permissions, 0xffffffff), (2, permissions, os.geteuid()),
+                (4, 0, 0xffffffff), (16, permissions, 0xffffffff), (32, 0, 0xffffffff)))
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            parent = os.fstat(directory_fd)
+            member = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+            flags = os.fstatvfs(fd).f_flag
+            return (stat.S_IMODE(parent.st_mode) == 0o550
+                    and parent.st_uid == 0 and parent.st_gid == 0
+                    and (member.st_dev, member.st_ino) == (info.st_dev, info.st_ino)
+                    and flags & os.ST_RDONLY and flags & os.ST_NOSUID
+                    and os.getxattr(directory_fd, "system.posix_acl_access") == expected_acl(5)
+                    and os.getxattr(fd, "system.posix_acl_access") == expected_acl(4))
+        finally:
+            os.close(directory_fd)
+    except OSError:
+        return False
+
+
 def load_protected_json(path: Path) -> dict:
     # Open without following a symlink and check the opened descriptor, avoiding TOCTOU.
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd, "r") as stream:
         info = os.fstat(stream.fileno())
-        if (not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077
-                or info.st_uid not in (0, os.geteuid())):
+        if (not stat.S_ISREG(info.st_mode)
+                or info.st_uid not in (0, os.geteuid())
+                or (info.st_mode & 0o077 and not _systemd_projection(path, stream.fileno(), info))):
             raise ValueError("Configuration must be an owner-only regular file owned by root or the API user")
         try:
             value = json.load(stream)
