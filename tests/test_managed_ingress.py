@@ -44,7 +44,7 @@ def pem(label, value):
 
 
 def material(app):
-    ed=Ed25519PrivateKey.generate();dp,ds=ml_dsa_65.keygen();kp,ks=ml_kem_768.keygen()
+    ed=Ed25519PrivateKey.generate();dp,ds=ml_dsa_65.generate_keypair();kp,ks=ml_kem_768.generate_keypair()
     instance=str(uuid4())
     return dict(schema_version=1,node_id=str(uuid4()),app_id=app,app_instance_id=instance,
                 credential_owner_id=str(uuid4()),owner_app_instance_id=instance,generation=1,
@@ -98,7 +98,10 @@ class CombinedIngressTests(unittest.TestCase):
         with patch('shadify_api.editorial_discovery.EditorialDiscovery.public',return_value={'revision':0,'rails':[]}):
             asyncio.run(self.run_combined(public_aliases=True))
 
-    async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False, public_aliases=False):
+    def test_explicit_generic_endpoint_preserves_native_admission_and_replay(self):
+        asyncio.run(self.run_combined(explicit_endpoint=True))
+
+    async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False, public_aliases=False, explicit_endpoint=False):
         with tempfile.TemporaryDirectory() as temporary,patch("node_agent_local_shell_transport.local_uds.pwd.getpwnam",return_value=Mock(pw_uid=1001)), \
              patch("socket.socket.connect",side_effect=AssertionError("network prohibited")), \
              patch("socket.socket.bind",side_effect=AssertionError("listener prohibited")), \
@@ -133,6 +136,10 @@ class CombinedIngressTests(unittest.TestCase):
             channel=dict(node_id=a["node_id"],sender_app_instance_id=a["app_instance_id"],
                          recipient_app_instance_id=b["app_instance_id"],generation=1,record_sha256="a"*64,
                          policy_revision=1,policy_digest=sender.transport_binding(connection)[5])
+            if explicit_endpoint:
+                channel['endpoint'] = dict(socket_path='/run/node-shadify/receiver.sock',
+                    sender_user='na-authentication', receiver_user='na-shadify',
+                    socket_group='shadify_transport', sender_app='authentication', receiver_app='shadify_api')
             repo=Mock();repo.project_user.return_value=dict(user_id=str(uuid4()),account_id="owner",artist_ids=[])
             document=dict(profile="local_unix_v1",role="receiver",channels={connection:channel})
             directory=root/b["app_id"]

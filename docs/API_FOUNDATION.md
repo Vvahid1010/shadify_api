@@ -350,3 +350,33 @@ focused test suite without PYTHONPATH overrides against the installed reviewed
 wheel. Corrected package proof is offline acquisition/hash/installation/startup
 and synthetic Auth/ingress/replay behavior; live deployment, real Auth/DB/R2 and
 private replay allocation/grant remain pending separately.
+
+
+## Transport 0.1.13 source qualification — 2026-10-23
+
+The API pins the unmodified Node-owned local-shell transport 0.1.13, source digest
+`a71df5ecc51643e6b2e00e5373f58ee2c9afe028e58e7975a813e8be69c17d71`, wheel SHA256
+`82b9964dbf0dca0736b49e22ef6dff834ba78a89e47f4bf805281929d1339cb5`.
+The complete official receipt remains in `node_agent_transport_dependency.json`.
+Native packaging verifies embedded provenance, source hashes and exact wheel hash;
+no transport implementation is copied or forked into this app.
+
+The existing ManagedReceiver already accepts canonical `local_unix_v1` channels
+with an explicit library-validated endpoint (protected socket path, distinct
+non-root service accounts, group, sender and receiver app identities). Its native
+recipient/connection/revision/digest checks, replay gates, typed admission and
+business/public policy remain unchanged. Legacy endpoint-omitted descriptors
+retain the canonical library compatibility behavior; no new identity is selected.
+
+The optional `local_unix_wsl_v1` code path imports `wsl_uds`, which is absent in
+both the exact official 0.1.9 and 0.1.13 wheels. It remains unsupported/fail-closed;
+this update does not claim it works or silently replace it with another carrier.
+The existing explicit projected mTLS/OFF path remains unchanged.
+
+Focused ingress tests exercise actual native ON crypto, admission and replay with
+synthetic kernel peer and Redis fixtures, including an explicit endpoint. They
+are not proof of installed socket ownership, real OS accounts, live delivery,
+or runtime readiness. No WSL service, account, ACL, credential, database or Node
+configuration is changed by source publication. Native source/wheel packaging
+continues through the existing tools/native_release.py and
+tools/publish_native_release.py flow, without adding another pipeline.

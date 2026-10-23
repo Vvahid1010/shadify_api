@@ -263,3 +263,10 @@ Selected overlay recovery provenance is recorded in
  docs/SELECTED_OVERLAY_RECONCILIATION.json. Keep current main's systemd credential
 ACL validation and MP4 behavior when reconciling the older selected overlay.
 ProjectedReceiver remains explicitly OFF-only; ON managed UDS retains replay.
+
+## Transport 0.1.13 source checkpoint
+
+See [API foundation transport qualification](docs/API_FOUNDATION.md#transport-0113-source-qualification--2026-10-23)
+for the exact official artifact, preserved canonical receiver contract, offline
+proof limits, and pre-existing unsupported optional WSL adapter. This source-only
+update grants no runtime identity, ACL, key, replay, policy or lifecycle changes.
