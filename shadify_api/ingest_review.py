@@ -37,7 +37,11 @@ class IngestReviewRepository:
                     decision_method=decision['method'] if decision else None,
                     selected_recording_mbid=decision['selected_recording_mbid'] if decision else None,
                     corrected_metadata=decision['corrected_metadata'] if decision else {})
-                try:return matching_projection(extraction['payload'] if extraction else None,stage['payload'] if stage else None,row)
+                try:
+                    view=matching_projection(extraction['payload'] if extraction else None,stage['payload'] if stage else None,row)
+                    from .release_suggestions import projection as release_projection
+                    view['release_suggestions']=release_projection(c,job['id'])
+                    return view
                 except (ValueError,TypeError,KeyError,AttributeError):raise MediaError(503,'Upload metadata unavailable') from None
             view=projection()
             if body is not None:

@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import UUID
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from .artist_identity import GENRE_IDS, language_tag, normalize_slug
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -48,7 +49,45 @@ class Profile(Input):
         return [v.strip() for v in values]
 
 
+class LocalizedArtist(Input):
+    language: str = Field(min_length=2,max_length=64)
+    name: str = Field(min_length=1,max_length=120)
+    bio: str = Field(default='',max_length=5000)
+    aliases: list[str] = Field(default_factory=list,max_length=20)
+    _language=field_validator('language')(language_tag)
+    @field_validator('name')
+    @classmethod
+    def single_line(cls,value):
+        if '\n' in value:raise ValueError('Single-line name required')
+        return value
+    @field_validator('aliases')
+    @classmethod
+    def alias_values(cls,values):
+        values=[v.strip() for v in values]
+        if any(not 1<=len(v)<=120 or any(ord(c)<32 for c in v) for v in values) or len(set(v.casefold() for v in values))!=len(values):raise ValueError('Distinct short single-line aliases required')
+        return values
+
+class SlugChange(Input):
+    slug: str
+    expected_slug: str = Field(min_length=3,max_length=64)
+    _slug=field_validator('slug')(normalize_slug)
+
 class ArtistProfile(Profile):
+    primary_language: str = 'und'
+    localized: list[LocalizedArtist] = Field(default_factory=list,max_length=20)
+    genre_ids: list[str] = Field(default_factory=list,max_length=20)
+    _language=field_validator('primary_language')(language_tag)
+    @field_validator('genre_ids')
+    @classmethod
+    def canonical_genres(cls,values):
+        if len(set(values))!=len(values) or any(v not in GENRE_IDS for v in values):raise ValueError('Distinct canonical genres required')
+        return values
+    @model_validator(mode='after')
+    def distinct_languages(self):
+        if len({v.language for v in self.localized})!=len(self.localized):raise ValueError('Distinct language entries required')
+        if self.localized and self.primary_language not in {v.language for v in self.localized}:raise ValueError('Primary language entry required')
+        return self
+
     socials: list[str] = Field(default_factory=list, max_length=10)
     avatar_asset_id: UUID | None = None
     header_asset_id: UUID | None = None
@@ -56,11 +95,22 @@ class ArtistProfile(Profile):
     @field_validator('socials')
     @classmethod
     def safe_socials(cls, values):
-        return [https(v) for v in values]
+        values=[https(v) for v in values]
+        keys=[]
+        for value in values:
+            url=urlsplit(value)
+            try:port=url.port
+            except ValueError:raise ValueError('Invalid URL port') from None
+            keys.append((url.hostname.lower(),port or 443,url.path.rstrip('/'),url.query))
+        if len(set(keys))!=len(keys):raise ValueError('Distinct links required')
+        return values
 
 
 class ArtistCreate(ArtistProfile):
     slug: str = Field(min_length=3, max_length=64, pattern=r'^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$')
+
+
+    _slug=field_validator('slug')(normalize_slug)
 
 
 class PublicUserProfile(Profile):
@@ -81,6 +131,15 @@ class RevokeOwner(Input):
 
 class Publication(Input):
     state: Literal['draft','published']
+
+
+class ReleasePublication(Publication):
+    expected_revision: int = Field(ge=0,strict=True)
+    publish_included_tracks: bool = Field(default=False,strict=True)
+
+
+class ReleaseRevision(Input):
+    expected_revision: int = Field(ge=0,strict=True)
 
 
 class Suspension(Input):

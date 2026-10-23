@@ -1,0 +1,253 @@
+{
+  "source_manifest_sha256": "096acc6813f75cae287f79b67acecb5eafb75c71691eb447994117174455cf2f",
+  "main_commit": "fba75b18bca4089887a107bcfe9928b1cd5289f1",
+  "status": "reconciled source;71 focused tests passed, pending independent review/publication; no active DB or service changes",
+  "files": [
+    {
+      "path": "shadify_api/artist_identity.py",
+      "selected_sha256": "fe169fbf6ae81bf8d6d3a2f35b0c877a373f4e7c47a4643868ee9efbc5af2b9b",
+      "candidate_sha256": "fe169fbf6ae81bf8d6d3a2f35b0c877a373f4e7c47a4643868ee9efbc5af2b9b",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/artist_models.py",
+      "selected_sha256": "10b4703f1aa03c1624ec5493a8bcca1d0cd6625901848d74ff606763dc7647a6",
+      "candidate_sha256": "10b4703f1aa03c1624ec5493a8bcca1d0cd6625901848d74ff606763dc7647a6",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/artist_routes.py",
+      "selected_sha256": "90287315c4010dc16ba8442a96f0e7a5a1849bd2749b93b7a6a5f2a6e6a94f35",
+      "candidate_sha256": "90287315c4010dc16ba8442a96f0e7a5a1849bd2749b93b7a6a5f2a6e6a94f35",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/artists.py",
+      "selected_sha256": "469bc65f8ea1553b723de7d048c53638f87b37890152bf9b4a4b407341f63c97",
+      "candidate_sha256": "469bc65f8ea1553b723de7d048c53638f87b37890152bf9b4a4b407341f63c97",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/clamav_scanner.py",
+      "selected_sha256": "56fd7831f69054eb79a7b0e391dffe671b461a3e5028c247a2fd3fd2ac3030a8",
+      "candidate_sha256": "56fd7831f69054eb79a7b0e391dffe671b461a3e5028c247a2fd3fd2ac3030a8",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/config.py",
+      "selected_sha256": "8eb8d09412395aae63f22d0bff5f27f7c49b75bad4320366929082a59e559983",
+      "candidate_sha256": "65ef77ad0ad3cd6677743548f4fa661d516268c92f19ef2b0baa861971c5bc10",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/discover_layout.py",
+      "selected_sha256": "9de01dc74f02ddc7cff111e4c3004e68ee566c433f6dee86816c597e9257a319",
+      "candidate_sha256": "9de01dc74f02ddc7cff111e4c3004e68ee566c433f6dee86816c597e9257a319",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/editorial_discovery.py",
+      "selected_sha256": "4e14b4885ee63c842e5e17642d30406473db7e855fcc7ab049333cd65776440f",
+      "candidate_sha256": "4e14b4885ee63c842e5e17642d30406473db7e855fcc7ab049333cd65776440f",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/ingest.py",
+      "selected_sha256": "ca774d00d55a5124e9affe26779358715b88a2f33a371c4dbf7a2caed5574f49",
+      "candidate_sha256": "ca774d00d55a5124e9affe26779358715b88a2f33a371c4dbf7a2caed5574f49",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/ingest_pipeline.py",
+      "selected_sha256": "459681c91df59c18765faeb9d6ae29ab114c2852fee2dc6d1f47015731816086",
+      "candidate_sha256": "5f653146aac93d4b040d3129b0a5f02e737f7896dffda3546e7e444294ad9446",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/ingest_review.py",
+      "selected_sha256": "281c732e93d3bc8ab287d416114dd8be0949c3d617d82d98ce20f2ebde197892",
+      "candidate_sha256": "281c732e93d3bc8ab287d416114dd8be0949c3d617d82d98ce20f2ebde197892",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/ingest_worker.py",
+      "selected_sha256": "e81ab71b4e87e06e31063caeffe8fe2a71fb053fac9e89463edfe3003c7b4e12",
+      "candidate_sha256": "e81ab71b4e87e06e31063caeffe8fe2a71fb053fac9e89463edfe3003c7b4e12",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/local_storage.py",
+      "selected_sha256": "9fb738ac12987e4ff7b8c3321b1fb07327d0b532942c703b52bd2f8242bb0de7",
+      "candidate_sha256": "9fb738ac12987e4ff7b8c3321b1fb07327d0b532942c703b52bd2f8242bb0de7",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/main.py",
+      "selected_sha256": "11095a5dc46078a8ce8f34ab265e27aa7fc773bd79b35f320e1dd23ce3e8b1b1",
+      "candidate_sha256": "1de51290de4aa5c8a5b10dcc7e296e20251e10c7a5c2f4cc41a3e9994b0b610c",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/media.py",
+      "selected_sha256": "eedf4f338cbab0f0dec97b1a4b67c8cac84698b416a72232c5bea39e1c3f43d4",
+      "candidate_sha256": "20765228957f92e11cdf0911ec6bca0f7b4a6ea454b6df98bef250cd2007bedf",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/media_routes.py",
+      "selected_sha256": "7da6cfe9a30bceecd48de9eba34fbf3f831dd16621f51856d17d18fad142a53b",
+      "candidate_sha256": "7da6cfe9a30bceecd48de9eba34fbf3f831dd16621f51856d17d18fad142a53b",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/media_tools.py",
+      "selected_sha256": "e2f8a42b7fdcafdc60c46a21501e986dfeece2ba45313ec43041748f06b5e701",
+      "candidate_sha256": "8754424a24ff67c2bfaec2f7ca2cfb0e4500d3fc45a88ddb7f2fce55307fa19d",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/musicbrainz.py",
+      "selected_sha256": "71c8251059e307e839b37121f0f7d86151fef670fe581a2806a0378dadd769fc",
+      "candidate_sha256": "71c8251059e307e839b37121f0f7d86151fef670fe581a2806a0378dadd769fc",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/musicbrainz_queue.py",
+      "selected_sha256": "375a5c11d08460b11a54a05b9829df2bb1d3e734483ba153f764ea58ab2e1074",
+      "candidate_sha256": "375a5c11d08460b11a54a05b9829df2bb1d3e734483ba153f764ea58ab2e1074",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/musicbrainz_search.py",
+      "selected_sha256": "614f887364b6a93461dd6aa0ff4cc49c4cfe52c1eafe972fd4a2f0bf11a8eb8d",
+      "candidate_sha256": "614f887364b6a93461dd6aa0ff4cc49c4cfe52c1eafe972fd4a2f0bf11a8eb8d",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/playback_quality.py",
+      "selected_sha256": "fb1bb5b1df7ab5d0e2511eb2348f7efc2b0e1156a7e166409c671e6b24b8fc15",
+      "candidate_sha256": "fb1bb5b1df7ab5d0e2511eb2348f7efc2b0e1156a7e166409c671e6b24b8fc15",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/profile_media.py",
+      "selected_sha256": "6d59b3b690f19203112c85875c7ce250be720cf7a74d16ce2246dc7efbe1bee1",
+      "candidate_sha256": "6d59b3b690f19203112c85875c7ce250be720cf7a74d16ce2246dc7efbe1bee1",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/release_suggestions.py",
+      "selected_sha256": "ca7f7f0ae6d4cb8ceea7b628c93b80ff9b0d6ae12e296bdbf92f775628a1d219",
+      "candidate_sha256": "ca7f7f0ae6d4cb8ceea7b628c93b80ff9b0d6ae12e296bdbf92f775628a1d219",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/releases.py",
+      "selected_sha256": "d795abada83862d4b26407dbb903d8652a58829a947ac1af317f049e9cef9b25",
+      "candidate_sha256": "d795abada83862d4b26407dbb903d8652a58829a947ac1af317f049e9cef9b25",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/repository.py",
+      "selected_sha256": "da842b93a43be288e9f642c4efab17389df974de942559bc0a02e178805c4088",
+      "candidate_sha256": "00909a0c0dc9950f0337a8e8ad3abf0a1475db2690833fa89226405bf4c19731",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/runtime.py",
+      "selected_sha256": "93036104969d781e8222255ae59cafa701dddb48e170e7eb7214372d9b0f1e32",
+      "candidate_sha256": "93036104969d781e8222255ae59cafa701dddb48e170e7eb7214372d9b0f1e32",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/security.py",
+      "selected_sha256": "b923b878cf772b81ac137e335ffae0e07c02d22d5474e6fc3e5747694e5c5d8f",
+      "candidate_sha256": "f51cbb1457c5753a2c0d5e5208d4566b51ca5ad3d4a2b0149882506990c5c7e3",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/storage_service.py",
+      "selected_sha256": "7ec4855c2686e0566bbc076d68d5078959b5a4685b8cbfcb5da56674dad6275b",
+      "candidate_sha256": "7ec4855c2686e0566bbc076d68d5078959b5a4685b8cbfcb5da56674dad6275b",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/studio_uploads.py",
+      "selected_sha256": "c4248a5deb0f8f2966724e68b8dbedb576f6fbafd80e8be5bd8464a9f30c6ee9",
+      "candidate_sha256": "6c505aacf27074437a6e57ab81a4a6d70f6e0084a0a9e7cf5d66f4276e21b847",
+      "merge": true
+    },
+    {
+      "path": "shadify_api/track_media.py",
+      "selected_sha256": "67fae848f28b007e9cd056115971a5729d06b14c43f4263c47b6912160eca361",
+      "candidate_sha256": "67fae848f28b007e9cd056115971a5729d06b14c43f4263c47b6912160eca361",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/wsl_mtls.py",
+      "selected_sha256": "f3e62713565d4eb9a3212d7df296a88a7d23bec265f5aba58e59fa94245b018f",
+      "candidate_sha256": "f3e62713565d4eb9a3212d7df296a88a7d23bec265f5aba58e59fa94245b018f",
+      "merge": false
+    },
+    {
+      "path": "shadify_api/manual_search_receiver_catalog.json",
+      "selected_sha256": "e37fab1bd2b081056213fd4d93a38776b2a5bcb5f96bce02dbf08c732a833422",
+      "candidate_sha256": "e37fab1bd2b081056213fd4d93a38776b2a5bcb5f96bce02dbf08c732a833422",
+      "merge": false
+    },
+    {
+      "path": "migrations/013_release_suggestions.sql",
+      "selected_sha256": "5fa0f44a20f1fc4e55cca254f67c4f18d20f984cb3665b4411bd2f9b6dce5549",
+      "candidate_sha256": "5fa0f44a20f1fc4e55cca254f67c4f18d20f984cb3665b4411bd2f9b6dce5549",
+      "merge": false
+    },
+    {
+      "path": "migrations/014_artist_profile_media.sql",
+      "selected_sha256": "92c11339e4715febdbbbb7a6474a5c7b80ffe1f9ced79c242130f58020870620",
+      "candidate_sha256": "92c11339e4715febdbbbb7a6474a5c7b80ffe1f9ced79c242130f58020870620",
+      "merge": false
+    },
+    {
+      "path": "migrations/017_discover_editorial.sql",
+      "selected_sha256": "94b3328245dfaa6784e4da9f3a3a5e9d2e2b97857967bf6ab3a618ae61ffb7a2",
+      "candidate_sha256": "94b3328245dfaa6784e4da9f3a3a5e9d2e2b97857967bf6ab3a618ae61ffb7a2",
+      "merge": false
+    },
+    {
+      "path": "migrations/018_optional_private_audio_metadata.sql",
+      "selected_sha256": "8e198fb3f9c8c9f07354db9dfcdfc30853f22605ce7583996d707f00f70d95cf",
+      "candidate_sha256": "8e198fb3f9c8c9f07354db9dfcdfc30853f22605ce7583996d707f00f70d95cf",
+      "merge": false
+    },
+    {
+      "path": "migrations/019_independent_track_cover.sql",
+      "selected_sha256": "3a2fb7610c1e893b0a39831c1b6812e55e1f971ecd1ae3b1d40b28019b0118a8",
+      "candidate_sha256": "c17eff60eff7585c25265609b79eca7b4639a8724388e425da9a72415f4ff442",
+      "merge": true
+    },
+    {
+      "path": "migrations/020_release_publication.sql",
+      "selected_sha256": "a808207c4f7c0ddf802bdc12f4de6f9f2cc283a806307cf3d1f9ab30ad258e5e",
+      "candidate_sha256": "a808207c4f7c0ddf802bdc12f4de6f9f2cc283a806307cf3d1f9ab30ad258e5e",
+      "merge": false
+    },
+    {
+      "path": "migrations/021_artist_identity.sql",
+      "selected_sha256": "92a638ce1bf98acfaba5289fb75c54907b0e339407c150e8a6ccc44731741186",
+      "candidate_sha256": "92a638ce1bf98acfaba5289fb75c54907b0e339407c150e8a6ccc44731741186",
+      "merge": false
+    },
+    {
+      "path": "migrations/022_profile_image_variants.sql",
+      "selected_sha256": "36a5d95bc94b88123d3cca4e05f3b3f492df63f4240f8106ec611d10e6d0aed6",
+      "candidate_sha256": "ee72786587250ecb386c5b2c3e37c8b4c9932cca9d10387364e920412faeadc6",
+      "merge": true
+    },
+    {
+      "path": "migrations/rollback/014_artist_profile_media.sql",
+      "selected_sha256": "451e18436f9609e432dc455d381afaed6d34ac85170dcae82915bb2e97a542a7",
+      "candidate_sha256": "451e18436f9609e432dc455d381afaed6d34ac85170dcae82915bb2e97a542a7",
+      "merge": false
+    }
+  ]
+}

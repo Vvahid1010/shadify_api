@@ -10,11 +10,34 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 
+class SplitLocalOwnership(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True,hide_input_in_errors=True,frozen=True)
+    outputs_root:str
+    api_uid:int=Field(gt=0,le=4294967294)
+    ingest_uid:int=Field(gt=0,le=4294967294)
+    media_gid:int=Field(gt=0,le=4294967294)
+    @model_validator(mode='after')
+    def distinct(self):
+        if self.api_uid==self.ingest_uid:raise ValueError('Distinct non-root owners required')
+        return self
+
+def split_paths(originals,policy,*,excluded=()):
+    roots=[Path(originals),Path(policy.outputs_root)]
+    for path in roots:
+        if not path.is_absolute() or '..' in path.parts:raise ValueError('Explicit absolute media roots required')
+    resolved=[path.resolve() for path in roots]
+    if resolved[0].is_relative_to(resolved[1]) or resolved[1].is_relative_to(resolved[0]):raise ValueError('Media roots overlap')
+    for value in excluded:
+        other=Path(value).resolve()
+        if any(path.is_relative_to(other) or other.is_relative_to(path) for path in resolved):raise ValueError('Media roots overlap protected paths')
+    return roots
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     provider: Literal["r2"] = "r2"
     media_base_url: str | None = None
     local_root: str | None = None
+    local_split: SplitLocalOwnership | None = None
     endpoint_url: str
     bucket: str = Field(min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9.-]*[a-z0-9]$")
     access_key_id: SecretStr
@@ -99,6 +122,7 @@ class LocalStorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
     provider: Literal["local"]
     local_root: str
+    local_split: SplitLocalOwnership | None = None
     media_base_url: str
     upload_ttl_seconds: int = Field(default=300, ge=30, le=900, strict=True)
     playback_url_ttl_seconds: int = Field(default=3600, ge=1, le=3600, strict=True)
@@ -190,7 +214,9 @@ def compose_storage(directory, repository):
         source = Path(__file__).resolve().parents[1]
         if not root.is_absolute() or root.resolve().is_relative_to(source):
             raise ValueError('Local media root must be outside source/build')
-        adapters['local'] = LocalAdapter(root)
+        if config.local_split:split_paths(root,config.local_split,excluded=(source,directory))
+        adapters['local'] = LocalAdapter(root,split=config.local_split)
+    if config.local_split and not config.local_root:raise ValueError('Split layout requires originals root')
     if config.provider == 'r2':
         from .storage import R2Storage
         adapters['r2'] = R2Storage(config)

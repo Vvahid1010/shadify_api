@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field,model_validator
 from psycopg.rows import dict_row
 from .config import load_protected_json,load_database_config
-from .local_storage import LocalAdapter
+from .local_storage import LocalAdapter,SplitLocalOwnership,split_paths
 from .media import Asset,MediaError
 from .ingest_scanner import scan_input,ScanVerdict
 from .clamav_scanner import ClamAVScanner
@@ -37,6 +37,7 @@ class WorkerConfig(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True,hide_input_in_errors=True)
     database_file:str
     local_root:str
+    local_split:SplitLocalOwnership|None=None
     state_dir:str
     temp_dir:str
     clamscan:str
@@ -66,8 +67,11 @@ def safe_path(path,*,directory=False,private=False,root_owned=False):
     fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
     try:
         for i,part in enumerate(path.parts[1:]):
-            flags=os.O_RDONLY|os.O_NOFOLLOW
-            if i<len(path.parts)-2 or directory:flags|=os.O_DIRECTORY
+            # Traversal requires search permission, not directory listing. Keep
+            # final-object read admission and every ownership/mode check intact.
+            ancestor=i<len(path.parts)-2
+            flags=(os.O_PATH if ancestor else os.O_RDONLY)|os.O_NOFOLLOW
+            if ancestor or directory:flags|=os.O_DIRECTORY
             child=os.open(part,flags,dir_fd=fd);os.close(fd);fd=child
             ancestor=os.fstat(fd)
             if root_owned and (ancestor.st_uid!=0 or ancestor.st_mode&0o022):raise ValueError('Executable/runtime ancestors must be protected')
@@ -180,7 +184,7 @@ def compose(path):
         import hashlib
         if hashlib.sha256(Path(config.clamscan).read_bytes()).digest()!=hashlib.sha256((Path(config.scanner_runtime_root)/'usr/bin/clamscan').read_bytes()).digest():
             raise ValueError('Scanner closure binary differs')
-        for excluded in (config.database_file,config.local_root,config.temp_dir,config.state_dir,config.definitions_dir):
+        for excluded in (config.database_file,config.local_root,*([config.local_split.outputs_root] if config.local_split else []),config.temp_dir,config.state_dir,config.definitions_dir):
             if Path(excluded).resolve().is_relative_to(Path(config.scanner_runtime_root).resolve()):raise ValueError('Runtime contains worker data')
         safe_path(config.definitions_dir,directory=True,root_owned=True)
         public_trust_snapshot(config.scanner_runtime_root,config.definitions_dir,deadline=time.monotonic()+config.limits.wall_seconds)
@@ -195,7 +199,9 @@ def compose(path):
                 if left.is_relative_to(right) or right.is_relative_to(left):raise ValueError('Media closure must be separate')
             from .musicbrainz import MusicBrainzProvider
             MusicBrainzProvider(state_dir=config.state_dir,user_agent=config.musicbrainz_user_agent)
-        adapter=LocalAdapter(Path(config.local_root))
+        if config.local_split:
+            split_paths(config.local_root,config.local_split,excluded=(Path(path).parent,config.database_file,config.state_dir,config.temp_dir,config.definitions_dir,config.scanner_runtime_root,*([config.media_runtime_root] if config.media_runtime_root else [])))
+        adapter=LocalAdapter(Path(config.local_root),split=config.local_split,role='ingest' if config.local_split else 'api')
         paths=[Path(config.local_root).resolve(),Path(config.temp_dir).resolve(),Path(config.state_dir).resolve(),Path(config.definitions_dir).resolve()]
         for i,left in enumerate(paths):
             for right in paths[i+1:]:

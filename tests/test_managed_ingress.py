@@ -94,7 +94,11 @@ class CombinedIngressTests(unittest.TestCase):
     def test_real_shell_carries_identity_without_central_admin_authority(self):
         asyncio.run(self.run_combined(central_admin=True))
 
-    async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False):
+    def test_public_aliases_use_real_native_admission_without_user_identity(self):
+        with patch('shadify_api.editorial_discovery.EditorialDiscovery.public',return_value={'revision':0,'rails':[]}):
+            asyncio.run(self.run_combined(public_aliases=True))
+
+    async def run_combined(self, epoch_change=None, profile_only=False, central_admin=False, public_aliases=False):
         with tempfile.TemporaryDirectory() as temporary,patch("node_agent_local_shell_transport.local_uds.pwd.getpwnam",return_value=Mock(pw_uid=1001)), \
              patch("socket.socket.connect",side_effect=AssertionError("network prohibited")), \
              patch("socket.socket.bind",side_effect=AssertionError("listener prohibited")), \
@@ -177,6 +181,32 @@ class CombinedIngressTests(unittest.TestCase):
                     self.assertEqual(checked.json()["checks"]["scope"],"profile_database")
                     self.assertEqual(checked.json()["checks"]["replay_admission"],"ready")
                     self.assertEqual(checked.json()["checks"]["storage"],"missing")
+                    if public_aliases:
+                        from types import SimpleNamespace
+                        selected=str(uuid4())
+                        repo.public_artist_catalog.return_value={'artists':[]}
+                        repo.public_page.return_value={'page':{'name':'fixture'}}
+                        repo.public_profile_asset.return_value=SimpleNamespace(id=uuid4(),mime='image/png',size=12)
+                        repo.public_cover_asset.return_value=SimpleNamespace(id=uuid4(),artist_id=uuid4(),mime='image/png',size=12)
+                        cases=[('artists','/artists',200),('artist','/artists/'+selected,200),
+                               ('image','/artists/'+selected+'/images/avatar',503),
+                               ('release_cover','/releases/'+selected+'/cover',503),
+                               ('track_cover','/tracks/'+selected+'/cover',503),
+                               ('editorial','/discover/editorial',200)]
+                        for name,path,status in cases:
+                            public_body=body|dict(path='/api/public'+path,headers=[])
+                            request=sender.begin(connection,'shadify_api.public.'+name,canonical(public_body),int(time.time()))
+                            wire_response=await call(http,request.wire())
+                            self.assertEqual(wire_response.status_code,200,wire_response.text)
+                            result=json.loads(request.complete(wire_response.content,int(time.time())))
+                            self.assertEqual(result['status'],status,(name,result))
+                        # Same admitted service peer alone cannot read a private user route.
+                        private=sender.begin(connection,'shadify_api.me.read',canonical(body|dict(headers=[])),int(time.time()))
+                        denied=await call(http,private.wire())
+                        result=json.loads(private.complete(denied.content,int(time.time())))
+                        self.assertIn(result['status'],(401,403))
+                        self.assertEqual(repo.project_user.call_count,1)
+                        return
                     if profile_only:
                         upload_body=body|dict(method="POST",path="/api/media/uploads",
                             headers=body["headers"]+[dict(name="content-type",value_b64=base64.b64encode(b"application/json").decode())],

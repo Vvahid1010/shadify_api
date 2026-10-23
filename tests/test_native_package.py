@@ -27,6 +27,22 @@ def package(directory,source):
 
 
 class NativePackageTests(unittest.TestCase):
+    def test_public_module_cannot_be_mislabeled_as_legacy_target(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);source='a'*40;manifest=package(root,source)
+            name='source/shadify_api/public.py';raw=b'fixture public routes'
+            (root/name).write_bytes(raw)
+            manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError,'public_profile_target_required'):verify(root,source)
+
+    def test_exact_static_catalog_and_rollback_allowlist(self):
+        from native_release_contract import allowed
+        self.assertTrue(allowed('source/shadify_api/manual_search_receiver_catalog.json'))
+        self.assertTrue(allowed('source/migrations/rollback/014_artist_profile_media.sql'))
+        self.assertFalse(allowed('source/shadify_api/credentials.json'))
+        self.assertFalse(allowed('source/migrations/rollback/other.sql'))
+
     def test_manifest_inventory_and_digest_validation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source="a"*40;manifest=package(root,source)
@@ -151,6 +167,7 @@ class NativePackageTests(unittest.TestCase):
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
+                    if path.name=='public.py':continue # Historical fixture predates generic public aliases.
                     if path.name in ('011_ingest_processing.sql','012_musicbrainz_coordination.sql'):continue
                     name='source/'+folder+'/'+path.name;destination=root/name
                     destination.parent.mkdir(parents=True,exist_ok=True)
@@ -171,6 +188,7 @@ class NativePackageTests(unittest.TestCase):
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
+                    if path.name=='public.py':continue # Historical fixture predates generic public aliases.
                     name='source/'+folder+'/'+path.name;destination=root/name;destination.parent.mkdir(parents=True,exist_ok=True)
                     raw=b'synthetic exact inventory';destination.write_bytes(raw);manifest['files'][name]={'size':len(raw),'sha256':sha(raw)}
             def write():(root/'build-info.json').write_bytes(canonical(manifest))
@@ -188,6 +206,7 @@ class NativePackageTests(unittest.TestCase):
             owner=Path(__file__).resolve().parents[1]
             for folder,glob in [('migrations','*.sql'),('shadify_api','*.py')]:
                 for path in (owner/folder).glob(glob):
+                    if path.name=='public.py':continue # Historical fixture predates generic public aliases.
                     if path.name=='012_musicbrainz_coordination.sql':continue
                     name='source/'+folder+'/'+path.name;destination=root/name
                     destination.parent.mkdir(parents=True,exist_ok=True)

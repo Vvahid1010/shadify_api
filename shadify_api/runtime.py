@@ -6,14 +6,14 @@ import secrets
 import time
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr, Field, model_validator
 
 from .auth import observed_account
 from .config import load_protected_json, load_database_config, load_storage_config, compose_storage
 from .domain import DomainService
 from .media import MediaService
 from .repository import PostgresMediaRepository
-from .security import create_binding, ManagedReceiver
+from .security import create_binding, ManagedReceiver, ProjectedReceiver, projected_off_connection
 from .storage import R2Storage
 from .nomination_contract import Scope
 from .nomination_control import NominationControl
@@ -28,7 +28,29 @@ class RuntimeConfig(BaseModel):
     app_security: dict
     app_security_binding: dict
     app_security_transport: dict | None = None
+    projected_transport_directory: str | None = None
     nomination_scope: Scope | None = None
+    musicbrainz_mode: Literal["cache_only", "b_live"] | None = None
+    musicbrainz_user_agent: str | None = Field(default=None, min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def explicit_musicbrainz_selection(self):
+        if (self.musicbrainz_mode is None) != (self.musicbrainz_user_agent is None):
+            raise ValueError("Select both existing queue mode and public User-Agent")
+        return self
+
+
+def compose_musicbrainz_lookup(config, connect):
+    """Lookup/enqueue on the API's existing client. Never a second dispatcher."""
+    if config.musicbrainz_mode is None:
+        return None
+    if connect is None:
+        raise ValueError("Existing API database client required")
+    from .musicbrainz_queue import QueuedMusicBrainzProvider
+    return QueuedMusicBrainzProvider(connect=connect,
+                                    user_agent=config.musicbrainz_user_agent,
+                                    mode=config.musicbrainz_mode)
+
 
 
 def replay_address(directory):
@@ -57,7 +79,7 @@ def replay_factory(directory, address=None):
     return factory
 
 
-def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None, nomination_composition=None):
+def create_runtime_app(directory: Path, *, binding=None, nomination_provider=None, nomination_composition=None, musicbrainz_provider=None):
     directory = Path(directory)
     receiver = None
     try:
@@ -69,12 +91,26 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
         if (directory / config.database_file).exists():
             database = load_database_config(directory / config.database_file)
             repository = PostgresMediaRepository(database.connect)
+        if musicbrainz_provider is not None and config.musicbrainz_mode is not None:
+            raise ValueError("Select one explicit MusicBrainz composition")
+        if musicbrainz_provider is None:
+            musicbrainz_provider = compose_musicbrainz_lookup(
+                config, repository.connect if repository is not None else None)
+
         if binding is None:
-            address = replay_address(directory) if (directory / "replay.credentials.json").exists() else None
+            projected = config.projected_transport_directory is not None
+            if projected:
+                if config.app_security_transport is not None:
+                    raise ValueError('Select one transport')
+                projected_off_connection(config.app_security)
+            address = replay_address(directory) if not projected and (directory / "replay.credentials.json").exists() else None
             factory = replay_factory(directory, address) if address is not None else None
             projection = {"app_security": config.app_security, "app_security_binding": config.app_security_binding}
             binding = create_binding(projection, directory, factory)
-            if config.app_security_transport is not None:
+            if projected:
+                receiver = ProjectedReceiver(binding, config.projected_transport_directory,
+                                             config.app_security, config.app_security_binding)
+            elif config.app_security_transport is not None:
                 if address is None:
                     raise ValueError("Protected replay allocation required for managed receiver")
                 from .replay_bounds import LocalReplayBounds
@@ -128,8 +164,9 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
         checks = {"scope": "profile_database", "authentication": binding.status().get("state"),
                   "database": "unavailable" if repository else "missing",
                   "storage": "configured_unverified" if service else "missing"}
-        checks["replay_admission"] = "unavailable"
-        if checks["authentication"] == "Active" and receiver is not None and receiver.current():
+        requires_replay = getattr(receiver, 'requires_replay', True)
+        checks["replay_admission"] = "unavailable" if requires_replay else "not_required_off"
+        if requires_replay and checks["authentication"] == "Active" and receiver is not None and receiver.current():
             try:
                 # A disposable probe uses the canonical reservation/recovery gate;
                 # no business dispatch, release, bespoke replay logic or background job.
@@ -148,8 +185,8 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
                 pass
         ready = (checks["authentication"] == "Active" and checks["database"] == "schema_ready"
                  and checks["managed_ingress"] == "installed"
-                 and checks["clock_bounds"] == "ready" and checks["replay_storage_bounds"] == "ready"
-                 and checks["replay_admission"] == "ready")
+                 and (not requires_replay or (checks["clock_bounds"] == "ready"
+                      and checks["replay_storage_bounds"] == "ready" and checks["replay_admission"] == "ready")))
         if nomination is not None:
             try:
                 nomination.scope()
@@ -165,7 +202,7 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
 
     from .main import create_app
     return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
-                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination)
+                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination, musicbrainz_provider=musicbrainz_provider)
 
 
 def app_factory():

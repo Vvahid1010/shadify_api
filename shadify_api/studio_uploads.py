@@ -31,7 +31,10 @@ def matching_projection(extraction,evidence,row):
         except (ValueError,TypeError,KeyError,AttributeError):candidates=[]
     cover_complete=(row['asset_type']=='artwork_original' and evidence and evidence.get('complete') is True and evidence.get('provider')=='track_audio')
     decision=None
-    if row['decision_id'] is not None and (complete or cover_complete):
+    private_admission=(row['asset_type']=='audio_original' and row['decision_method']=='not_requested'
+        and evidence==dict(complete=True,provider='private_processing',
+            policy='private-audio-optional-metadata-v1',metadata_lookup='not_requested'))
+    if row['decision_id'] is not None and (complete or cover_complete or private_admission):
         decision=dict(id=str(row['decision_id']),method=row['decision_method'],selected_recording_mbid=str(row['selected_recording_mbid']) if row['selected_recording_mbid'] else None,corrected_metadata=musical_metadata(row['corrected_metadata']))
     return dict(extracted_metadata=metadata,lookup_complete=complete,candidates=candidates,decision=decision)
 
@@ -63,7 +66,10 @@ class StudioUploadsRepository:
                 ingest=None;matching=None
                 if row['job_id'] is not None:
                     ingest=dict(job_id=str(row['job_id']),state=row['job_state'],revision=row['revision'],approved=row['job_state']=='ready' and row['approved'],retryable=row['last_error'] in INFRA_ERRORS,last_error=row['last_error'],legacy_unregistered=False)
-                    try:matching=matching_projection(row['extraction'],row['matching'],row)
+                    try:
+                        matching=matching_projection(row['extraction'],row['matching'],row)
+                        from .release_suggestions import projection as release_projection
+                        matching['release_suggestions']=release_projection(c,row['job_id'])
                     except (ValueError,TypeError,KeyError,AttributeError):raise MediaError(503,'Upload metadata unavailable') from None
                 elif row['state'] in ('uploaded','ready'):
                     ingest=dict(job_id=None,state='uploaded',revision=None,approved=False,retryable=False,last_error=None,legacy_unregistered=True)

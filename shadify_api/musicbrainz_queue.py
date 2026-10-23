@@ -18,7 +18,7 @@ def canonical_request(metadata):
     public={key:query[key] for key in ('title','artist','isrc')};public['duration_ms']=1
     if public['isrc']:public['title']='';public['artist']=''
     request={'resource':'isrc' if public['isrc'] else 'recording','query':public,
-             'include':'artist-credits' if public['isrc'] else '', 'page':0,'format_version':1}
+             'include':'artist-credits' if public['isrc'] else '', 'page':0,'format_version':2}
     key=hashlib.sha256(json.dumps(request,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     return key,request,query
 
@@ -51,11 +51,27 @@ class QueuedMusicBrainzProvider:
     def _lookup(self,metadata,*,deadline):
         if time.monotonic()>=deadline:raise ProviderUnavailable('Lookup deadline')
         key,request,query=canonical_request(metadata)
+        return self._request(key,request,query,deadline)
+
+    def lookup_release(self,request,*,deadline):
+        from .release_suggestions import release_request
+        key,canonical=release_request(**dict(album=request['query']['album'],artist=request['query']['artist_mbid']))
+        if request!=canonical:raise ProviderUnavailable('Release request invalid')
+        return self._request(key,request,request['query'],deadline)
+
+    def _decode(self,response,request,query):
+        if request['resource']=='release_suggestions':
+            from .release_suggestions import release_snapshot
+            return {'snapshot':release_snapshot(json.dumps(response['document'],separators=(',',':')).encode(),query)}
+        return snapshot(json.dumps(response['document'],separators=(',',':')).encode(),query)
+
+    def _request(self,key,request,query,deadline):
+        if time.monotonic()>=deadline:raise ProviderUnavailable('Lookup deadline')
         with self.connect() as connection,connection.cursor(row_factory=dict_row) as c:
             row=c.execute('SELECT response,fetched_at,response_status FROM shadify_mb_cache WHERE request_key=%s AND expires_at>clock_timestamp()', (key,)).fetchone()
             if row:
                 response=row['response']
-                result=snapshot(json.dumps(response['document'],separators=(',',':')).encode(),query)
+                result=self._decode(response,request,query)
                 result.update(fetched_at=row['fetched_at'].isoformat(),snapshot_sha256=response['response_sha256'],response_status=row['response_status'],cache_hit=True)
                 return result
             if self.mode=='cache_only':raise ProviderUnavailable('Cache miss; live dispatch disabled')
@@ -63,10 +79,10 @@ class QueuedMusicBrainzProvider:
             c.execute('SELECT singleton FROM shadify_mb_rate WHERE singleton FOR UPDATE')
             row=c.execute('SELECT response,fetched_at,response_status FROM shadify_mb_cache WHERE request_key=%s AND expires_at>clock_timestamp()', (key,)).fetchone()
             if row:
-                result=snapshot(json.dumps(row['response']['document'],separators=(',',':')).encode(),query)
+                result=self._decode(row['response'],request,query)
                 result.update(fetched_at=row['fetched_at'].isoformat(),snapshot_sha256=row['response']['response_sha256'],response_status=row['response_status'],cache_hit=True)
                 return result
-            self._prune(c)
+            # API lookup only admits requests; the existing dispatcher owns cleanup.
             existing=c.execute('SELECT request_key FROM shadify_mb_queue WHERE request_key=%s',(key,)).fetchone()
             if existing is None and c.execute('SELECT count(*) AS n FROM shadify_mb_queue').fetchone()['n']>=QUEUE_CAPACITY:
                 raise ProviderUnavailable('Queue capacity')
@@ -75,11 +91,13 @@ class QueuedMusicBrainzProvider:
 
     def _prune(self,c):
         c.execute('DELETE FROM shadify_mb_cache WHERE expires_at<=clock_timestamp()')
-        c.execute("DELETE FROM shadify_mb_queue WHERE state IN ('done','paused') AND updated_at<clock_timestamp()-%s*interval '1 second'",(RETENTION,))
+        from .release_suggestions import available
+        retained=" AND NOT EXISTS(SELECT 1 FROM shadify_ingest_release_proposals p WHERE p.request_key=shadify_mb_queue.request_key AND p.result IS NULL)" if available(c) else ''
+        c.execute("DELETE FROM shadify_mb_queue WHERE state IN ('done','paused') AND updated_at<clock_timestamp()-%s*interval '1 second'"+retained,(RETENTION,))
 
     def _transport(self,request,*,deadline):
         code,out,err=run_bounded([sys.executable,'-m','shadify_api.musicbrainz','--response','--query',json.dumps(request['query'],separators=(',',':')),
-            '--user-agent',self.user_agent,'--parent-pid',str(os.getpid()),'--request-deadline',str(deadline)],deadline=deadline,output_bytes=65536)
+            '--resource','release_suggestions' if request['resource']=='release_suggestions' else 'recording','--user-agent',self.user_agent,'--parent-pid',str(os.getpid()),'--request-deadline',str(deadline)],deadline=deadline,output_bytes=65536)
         if code or err:raise ProviderUnavailable('Bounded transport unavailable')
         return json.loads(out)
 
@@ -118,14 +136,17 @@ class QueuedMusicBrainzProvider:
                             document=response['document'];digest=response['response_sha256']
                             if type(digest) is not str or len(digest)!=64 or any(v not in '0123456789abcdef' for v in digest):raise ValueError()
                             raw=json.dumps(document,separators=(',',':')).encode()
-                            snapshot(raw,job['request']['query'])
-                            if len(raw)>49152 or status==404 and (not job['request']['query']['isrc'] or document['recordings']):raise ValueError()
+                            decoded=self._decode(response,job['request'],job['request']['query'])
+                            if len(raw)>49152 or status==404 and (job['request']['resource']=='release_suggestions' or not job['request']['query']['isrc'] or document['recordings']):raise ValueError()
                             self._prune(c)
                             if c.execute('SELECT count(*) AS n FROM shadify_mb_cache').fetchone()['n']>=CACHE_CAPACITY:
                                 c.execute('DELETE FROM shadify_mb_cache WHERE request_key=(SELECT request_key FROM shadify_mb_cache ORDER BY fetched_at,request_key LIMIT 1)')
                             ttl=NEGATIVE_TTL if status==404 else POSITIVE_TTL
                             c.execute('INSERT INTO shadify_mb_cache(request_key,request,response,fetched_at,expires_at,response_status) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(request_key) DO UPDATE SET response=excluded.response,fetched_at=excluded.fetched_at,expires_at=excluded.expires_at,response_status=excluded.response_status',
                                 (job['request_key'],Jsonb(job['request']),Jsonb({'document':document,'response_sha256':digest}),now,now+timedelta(seconds=ttl),status))
+                            if job['request']['resource']=='release_suggestions':
+                                from .release_suggestions import complete
+                                complete(c,job['request_key'],decoded['snapshot'],digest,now)
                             success=True
                         except (ValueError,KeyError,TypeError,ProviderUnavailable):pass
                     c.execute('UPDATE shadify_mb_rate SET next_at=clock_timestamp()+interval \'1.1 seconds\',inflight_until=NULL,request_key=NULL,attempt_id=NULL WHERE singleton')

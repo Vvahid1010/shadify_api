@@ -35,8 +35,8 @@ class IngestRepository:
     def ingest_outputs(self,c,asset_id):
         # Older009/010 releases stay compatible; this additive projection is optional.
         if c.execute("SELECT to_regclass('shadify_ingest_variants') AS name").fetchone()['name'] is None:return []
-        rows=c.execute("SELECT v.role,a.id,a.mime,a.size FROM shadify_ingest_jobs j JOIN shadify_ingest_variants v ON v.job_id=j.id JOIN shadify_media_assets a ON a.id=v.asset_id JOIN shadify_ingest_approvals approved ON approved.asset_id=a.id AND approved.job_id=j.id WHERE (j.asset_id=%s OR a.id=%s) AND j.state='ready' ORDER BY v.role",(asset_id,asset_id)).fetchall()
-        return [dict(role=r['role'],asset_id=str(r['id']),mime=r['mime'],size=r['size']) for r in rows]
+        rows=c.execute("SELECT v.role,a.id,a.mime,a.size,a.asset_type,v.source_quality FROM shadify_ingest_jobs j JOIN shadify_ingest_variants v ON v.job_id=j.id JOIN shadify_media_assets a ON a.id=v.asset_id JOIN shadify_ingest_approvals approved ON approved.asset_id=a.id AND approved.job_id=j.id WHERE (j.asset_id=%s OR a.id=%s OR j.id IN (SELECT sibling.job_id FROM shadify_ingest_variants sibling JOIN shadify_media_assets profile ON profile.id=sibling.asset_id WHERE profile.id=%s AND profile.asset_type IN ('avatar_delivery','header_delivery'))) AND j.state='ready' ORDER BY v.role",(asset_id,asset_id,asset_id)).fetchall()
+        return [{**dict(role=r['role'],asset_id=str(r['id']),mime=r['mime'],size=r['size']),**({'has_alpha':r['source_quality'].get('has_alpha') is True} if r['asset_type'] in ('avatar_delivery','header_delivery') else {})} for r in rows]
 
     def require_ingest_approval(self,asset,*,cursor=None,lock=False):
         if lock and cursor is None:raise ValueError("Approval locking requires an outer transaction cursor")
@@ -54,7 +54,7 @@ class IngestRepository:
                     'JOIN shadify_ingest_scans s ON s.id=a.scan_id AND s.job_id=j.id '
                     "AND s.input_sha256=j.input_sha256 AND s.verdict='clean' "
                     "WHERE a.asset_id=%s AND j.state='ready' AND a.input_sha256=j.input_sha256 "
-                    'AND source.artist_id=%s AND source.track_id=%s '
+                    'AND source.artist_id=%s AND source.track_id IS NOT DISTINCT FROM %s '
                     'AND a.storage_key=%s AND a.storage_provider=%s AND a.mime=%s AND a.size=%s' +
                     pipeline_clause+(' FOR SHARE OF j' if lock else ''),
                     (asset.id,asset.artist_id,asset.track_id,asset.key,asset.storage_provider,asset.mime,asset.size)).fetchone()

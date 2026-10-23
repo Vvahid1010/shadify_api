@@ -241,3 +241,25 @@ disable GuardedASGI or pass large uploads through Authentication. No live root,
 key, credential, listener, migration, installation, cloud call or push is
 authorized here. Storage source work precedes any pending admin nomination
 implementation; this remains the sole isolated API writer.
+
+## Generic public ingress and local identity (2026-10-23)
+
+Prepared public aliases live inside the existing protected API at /api/public.
+Authentication's explicitly configured generic public proxy forwards service-peer
+requests without inventing a user assertion. Shadify owns public visibility and
+approved media checks; private routes still require admitted user identity.
+Coordinate API/catalog/protected selection and frontend before runtime promotion.
+Source publication never applies migrations or starts services.
+
+Global Authentication account_id maps to shadify_users.auth_account_id (NOT NULL
+UNIQUE, migration002); shadify_users.id is a local UUID. Artist ownership uses
+artist_memberships with one active owner per artist (004); manager grants key
+(artist_id,user_id) with explicit capabilities (015). Primary/delegate permissions
+remain Shadify-owned (006), never inferred from browser headers or Auth app roles.
+Canonical domain_app/proxy_app and admission checks remain required. No second
+login system or email-based identity mapping is introduced.
+
+Selected overlay recovery provenance is recorded in
+ docs/SELECTED_OVERLAY_RECONCILIATION.json. Keep current main's systemd credential
+ACL validation and MP4 behavior when reconciling the older selected overlay.
+ProjectedReceiver remains explicitly OFF-only; ON managed UDS retains replay.

@@ -24,7 +24,7 @@ def allowed(name):
     if (not name or path.is_absolute() or path.as_posix()!=name or "\\" in name
             or any(part in {".",".."} or part.startswith(".") for part in path.parts)):
         return False
-    return (name == "requirements.lock" or len(path.parts)==2 and path.parts[0]=="wheels" and path.suffix==".whl"
+    return (name in {"requirements.lock", "source/shadify_api/manual_search_receiver_catalog.json", "source/migrations/rollback/014_artist_profile_media.sql"} or len(path.parts)==2 and path.parts[0]=="wheels" and path.suffix==".whl"
         or len(path.parts)==2 and path.parts[0]=="source" and path.name in ROOT_FILES
         or len(path.parts)>2 and path.parts[:2]==("source","shadify_api") and path.suffix==".py"
         or len(path.parts)==3 and path.parts[:2]==("source","migrations") and path.suffix==".sql")
@@ -41,45 +41,57 @@ def verify(root, source):
         or data.get("source_commit")!=source or not re.fullmatch(r"[a-f0-9]{40}",source)
         or data.get("runtime")!=RUNTIME or data.get("requirements_path")!="source/requirements.txt"
         or data.get("lock_path")!="requirements.lock" or data.get("management_schema_version")!=1
-        or data.get("migration_target") not in {"002_user_profile_track_drafts","005_artist_content","006_app_admin","008_nomination_control","009_ingest_quarantine","010_ingest_attempts","011_ingest_processing","012_musicbrainz_coordination"}):
+        or data.get("migration_target") not in {"002_user_profile_track_drafts","005_artist_content","006_app_admin","008_nomination_control","009_ingest_quarantine","010_ingest_attempts","011_ingest_processing","012_musicbrainz_coordination","022_profile_image_variants"}):
         raise ValueError("invalid_manifest")
     files=data.get("files")
     if not isinstance(files,dict) or not REQUIRED<=files.keys():
         raise ValueError("incomplete_native_package")
-    if data['migration_target'] in {'005_artist_content','006_app_admin','008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if data['migration_target'] in {'005_artist_content','006_app_admin','008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         required={"source/migrations/003_identity_provenance.sql", "source/migrations/004_artist_memberships.sql",
                   "source/migrations/005_artist_content.sql", "source/shadify_api/access.py",
                   "source/shadify_api/artists.py", "source/shadify_api/artist_models.py", "source/shadify_api/artist_routes.py"}
-        if data['migration_target'] in {'006_app_admin','008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+        if data['migration_target'] in {'006_app_admin','008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
             required.update({'source/migrations/006_app_admin.sql','source/shadify_api/admin.py'})
         if not required<=files.keys(): raise ValueError("incomplete_artist_package")
     nomination_sql='source/migrations/008_nomination_control.sql'
-    if nomination_sql in files and data['migration_target'] not in {'008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if nomination_sql in files and data['migration_target'] not in {'008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         raise ValueError('nomination_target_required')
-    if data['migration_target'] in {'008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if data['migration_target'] in {'008_nomination_control','009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         required={'source/migrations/007_admin_nomination.sql',nomination_sql}
         required.update('source/shadify_api/'+name+'.py' for name in (
             'nomination','nomination_contract','nomination_control','nomination_routes',
             'nomination_transport','nomination_catalog','local_primary','local_primary_composition'))
         if not required<=files.keys():raise ValueError('incomplete_nomination_package')
     ingest_sql='source/migrations/009_ingest_quarantine.sql'
-    if ingest_sql in files and data['migration_target'] not in {'009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if ingest_sql in files and data['migration_target'] not in {'009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         raise ValueError('ingest_target_required')
-    if data['migration_target'] in {'009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if data['migration_target'] in {'009_ingest_quarantine','010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         required={ingest_sql,'source/shadify_api/ingest.py','source/shadify_api/ingest_scanner.py'}
         if not required<=files.keys():raise ValueError('incomplete_ingest_package')
     attempts_sql='source/migrations/010_ingest_attempts.sql'
-    if attempts_sql in files and data['migration_target'] not in {'010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:raise ValueError('attempts_target_required')
-    if data['migration_target'] in {'010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination'}:
+    if attempts_sql in files and data['migration_target'] not in {'010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:raise ValueError('attempts_target_required')
+    if data['migration_target'] in {'010_ingest_attempts','011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         required={attempts_sql,'source/shadify_api/clamav_scanner.py','source/shadify_api/ingest_worker.py','source/shadify_api/scanner_sandbox.py'}
         if not required<=files.keys():raise ValueError('incomplete_attempts_package')
-    if data['migration_target'] in {'011_ingest_processing','012_musicbrainz_coordination'}:
+    if data['migration_target'] in {'011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:
         required={'source/migrations/011_ingest_processing.sql',*('source/shadify_api/'+name+'.py' for name in ('ingest_pipeline','ingest_review','media_tools','musicbrainz'))}
         if not required<=files.keys():raise ValueError('incomplete_pipeline_package')
-    if 'source/migrations/011_ingest_processing.sql' in files and data['migration_target'] not in {'011_ingest_processing','012_musicbrainz_coordination'}:raise ValueError('pipeline_target_required')
+    if 'source/migrations/011_ingest_processing.sql' in files and data['migration_target'] not in {'011_ingest_processing','012_musicbrainz_coordination','022_profile_image_variants'}:raise ValueError('pipeline_target_required')
     coordination='source/migrations/012_musicbrainz_coordination.sql'
-    if coordination in files and data['migration_target']!='012_musicbrainz_coordination':raise ValueError('coordination_target_required')
-    if data['migration_target']=='012_musicbrainz_coordination' and not {coordination,'source/shadify_api/musicbrainz_queue.py'}<=files.keys():raise ValueError('incomplete_coordination_package')
+    if coordination in files and data['migration_target'] not in {'012_musicbrainz_coordination','022_profile_image_variants'}:raise ValueError('coordination_target_required')
+    if data['migration_target'] in {'012_musicbrainz_coordination','022_profile_image_variants'} and not {coordination,'source/shadify_api/musicbrainz_queue.py'}<=files.keys():raise ValueError('incomplete_coordination_package')
+    if data['migration_target']=='022_profile_image_variants':
+        required={'source/shadify_api/manual_search_receiver_catalog.json'}
+        required.update('source/shadify_api/'+name+'.py' for name in (
+            'artist_identity','discover_layout','musicbrainz_search','playback_quality',
+            'profile_media','release_suggestions','releases','track_media','public'))
+        required.update('source/migrations/'+name+'.sql' for name in (
+            '013_release_suggestions','014_artist_profile_media','015_artist_managers',
+            '016_ingest_video_after_profile','017_discover_editorial','018_optional_private_audio_metadata',
+            '019_independent_track_cover','020_release_publication','021_artist_identity','022_profile_image_variants'))
+        if not required<=files.keys():raise ValueError('incomplete_profile_public_package')
+    if 'source/shadify_api/public.py' in files and data['migration_target']!='022_profile_image_variants':
+        raise ValueError('public_profile_target_required')
     actual=set()
     for path in root.rglob("*"):
         info=path.lstat()
