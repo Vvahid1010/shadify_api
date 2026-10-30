@@ -267,7 +267,7 @@ class AppAdminTests(ArtistPostgresCase):
           'SELECT,INSERT,UPDATE,DELETE': ['shadify_tracks','shadify_releases','shadify_videos','shadify_moments','shadify_events','shadify_app_admin_delegates'],
           'SELECT,INSERT,DELETE': ['shadify_release_tracks'],
           'SELECT,INSERT': ['artist_ownership_audit','shadify_app_admin_audit','shadify_ingest_jobs'],
-          'SELECT': ['shadify_ingest_scans','shadify_ingest_approvals'],
+          'SELECT': ['shadify_ingest_scans','shadify_ingest_approvals','shadify_primary_selections'],
           'UPDATE(id)': ['shadify_ingest_jobs'],
           'SELECT,UPDATE': ['shadify_app_admin']}
         with self.connect() as c:

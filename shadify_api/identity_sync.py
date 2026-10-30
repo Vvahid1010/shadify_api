@@ -30,25 +30,7 @@ class ProjectionReceiver:
     def verify(self, proof, admitted, value, *, method, target):
         # As for existing Shadify user assertions, canonical shell authenticates
         # complete request bytes. No second app-local signature/key registry.
-        if isinstance(admitted, TrustedPeer):
-            rows=[r for r in self.policy['connections'] if r['connection_id']==admitted.connection_id
-                  and (r['sender']['identity']['node_id'],r['sender']['identity']['app_instance_id'])
-                  ==(admitted.node_id,admitted.app_instance_id)]
-        else:
-            from app_security_shell._native import InboundRequest
-            if not isinstance(admitted, InboundRequest):
-                raise ValueError('identity_sync_admission_required')
-            rows=[]
-            for r in self.policy['connections']:
-                peer=r['sender']['identity']
-                try: admitted.admit_transport(r['connection_id'],peer['node_id'],peer['app_instance_id'])
-                except ValueError: continue
-                rows.append(r)
-        if len(rows)!=1: raise ValueError('identity_sync_peer_rejected')
-        row=rows[0];sender=row['sender']['identity'];recipient=row['recipient']['identity']
-        if ((row['connection_id'],row['policy_revision']) not in
-                [tuple(x[:2]) for x in self.binding.acquire().revisions()]):
-            raise ValueError('identity_sync_policy_changed')
+        row,sender,recipient=self.connection(admitted)
         if type(proof) is not str or len(proof)>8192: raise ValueError('identity_sync_proof_rejected')
         import re
         version,encoded,signature=proof.rsplit('.',2)
@@ -73,11 +55,43 @@ class ProjectionReceiver:
         issued,expires=claims['iat'],claims['exp'];now=int(time.time())
         if (type(issued) is not int or type(expires) is not int or expires<=issued or expires-issued>60
             or issued>now+5 or expires<=now):raise ValueError('identity_sync_proof_expired')
+        return (str(recipient['node_id']),str(recipient['app_instance_id']))
 
 
-def apply_projection(connection, payload):
+    def connection(self, admitted):
+        if isinstance(admitted, TrustedPeer):
+            rows=[r for r in self.policy['connections'] if r['connection_id']==admitted.connection_id
+                  and (r['sender']['identity']['node_id'],r['sender']['identity']['app_instance_id'])
+                  ==(admitted.node_id,admitted.app_instance_id)]
+        else:
+            from app_security_shell._native import InboundRequest
+            if not isinstance(admitted, InboundRequest):
+                raise ValueError('identity_sync_admission_required')
+            rows=[]
+            for r in self.policy['connections']:
+                peer=r['sender']['identity']
+                try: admitted.admit_transport(r['connection_id'],peer['node_id'],peer['app_instance_id'])
+                except ValueError: continue
+                rows.append(r)
+        if len(rows)!=1: raise ValueError('identity_sync_peer_rejected')
+        row=rows[0];sender=row['sender']['identity'];recipient=row['recipient']['identity']
+        if ((row['connection_id'],row['policy_revision']) not in
+                [tuple(x[:2]) for x in self.binding.acquire().revisions()]):
+            raise ValueError('identity_sync_policy_changed')
+        if sender['app_id']!='authentication' or recipient!=self.policy['local'] or recipient['app_id']!='shadify_api':
+            raise ValueError('identity_sync_peer_rejected')
+        return row,sender,recipient
+
+    def current_recipient(self, admitted):
+        _,_,recipient=self.connection(admitted)
+        return (str(recipient['node_id']),str(recipient['app_instance_id']))
+
+
+def apply_projection(connection, payload, *, installation=None):
+    from .primary_selection import lock_scope, reconcile
     value=payload.model_dump();digest=hashlib.sha256(canonical(value)).hexdigest()
     with connection.cursor(row_factory=dict_row) as c:
+        state=lock_scope(c)
         c.execute('INSERT INTO shadify_users(id,auth_account_id) VALUES (%s,%s) ON CONFLICT(auth_account_id) DO NOTHING',
                   (uuid4(),payload.account_id))
         user=c.execute('SELECT id FROM shadify_users WHERE auth_account_id=%s FOR UPDATE',(payload.account_id,)).fetchone()
@@ -96,7 +110,9 @@ def apply_projection(connection, payload):
                 (user['id'],payload.domain_app,payload.factor_scope_id,payload.version,digest,payload.identity_status,
                  contact('email',email),contact('phone',phone),email[0]+'***@'+email.split('@')[1] if email else None,
                  '+'+'*'*(len(phone)-5)+phone[-4:] if phone else None))
-    # Never assert first_admitted_at, change profile/active, memberships or admin.
+        reconcile(c, factor_scope_id=payload.factor_scope_id, state=state, installation=installation)
+    # Projection never manufactures admission/profile/roles. An independently
+    # authorized pending primary selection may resolve against these verified facts.
     return {k:value[k] for k in ('account_id','domain_app','factor_scope_id','proxy_app','version')}|{'payload_sha256':digest}
 
 
@@ -114,12 +130,12 @@ def install_routes(app, repository, receiver):
             if (request.scope.get('query_string',b'') or request.scope.get('raw_path')!=b'/api/v1/identity-sync'
                 or await request.body()!=canonical(payload.model_dump())):raise ValueError()
             proof=proofs[0].decode('ascii');admitted=request.scope.get('app_security.admitted')
-            def verify():receiver.verify(proof,admitted,payload.model_dump(),method=request.method,target=request.url.path)
-            verify()
+            def verify():return receiver.verify(proof,admitted,payload.model_dump(),method=request.method,target=request.url.path)
+            installation=verify()
         except (ValueError,UnicodeError):raise HTTPException(403,'identity_sync_proof_rejected') from None
         def transaction():
             with repository.connect() as c:
-                result=apply_projection(c,payload)
+                result=apply_projection(c,payload,installation=installation)
                 try:verify()
                 except (ValueError,UnicodeError):raise HTTPException(403,'identity_sync_proof_rejected') from None
                 return result

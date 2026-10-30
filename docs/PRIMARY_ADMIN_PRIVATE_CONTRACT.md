@@ -44,3 +44,6 @@ user profile and projection versions were preserved. The fixture has no TCP/live
 database fallback and cleaned up its temporary cluster. Independent source review
 found no remaining publication blocker. This does not qualify real Node/DEV
 admission or authorize any installed migration, assignment or service action.
+
+
+Contact-based successor contract: [PRIMARY_CONTACT_SELECTION_V2.md](PRIMARY_CONTACT_SELECTION_V2.md). Existing UUID-only seam remains compatible; production admission still closed.

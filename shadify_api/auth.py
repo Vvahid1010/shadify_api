@@ -122,11 +122,19 @@ def require_account(request: Request) -> Identity:
     return identity
 
 
-def observed_account(repository):
+def observed_account(repository, *, identity_projection=None):
     """Server-owned provenance hook. No request body/header can supply proof."""
     def admitted_account(request: Request):
         actor = require_account(request)
         if repository is not None:
-            repository.observe_identity(request.state.auth_identity)
+            if identity_projection is None:
+                repository.observe_identity(request.state.auth_identity)
+            else:
+                def verify_installation():
+                    return (identity_projection.current_recipient(request.scope.get('app_security.admitted')),
+                            identity_projection.scopes.get('shadify'))
+                installation,scope=verify_installation()
+                repository.observe_identity(request.state.auth_identity, installation=installation,
+                    factor_scope_id=scope, verify_installation=verify_installation)
         return require_fresh_actor(actor)
     return admitted_account

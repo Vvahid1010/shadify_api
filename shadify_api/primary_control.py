@@ -63,17 +63,23 @@ def apply_primary(connection,*,change,admission=unavailable_admission):
         check(admission,change,'apply')
         if not active_identity(user) or projection is None or projection['identity_status']!='active':
             raise HTTPException(422,'primary_target_not_active_in_scope')
-        grants=c.execute('SELECT user_id,permissions FROM shadify_app_admin_delegates WHERE user_id=ANY(%s) ORDER BY user_id',
-            ([v for v in (state['primary_user_id'],user['id']) if v is not None],)).fetchall()
-        snapshots=[dict(user_id=str(g['user_id']),permissions=g['permissions']) for g in grants]
-        result=dict(state='applied',operation_id=str(change.operation_id),domain_app=change.domain_app,
-            primary_user_id=str(user['id']),revision=state['revision']+1)
-        c.execute('UPDATE shadify_app_admin SET primary_user_id=%s,revision=revision+1 WHERE singleton=true',(user['id'],))
-        c.execute('INSERT INTO shadify_app_admin_audit(id,actor_user_id,actor_account_id,target_account_id,action,details) VALUES (%s,NULL,NULL,%s,%s,%s)',
-            (uuid4(),user['auth_account_id'],'protected_primary_change',Jsonb(dict(operation_id=str(change.operation_id),authority_kind=kind,
-             authority_sha256=fingerprint,previous_primary_user_id=str(state['primary_user_id']) if state['primary_user_id'] else None,
-             revision=result['revision'],before_delegates=snapshots,after_delegates=snapshots))))
+        result=_assign_validated(c,state,user,kind,fingerprint,change.operation_id)
         c.execute('INSERT INTO shadify_primary_operations(operation_id,request_sha256,authority_sha256,authority_kind,result) VALUES (%s,%s,%s,%s,%s)',
             (change.operation_id,commitment(change),fingerprint,kind,Jsonb(result)))
         check(admission,change,'apply')
         return result
+
+
+def _assign_validated(c,state,user,kind,fingerprint,operation_id):
+    """Internal caller holds state and verifies current active target."""
+    grants=c.execute('SELECT user_id,permissions FROM shadify_app_admin_delegates WHERE user_id=ANY(%s) ORDER BY user_id',
+        ([v for v in (state['primary_user_id'],user['id']) if v is not None],)).fetchall()
+    snapshots=[dict(user_id=str(g['user_id']),permissions=g['permissions']) for g in grants]
+    result=dict(state='applied',operation_id=str(operation_id),domain_app='shadify',
+        primary_user_id=str(user['id']),revision=state['revision']+1)
+    c.execute('UPDATE shadify_app_admin SET primary_user_id=%s,revision=revision+1 WHERE singleton=true',(user['id'],))
+    c.execute('INSERT INTO shadify_app_admin_audit(id,actor_user_id,actor_account_id,target_account_id,action,details) VALUES (%s,NULL,NULL,%s,%s,%s)',
+        (uuid4(),user['auth_account_id'],'protected_primary_change',Jsonb(dict(operation_id=str(operation_id),authority_kind=kind,
+         authority_sha256=fingerprint,previous_primary_user_id=str(state['primary_user_id']) if state['primary_user_id'] else None,
+         revision=result['revision'],before_delegates=snapshots,after_delegates=snapshots))))
+    return result

@@ -43,17 +43,29 @@ class Authority:
 
 
 class ArtistAccessRepository(AppAdminRepository):
-    def observe_identity(self, identity: Identity):
+    def observe_identity(self, identity: Identity, *, installation=None, factor_scope_id=None, verify_installation=None):
         require_fresh_actor(identity)
+        def recheck_installation():
+            if installation is not None and (verify_installation is None or
+                    verify_installation() != (installation,factor_scope_id)):
+                raise MediaError(403,'Identity recipient binding changed')
+        recheck_installation()
         # Called only after require_account's complete canonical admission check.
         # An already inactive local projection stays inactive.
         with self.connect() as c:
+            from .primary_selection import lock_scope, reconcile
+            state = lock_scope(c) if installation is not None else None
+            recheck_installation()
             c.execute("INSERT INTO shadify_users (id,auth_account_id,first_admitted_at,last_admitted_at,admission_source) "
                       "VALUES (%s,%s,clock_timestamp(),clock_timestamp(),'canonical_shell') "
                       "ON CONFLICT (auth_account_id) DO UPDATE SET "
                       "first_admitted_at=COALESCE(shadify_users.first_admitted_at,EXCLUDED.first_admitted_at), "
                       "last_admitted_at=EXCLUDED.last_admitted_at,admission_source='canonical_shell'",
                       (uuid4(), identity.account_id))
+            require_fresh_actor(identity)
+            if installation is not None:
+                reconcile(c, state=state, installation=installation, factor_scope_id=factor_scope_id)
+            recheck_installation()
             require_fresh_actor(identity)
 
     def _authority(self, c, actor_context: Identity, artist_id=None, *, targets=(), admin_only=False, operation=None):

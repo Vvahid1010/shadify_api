@@ -211,7 +211,7 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
     from .identity_sync import ProjectionReceiver
     identity_projection = ProjectionReceiver(binding, config.app_security, config.identity_site_scopes) if config.identity_site_scopes else None
     from .main import create_app
-    return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
+    return create_app(service, observed_account(repository, identity_projection=identity_projection), domain=DomainService(repository) if repository else None,
                       repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination, musicbrainz_provider=musicbrainz_provider, identity_projection=identity_projection)
 
 
