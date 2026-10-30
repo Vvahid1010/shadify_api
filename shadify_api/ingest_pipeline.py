@@ -6,18 +6,22 @@ from uuid import uuid4,uuid5,UUID
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from .ingest_worker import IngestWorker
+from .local_storage import descriptor_state
 from .ingest_scanner import fd_digest,InputChanged
 from .storage import StorageUnavailable
 from .media import Asset,MediaError
 from .media_tools import ToolFailure,PIPELINE_VERSION,PROFILE_PIPELINE_VERSION
-from .profile_media import PROFILE_ORIGINALS,delivery_kind,MAX_PROFILE_IMAGE_BYTES
 from .musicbrainz import ProviderUnavailable
+from .profile_media import PROFILE_ORIGINALS, delivery_kind, MAX_PROFILE_IMAGE_BYTES
 
 class PipelineWorker(IngestWorker):
     def __init__(self,*,tools,provider,**kwargs):super().__init__(**kwargs);self.tools=tools;self.provider=provider
     def run_once(self):
         # Metadata traffic is drained before claiming any file attempt/lease.
+        from .release_suggestions import safe_reconcile
+        safe_reconcile(self.connect,self.provider)
         if hasattr(self.provider,'dispatch_once'):self.provider.dispatch_once()
+        safe_reconcile(self.connect,self.provider)
         return super().run_once()
     def claim(self,connection):
         with connection.transaction():
@@ -74,12 +78,13 @@ class PipelineWorker(IngestWorker):
         if adapter is None or asset.storage_provider!='local':raise ToolFailure('processing_unavailable')
         fd=adapter.open(asset.key)
         try:
-            before=os.fstat(fd)
+            before=adapter.validate_descriptor(fd,asset.key)
             if before.st_size!=asset.size or before.st_size>self.limits.max_input_bytes:raise ToolFailure('bytes_changed')
             if fd_digest(fd,deadline=deadline,size=asset.size)!=job['input_sha256']:raise ToolFailure('bytes_changed')
             yield fd
-            after=os.fstat(fd)
-            if (before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns) or fd_digest(fd,deadline=deadline,size=asset.size)!=job['input_sha256']:raise ToolFailure('bytes_changed')
+            if fd_digest(fd,deadline=deadline,size=asset.size)!=job['input_sha256']:raise ToolFailure('bytes_changed')
+            after=adapter.validate_descriptor(fd,asset.key)
+            if descriptor_state(before)!=descriptor_state(after):raise ToolFailure('bytes_changed')
         finally:os.close(fd)
     def _read_asset(self,connection,job):
         with connection.cursor(row_factory=dict_row) as c:
@@ -114,7 +119,27 @@ class PipelineWorker(IngestWorker):
     def _matching(self,connection,claim,asset,stages,deadline):
         job,_=claim
         if 'extraction' not in stages:raise ToolFailure('pipeline_evidence_invalid')
-        if asset.asset_type in PROFILE_ORIGINALS:
+        if asset.asset_type=='audio_original':
+            # Private processing admission is not a recording identity assertion.
+            # Full scan, validation, extraction and exact-byte fences still apply.
+            payload=dict(complete=True,provider='private_processing',
+                         policy='private-audio-optional-metadata-v1',metadata_lookup='not_requested')
+            with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
+                scan=self._fenced(c,claim,asset)
+                stage=self._insert_stage(c,job,scan,'matching',payload)
+                c.execute("INSERT INTO shadify_ingest_match_decisions(id,job_id,input_sha256,matching_stage_id,kind,method,corrected_metadata,reason) VALUES(%s,%s,%s,%s,'audio','not_requested',%s,%s)",
+                          (uuid4(),job['id'],job['input_sha256'],stage['id'],Jsonb({}),'Private processing admitted; MusicBrainz lookup not requested'))
+                return self._finish(c,claim,'processing')
+        elif asset.asset_type=='artwork_original':
+            payload=dict(complete=True,provider='independent_artwork',
+                         policy='track-cover-independent-v1',metadata_lookup='not_requested')
+            with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
+                scan=self._fenced(c,claim,asset)
+                stage=self._insert_stage(c,job,scan,'matching',payload)
+                c.execute("INSERT INTO shadify_ingest_match_decisions(id,job_id,input_sha256,matching_stage_id,kind,method,corrected_metadata,reason) VALUES(%s,%s,%s,%s,'cover','not_requested',%s,%s)",
+                          (uuid4(),job['id'],job['input_sha256'],stage['id'],Jsonb({}),'Independent track cover processing; no music identity lookup'))
+                return self._finish(c,claim,'processing')
+        elif asset.asset_type in PROFILE_ORIGINALS:
             # This is image-scope validation evidence, never music metadata matching.
             payload=dict(complete=True,provider='artist_profile',purpose=asset.asset_type.removesuffix('_original'))
             with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
@@ -123,7 +148,7 @@ class PipelineWorker(IngestWorker):
                 c.execute("INSERT INTO shadify_ingest_match_decisions(id,job_id,input_sha256,matching_stage_id,kind,method,corrected_metadata,reason) VALUES(%s,%s,%s,%s,'profile','automatic',%s,%s)",
                           (uuid4(),job['id'],job['input_sha256'],stage['id'],Jsonb({}),'Artist profile image validated; no music metadata matching'))
                 return self._finish(c,claim,'processing')
-        if asset.asset_type in ('audio_original','video_original'):
+        elif asset.asset_type=='video_original':
             metadata=dict(stages['extraction']['payload']['metadata'])
             with connection.cursor(row_factory=dict_row) as c:
                 row=c.execute("SELECT t.title,a.name FROM shadify_tracks t JOIN shadify_artists a ON a.id=t.artist_id WHERE t.id=%s AND t.artist_id=%s",(asset.track_id,asset.artist_id)).fetchone()
@@ -145,6 +170,18 @@ class PipelineWorker(IngestWorker):
                     (uuid4(),job['id'],job['input_sha256'],stage['id'],'cover' if audio_decision else 'audio',automatic,audio_decision['id'] if audio_decision else None,Jsonb({}),'Same-track ready audio decision' if audio_decision else 'Unique ISRC with exact title/artist and duration'))
                 return self._finish(c,claim,'processing')
             return self._finish(c,claim,'review_required','match_ambiguous')
+    def _output_identity(self,adapter,output,deadline):
+        fd=adapter.open(output['key'])
+        try:
+            before=adapter.validate_descriptor(fd,output['key'])
+            if before.st_size!=output['size'] or fd_digest(fd,deadline=deadline,size=output['size'])!=output['sha256']:raise ToolFailure('output_invalid')
+            if os.getxattr(fd,'user.shadify.mime').decode('ascii')!=output['mime']:raise ToolFailure('output_invalid')
+            after=adapter.validate_descriptor(fd,output['key'])
+            if descriptor_state(before)!=descriptor_state(after):raise ToolFailure('output_invalid')
+            return dict(device=after.st_dev,inode=after.st_ino,size=after.st_size,mtime_ns=after.st_mtime_ns,ctime_ns=after.st_ctime_ns)
+        except TimeoutError:raise
+        except (OSError,UnicodeError,StorageUnavailable):raise ToolFailure('output_invalid') from None
+        finally:os.close(fd)
     def _processing(self,connection,claim,asset,stages,deadline):
         job,_=claim;adapter=self.adapters['local']
         if not {'validation','extraction','matching'}<=stages.keys():raise ToolFailure('pipeline_evidence_invalid')
@@ -156,7 +193,7 @@ class PipelineWorker(IngestWorker):
         client_artwork=asset.asset_type=='artwork_original' and stages['validation']['payload'].get('client_optimized',asset.mime=='image/avif')
         if client_artwork:
             with connection.cursor(row_factory=dict_row) as c:
-                if not c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_media_assets'::regclass AND conname='shadify_client_avif_bound') AS enabled").fetchone()['enabled']:raise ToolFailure('processing_unavailable')
+                if not c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_media_assets'::regclass AND conname='shadify_client_avif_bound') AS enabled").fetchone()['enabled']:raise ToolFailure('pipeline_evidence_invalid')
         pipeline_version='client-artwork-avif-v1' if client_artwork else PROFILE_PIPELINE_VERSION if profile_v2 else PIPELINE_VERSION
         prepared=stages.get('prepared_outputs');manifest=prepared['payload'] if prepared else None
         if manifest:
@@ -235,7 +272,7 @@ class PipelineWorker(IngestWorker):
                 c.execute('INSERT INTO shadify_media_assets(id,owner_id,artist_id,track_id,key,asset_type,mime,size,expires_at,storage_provider,state,access_class,publish_state) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',tuple(getattr(target,name) for name in Asset.__dataclass_fields__))
                 targets[role]=target
             scan=self._fenced(c,claim,asset)
-            if decision['kind']=='cover':
+            if decision['kind']=='cover' and decision['method']!='not_requested':
                 ready=c.execute("SELECT j.id FROM shadify_ingest_jobs j JOIN shadify_ingest_match_decisions d ON d.job_id=j.id WHERE d.id=%s AND j.state='ready' FOR SHARE OF j",(decision['cover_audio_decision_id'],)).fetchone()
                 if ready is None:raise ToolFailure('pipeline_evidence_invalid')
             self._insert_stage(c,job,scan,'processing',dict(complete=True,pipeline_version=pipeline_version,tool_identity=self.tools.identity,identities=identities))
@@ -247,16 +284,3 @@ class PipelineWorker(IngestWorker):
             for role,output in manifest['outputs'].items():
                 if self._output_identity(adapter,output,deadline)!=identities[role]:raise ToolFailure('output_invalid')
             return self._finish(c,claim,'ready')
-
-    def _output_identity(self,adapter,output,deadline):
-        fd=adapter.open(output['key'])
-        try:
-            before=os.fstat(fd)
-            if before.st_size!=output['size'] or fd_digest(fd,deadline=deadline,size=output['size'])!=output['sha256']:raise ToolFailure('output_invalid')
-            if os.getxattr(fd,'user.shadify.mime').decode('ascii')!=output['mime']:raise ToolFailure('output_invalid')
-            after=os.fstat(fd)
-            if (before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns):raise ToolFailure('output_invalid')
-            return dict(device=after.st_dev,inode=after.st_ino,size=after.st_size,mtime_ns=after.st_mtime_ns,ctime_ns=after.st_ctime_ns)
-        except TimeoutError:raise
-        except (OSError,UnicodeError,StorageUnavailable):raise ToolFailure('output_invalid') from None
-        finally:os.close(fd)

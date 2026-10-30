@@ -25,6 +25,12 @@ def query_metadata(metadata):
     return result
 
 def url_for(query):
+    if 'album' in query:
+        from .release_suggestions import release_query
+        query=release_query(query)
+        album=query['album'].replace('\\','\\\\').replace('"','\\"')
+        search='release:"'+album+'" AND arid:'+query['artist_mbid']
+        return 'https://musicbrainz.org/ws/2/release?'+urllib.parse.urlencode({'query':search,'limit':5,'offset':0,'fmt':'json'})
     if query['isrc']:return 'https://musicbrainz.org/ws/2/isrc/'+query['isrc']+'?inc=artist-credits&fmt=json'
     def quote(value):return '"'+value.replace('\\','\\\\').replace('"','\\"')+'"'
     search='recording:'+quote(query['title'])+' AND artist:'+quote(query['artist'])
@@ -44,7 +50,11 @@ def snapshot(raw,query):
             artist=text(''.join(text(v.get('name',v.get('artist',{}).get('name','')),120)+text(v.get('joinphrase',''),20) for v in credits),120)
             duration=item.get('length')
             if type(duration) is not int or not 1<=duration<=3600000:duration=None
-            candidates.append(dict(mbid=mbid,title=title,artist=artist,duration_ms=duration,isrc=query['isrc']))
+            canonical=[]
+            try:
+                canonical=[dict(id=str(UUID(v['artist']['id'])),name=text(v.get('name',v['artist'].get('name','')),120),joinphrase=text(v.get('joinphrase',''),20)) for v in credits]
+            except (ValueError,KeyError,TypeError,AttributeError):canonical=[]
+            candidates.append(dict(mbid=mbid,title=title,artist=artist,duration_ms=duration,isrc=query['isrc'],artist_credits=canonical))
         if len({c['mbid'] for c in candidates})!=len(candidates):raise ValueError()
         # Only a complete first-page response can become durable evidence. ISRC
         # lookup may omit count; recording search must supply its total. Never
@@ -65,7 +75,7 @@ def snapshot(raw,query):
             if (query['title'] and query['artist'] and normalized(candidate['title'])==normalized(query['title'])
                 and normalized(candidate['artist'])==normalized(query['artist']) and candidate['duration_ms'] is not None
                 and abs(candidate['duration_ms']-query['duration_ms'])<=2000):automatic=candidate['mbid']
-        return dict(complete=True,provider='musicbrainz',request_sha256=hashlib.sha256(json.dumps(query,sort_keys=True).encode()).hexdigest(),
+        return dict(format_version=2,complete=True,provider='musicbrainz',request_sha256=hashlib.sha256(json.dumps(query,sort_keys=True).encode()).hexdigest(),
             snapshot_sha256=hashlib.sha256(raw).hexdigest(),fetched_at=datetime.now(timezone.utc).isoformat(),
             candidates=candidates,total=total,truncated=truncated,automatic_mbid=automatic)
     except (ValueError,KeyError,TypeError,OverflowError,AttributeError):raise ProviderUnavailable('Invalid provider response') from None
@@ -173,14 +183,19 @@ def fetch_response(query,user_agent):
         if exc.code in (429,503):
             retry=exc.headers.get('Retry-After')
             return {'status':exc.code,'retry_after':retry if type(retry) is str and len(retry)<=256 else 'numeric-overflow' if type(retry) is str and retry.isdecimal() else None}
-        if exc.code!=404 or not query['isrc'] or exc.headers.get_content_type()!='application/json':return {'status':exc.code,'retry_after':None}
+        if exc.code!=404 or not query.get('isrc') or exc.headers.get_content_type()!='application/json':return {'status':exc.code,'retry_after':None}
         raw=exc.read(1048577)
         if len(raw)>1048576 or str(json.loads(raw).get('error','')).lower().rstrip('.')!='not found':raise ProviderUnavailable()
         status=404
     if len(raw)>1048576:raise ProviderUnavailable('Public response bounds')
+    if 'album' in query:
+        from .release_suggestions import release_snapshot
+        result=release_snapshot(raw,query)
+        document=dict(releases=[dict(id=v['external_release_id'],title=v['title'],**{'artist-credit':[dict(name=v['artist_credit'],artist=dict(id=v['artist_mbid'],name=v['artist_credit']))]}) for v in result['candidates']],count=result['total'],offset=0)
+        return dict(status=200,document=document,response_sha256=hashlib.sha256(raw).hexdigest(),retry_after=None)
     result=snapshot(json.dumps({'isrc':query['isrc'],'recordings':[]}).encode() if status==404 else raw,query)
     # Reusable PUBLIC recording response only. Never cache a per-file decision.
-    document={'recordings':[{'id':v['mbid'],'title':v['title'],'length':v['duration_ms'],'artist-credit':[{'name':v['artist']}]} for v in result['candidates']],
+    document={'recordings':[{'id':v['mbid'],'title':v['title'],'length':v['duration_ms'],'artist-credit':[dict(name=c['name'],joinphrase=c['joinphrase'],artist=dict(id=c['id'],name=c['name'])) for c in v['artist_credits']] if v['artist_credits'] else [{'name':v['artist']}]} for v in result['candidates']],
               'count':result['total']}
     if query['isrc']:document['isrc']=query['isrc']
     if len(json.dumps(document).encode())>49152:raise ProviderUnavailable('Normalized public response bounds')
@@ -188,11 +203,15 @@ def fetch_response(query,user_agent):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--query',required=True);parser.add_argument('--user-agent',required=True)
+    parser.add_argument('--resource',choices=('recording','release_suggestions'),default='recording')
     parser.add_argument('--response',action='store_true');parser.add_argument('--parent-pid',type=int,required=True);parser.add_argument('--request-deadline',type=float,required=True);args=parser.parse_args()
     try:
         bind_parent(args.parent_pid)
         bind_request_deadline(args.request_deadline)
-        query=query_metadata(json.loads(args.query))
+        if args.resource=='release_suggestions':
+            from .release_suggestions import release_query
+            query=release_query(json.loads(args.query))
+        else:query=query_metadata(json.loads(args.query))
         print(json.dumps(fetch_response(query,args.user_agent) if args.response else fetch(query,args.user_agent),separators=(',',':')))
     except Exception:raise SystemExit(1) from None # No URLs, metadata, credentials or remote errors logged.
 

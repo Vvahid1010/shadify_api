@@ -27,7 +27,7 @@ def build(root,wheels,output,source):
         dest=Path(temporary)
         for name in filter(None,names):
             path=Path(name)
-            if name not in ROOT_FILES and not (path.parts[0]=="shadify_api" and path.suffix==".py"
+            if name not in ROOT_FILES and name != "shadify_api/manual_search_receiver_catalog.json" and not (path.parts[0]=="shadify_api" and path.suffix==".py"
                        or path.parts[0]=="migrations" and path.suffix==".sql"):continue
             src=root/name
             if src.is_symlink() or not src.is_file():raise ValueError("invalid_source_file")
@@ -79,7 +79,7 @@ def build(root,wheels,output,source):
         (dest/"requirements.lock").write_text("\n".join(lock)+"\n")
         manifest={"schema":1,"app_id":"shadify_api","source_commit":source,"runtime":RUNTIME,
                   "requirements_path":"source/requirements.txt","lock_path":"requirements.lock",
-                  "migration_target":"012_musicbrainz_coordination","management_schema_version":1,
+                  "migration_target":"022_profile_image_variants","management_schema_version":1,
                   "files":{p.relative_to(dest).as_posix():{"size":p.stat().st_size,"sha256":sha(p.read_bytes())}
                            for p in sorted(dest.rglob("*")) if p.is_file()}}
         (dest/"build-info.json").write_bytes(canonical(manifest))

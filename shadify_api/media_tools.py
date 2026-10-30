@@ -216,7 +216,7 @@ class MediaTools:
         try:
             report=json.loads(self.run('ffprobe',['-v','error','-protocol_whitelist','file,pipe','-format_whitelist','mov',
                 '-enable_drefs','0','-use_absolute_path','0','-count_packets',
-                '-show_entries','stream=index,codec_name,codec_type,profile,pix_fmt,width,height,avg_frame_rate,sample_rate,channels,duration,start_time:stream_disposition=attached_pic:format=format_name,duration:format_tags=title,artist,album,track,ISRC,major_brand',
+                '-show_entries','stream=codec_name,codec_type,profile,pix_fmt,width,height,avg_frame_rate,sample_rate,channels,duration,start_time:stream_disposition=attached_pic:format=format_name,duration:format_tags=title,artist,album,track,ISRC',
                 '-of','json','-i','/scratch/input'],fd,deadline=deadline,seekable=True))
             streams=report['streams']
             if type(streams) is not list or len(streams)!=2 or report['format']['format_name']!='mov,mp4,m4a,3gp,3g2,mj2':raise ValueError()

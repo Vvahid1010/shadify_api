@@ -54,9 +54,9 @@ def valid_signature(mime, data):
         "audio/flac": data[:4] == b"fLaC",
         "audio/mpeg": data[:3] == b"ID3" or (len(data)>=2 and data[0]==255 and data[1]&0xe6==0xe2),
         "video/mp4": len(data)>=12 and data[4:8]==b"ftyp" and data[8:12] in (b"isom",b"iso2",b"iso3",b"iso4",b"iso5",b"iso6",b"iso7",b"iso8",b"iso9",b"mp41",b"mp42",b"avc1"),
-        "image/jpeg": data[:3] == b"\xff\xd8\xff",
         "image/webp": len(data)>=12 and data[:4]==b"RIFF" and data[8:12]==b"WEBP",
         "image/avif": len(data)>=12 and data[4:8]==b"ftyp" and data[8:12]==b"avif",
+        "image/jpeg": data[:3] == b"\xff\xd8\xff",
         "image/png": data[:8] == b"\x89PNG\r\n\x1a\n",
     }.get(mime, False)
 
@@ -104,6 +104,7 @@ class MediaService:
         from .storage_service import StorageService
         if not isinstance(self.storage, StorageService) or self.storage.provider != 'local':
             raise MediaError(503, 'Profile image integration unavailable')
+        if intent.mime=='image/avif' and intent.size>1048576:raise MediaError(422,'Client image output too large')
         asset_id = uuid4()
         asset = Asset(asset_id, owner.account_id, artist, None,
                       f'quarantine/artists/{artist}/profile/{asset_id}/master',

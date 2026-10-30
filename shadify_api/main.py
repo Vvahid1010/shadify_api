@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import inspect
-from typing import Callable, Literal
+from typing import Callable
+from typing import Literal
 from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
@@ -18,7 +19,7 @@ def require_identity():
 
 
 def create_app(service: MediaService | None = None, identity: Callable = require_identity,
-               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None):
+               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None, musicbrainz_provider=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -171,6 +172,22 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return {'url':access.url,'expires_at':access.expires_at,'artist_id':str(artist_id),
                 'asset_id':str(asset.id),'anchor_asset_id':str(anchor.id),'purpose':purpose,'mime':asset.mime,'size':asset.size}
 
+    def public_cover(resource,content_id,request):
+        if request.query_params or request.headers.get('content-length') not in (None,'0') or request.headers.get('transfer-encoding'):
+            raise HTTPException(422,'Cover reads accept no query or body')
+        asset=repository.public_cover_asset(resource,content_id)
+        access=common_storage().cover_access(resource,content_id,expected_asset=asset.id)
+        return {'url':access.url,'expires_at':access.expires_at,'artist_id':str(asset.artist_id),
+                'resource':resource,'content_id':str(content_id),'asset_id':str(asset.id),'mime':asset.mime,'size':asset.size}
+
+    @app.get('/api/releases/{release_id}/cover/access')
+    def release_cover(release_id:UUID,request:Request):
+        return public_cover('releases',release_id,request)
+
+    @app.get('/api/tracks/{track_id}/cover/access')
+    def track_cover(track_id:UUID,request:Request):
+        return public_cover('tracks',track_id,request)
+
     @app.post('/api/tracks/{track_id}/playback')
     def playback_access(track_id: UUID, preview: bool = False, owner: Identity = Depends(identity)):
         # No entitlement inferred from this identity. Canonical guest issuance
@@ -193,6 +210,14 @@ def create_app(service: MediaService | None = None, identity: Callable = require
 
     from .artist_routes import install_artist_routes
     install_artist_routes(app, identity, repository)
+    from .editorial_discovery_routes import install_editorial_discovery_routes
+    install_editorial_discovery_routes(app, identity, repository)
+    from .musicbrainz_search import install_musicbrainz_search_route
+    install_musicbrainz_search_route(app, identity, repository, musicbrainz_provider)
+    from .public import create_public_router
+    from .editorial_discovery import EditorialDiscovery
+    app.include_router(create_public_router(repository=repository, storage=common_storage,
+                                            editorial=EditorialDiscovery(repository)))
     return app
 
 

@@ -2,8 +2,8 @@
 from uuid import UUID
 from .auth import Identity
 from fastapi import Body, Depends, HTTPException, Query
-from .artist_models import (ArtistCreate, Layout, AssignOwner, TransferOwner, RevokeOwner,
-                            Publication, Suspension, Verification, RESOURCE_MODELS, DelegatePermissions, DelegateRevision, PrimaryTransfer)
+from .artist_models import (ArtistCreate, SlugChange, Layout, AssignOwner, TransferOwner, RevokeOwner,
+                            Publication, ReleasePublication, ReleaseRevision, Suspension, Verification, RESOURCE_MODELS, DelegatePermissions, DelegateRevision, PrimaryTransfer)
 
 
 def install_artist_routes(app, identity, repository):
@@ -31,6 +31,10 @@ def install_artist_routes(app, identity, repository):
     def primary(body:PrimaryTransfer,actor:Identity=Depends(identity),data=Depends(repo)):
         return data.transfer_primary(actor,body.account_id,expected_primary=body.expected_primary_account_id,delegates=body.delegates)
 
+    @app.get('/api/artist-catalog')
+    def published_catalog(data=Depends(repo),limit:int=Query(20,ge=1,le=20),cursor:UUID|None=None,q:str=Query('',max_length=120)):
+        return data.public_artist_catalog(limit,cursor,q)
+
     @app.get('/api/me/artists')
     def manageable(actor:Identity=Depends(identity), data=Depends(repo),limit:int=Query(20,ge=1,le=100),cursor:UUID|None=None):
         return data.manageable_pages(actor,limit,cursor)
@@ -54,6 +58,10 @@ def install_artist_routes(app, identity, repository):
     @app.patch('/api/artists/{artist_id}')
     def edit(artist_id:UUID,body:dict=Body(...),actor:Identity=Depends(identity),data=Depends(repo)):
         return data.edit_page(actor,artist_id,body)
+
+    @app.put('/api/artists/{artist_id}/slug')
+    def slug_change(artist_id:UUID,body:SlugChange,actor:Identity=Depends(identity),data=Depends(repo)):
+        return data.change_slug(actor,artist_id,body)
 
     @app.put('/api/artists/{artist_id}/layout')
     def layout(artist_id:UUID,body:Layout,actor:Identity=Depends(identity),data=Depends(repo)):
@@ -112,10 +120,18 @@ def install_artist_routes(app, identity, repository):
             return data.content_write(actor,artist_id,resource,body,content_id)
         return endpoint
     def delete_resource(resource):
+        if resource=='releases':
+            def release_delete(artist_id:UUID,content_id:UUID,body:ReleaseRevision,actor:Identity=Depends(identity),data=Depends(repo)):
+                return data.content_delete(actor,artist_id,resource,content_id,expected_revision=body.expected_revision)
+            return release_delete
         def endpoint(artist_id:UUID,content_id:UUID,actor:Identity=Depends(identity),data=Depends(repo)):
             return data.content_delete(actor,artist_id,resource,content_id)
         return endpoint
     def publish_resource(resource):
+        if resource=='releases':
+            def release_publish(artist_id:UUID,content_id:UUID,body:ReleasePublication,actor:Identity=Depends(identity),data=Depends(repo)):
+                return data.content_publication(actor,artist_id,resource,content_id,body.state,expected_revision=body.expected_revision,publish_included_tracks=body.publish_included_tracks)
+            return release_publish
         def endpoint(artist_id:UUID,content_id:UUID,body:Publication,actor:Identity=Depends(identity),data=Depends(repo)):
             return data.content_publication(actor,artist_id,resource,content_id,body.state)
         return endpoint

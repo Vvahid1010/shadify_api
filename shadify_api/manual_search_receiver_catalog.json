@@ -1,0 +1,56 @@
+[
+  {
+    "endpoint_id": "shadify_api.artists.musicbrainz.search",
+    "receiver_app": "shadify_api",
+    "permitted_peer_apps": [
+      "authentication"
+    ],
+    "method": "POST",
+    "path": "/api/artists/{artist_id}/musicbrainz-search",
+    "headers": [
+      "accept",
+      "content-type",
+      "cache-control",
+      "x-auth-assertion",
+      "x-authenticated-account-id",
+      "x-authenticated-session-id",
+      "x-authenticated-auth-level",
+      "x-authenticated-domain-app",
+      "x-authenticated-proxy-app",
+      "x-proxy-approval",
+      "x-request-id",
+      "x-forwarded-for",
+      "x-forwarded-host",
+      "x-forwarded-proto"
+    ],
+    "off_supported": true,
+    "proxy_headers": true
+  },
+  {
+    "endpoint_id": "shadify_api.tracks.musicbrainz.search",
+    "receiver_app": "shadify_api",
+    "permitted_peer_apps": [
+      "authentication"
+    ],
+    "method": "POST",
+    "path": "/api/artists/{artist_id}/tracks/{track_id}/musicbrainz-search",
+    "headers": [
+      "accept",
+      "content-type",
+      "cache-control",
+      "x-auth-assertion",
+      "x-authenticated-account-id",
+      "x-authenticated-session-id",
+      "x-authenticated-auth-level",
+      "x-authenticated-domain-app",
+      "x-authenticated-proxy-app",
+      "x-proxy-approval",
+      "x-request-id",
+      "x-forwarded-for",
+      "x-forwarded-host",
+      "x-forwarded-proto"
+    ],
+    "off_supported": true,
+    "proxy_headers": true
+  }
+]

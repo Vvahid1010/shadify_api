@@ -36,6 +36,8 @@ class ArtistPostgresCase(unittest.TestCase):
         with psycopg.connect(**self.server.connection, autocommit=True) as c:
             c.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(self.schema)))
         self.connect = lambda: psycopg.connect(**self.server.connection, options='-c search_path=' + self.schema)
+        self._applied=set()
+        self.apply(*[p.name for p in sorted((ROOT/'migrations').glob('*.sql')) if p.name<'024'])
         self.apply('001_media_foundation.sql', '002_user_profile_track_drafts.sql', '003_identity_provenance.sql',
                    '004_artist_memberships.sql', '005_artist_content.sql', '006_app_admin.sql')
         self.repo = AccessRepository(self.connect)
@@ -55,7 +57,9 @@ class ArtistPostgresCase(unittest.TestCase):
     def apply(self, *names):
         with self.connect() as c:
             for name in names:
-                c.execute((ROOT / 'migrations' / name).read_text())
+                if name not in self._applied:
+                    c.execute((ROOT / 'migrations' / name).read_text())
+                    self._applied.add(name)
 
     def admin_revision(self):
         """Explicit isolated fixture revision; never application fallback."""

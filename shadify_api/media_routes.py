@@ -19,7 +19,8 @@ from .media import MediaError
 from .storage import StorageUnavailable, StorageAuthorizationExpired
 
 # Per-response clock only; no shared permission cache. Check before the next
-# chunk after two seconds. Initial authorization always precedes any bytes.
+# chunk after two seconds, including after a queued read before yielding it.
+# Initial/post-wait authorization always precedes headers and the first byte.
 AUTHORITY_RECHECK_SECONDS = 2.0
 
 
@@ -135,6 +136,10 @@ def create_media_app(storage):
             identity = await run_in_threadpool(storage.require_file, asset, fd)
             if claims['exp'] <= int(time.time()): raise MediaError(403, 'Media authorization expired')
             if actor is not None: require_fresh_actor(actor)
+            # Opening/verifying a file may wait. Recheck current rights/source
+            # after those waits, before HEAD headers or any GET/Range body.
+            await run_in_threadpool(storage.authorize_read,claims,actor,asset)
+            if claims['exp']<=int(time.time()):raise MediaError(403,'Media authorization expired')
             size = os.fstat(fd).st_size
             if size != asset.size: raise StorageUnavailable('Object size changed')
             try: start, end, status = byte_range(request.headers.get('range'), size)
@@ -150,20 +155,27 @@ def create_media_app(storage):
                 nonlocal last_authority_check
                 try:
                     remaining = end - start + 1
+                    first=True
                     while remaining:
                         # TTL and authority are rechecked during delivery too.
                         if claims['exp'] <= int(time.time()): return
                         now = time.monotonic()
-                        if now - last_authority_check >= AUTHORITY_RECHECK_SECONDS:
+                        if first or now - last_authority_check >= AUTHORITY_RECHECK_SECONDS:
                             await run_in_threadpool(storage.authorize_read, claims, actor, asset)
-                            last_authority_check = time.monotonic()
+                            last_authority_check = time.monotonic();first=False
                             if claims['exp'] <= int(time.time()): return
-                        info=os.fstat(stream_fd)
+                        info=adapter.validate_descriptor(stream_fd,asset.key)
                         if dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)!=identity: return
                         block = await run_in_threadpool(os.read, stream_fd, min(65536, remaining))
                         # A queued filesystem read must not extend the grant.
                         if claims['exp'] <= int(time.time()) or not block: return
-                        info=os.fstat(stream_fd)
+                        # A slow/queued read can cross the bounded authority
+                        # interval. Recheck BEFORE yielding its returned bytes.
+                        if time.monotonic()-last_authority_check>=AUTHORITY_RECHECK_SECONDS:
+                            await run_in_threadpool(storage.authorize_read,claims,actor,asset)
+                            last_authority_check=time.monotonic()
+                            if claims['exp']<=int(time.time()):return
+                        info=adapter.validate_descriptor(stream_fd,asset.key)
                         if dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)!=identity: return
                         remaining -= len(block)
                         yield block
@@ -180,10 +192,19 @@ def create_media_app(storage):
     async def guest_access(track_id: UUID, request: Request):
         # Public product authorization only; no synthetic Authentication identity.
         # This cannot issue private originals or unentitled paid full access.
-        values = request.query_params.getlist('preview')
-        if set(request.query_params) - {'preview'} or len(values) > 1 or (values and values[0] not in ('true', 'false')):
-            raise MediaError(422, 'Only preview=true|false is supported')
-        access = await run_in_threadpool(storage.playback_access, track_id, preview=values == ['true'])
-        return {'url': access.url, 'expires_at': access.expires_at.isoformat()}
+        params=request.query_params
+        if set(params)-{'preview','quality','save_data'} or any(len(params.getlist(k))!=1 for k in params):raise MediaError(422,'Invalid playback query')
+        preview=params.get('preview','false');quality=params.get('quality');hint=params.get('save_data')
+        if preview not in ('true','false') or quality is not None and quality not in ('auto','high','data_saver') or hint is not None and (quality!='auto' or hint not in ('true','false')) or preview=='true' and quality is not None:raise MediaError(422,'Invalid playback quality')
+        if quality is None:
+            access=await run_in_threadpool(storage.playback_access,track_id,preview=preview=='true')
+            return {'url':access.url,'expires_at':access.expires_at.isoformat()}
+        selection=await run_in_threadpool(storage.select_quality,track_id,quality,hint=='true')
+        access=await run_in_threadpool(storage.issue_quality,selection)
+        # This is an actual post-await source/rights guard, not just validation
+        # inside the preceding potentially queued issuance callback.
+        await run_in_threadpool(storage.authorize_quality,selection)
+        if access.expires_at.timestamp()<=time.time():raise MediaError(403,'Media authorization expired')
+        return {'url':access.url,'expires_at':access.expires_at.isoformat(),'selected_quality':selection['selected_quality'],'fallback':selection['fallback']}
 
     return app

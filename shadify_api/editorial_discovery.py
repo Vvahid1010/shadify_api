@@ -27,51 +27,7 @@ RAILS = {
 MAX_REVISION = 9223372036854775807
 
 
-class Entry(Input):
-    id: UUID
-    kind: Literal['playlist','track','release','video','artist']
-    entity_id: UUID | None = None
-    title: str = Field(default='', max_length=200)
-    track_ids: list[UUID] = Field(default_factory=list, max_length=100)
-
-    @model_validator(mode='after')
-    def references(self):
-        if len(self.track_ids) != len(set(self.track_ids)):
-            raise ValueError('Distinct ordered playlist tracks required')
-        if self.kind == 'playlist':
-            if self.entity_id is not None or not self.title or not self.track_ids:
-                raise ValueError('Playlist title and selected tracks required')
-        elif self.entity_id is None or (self.kind != 'release' and self.track_ids):
-            raise ValueError('Explicit content reference required')
-        return self
-
-
-class Rail(Input):
-    id: str
-    entries: list[Entry] = Field(default_factory=list, max_length=20)
-
-    @model_validator(mode='after')
-    def matching(self):
-        if self.id not in RAILS or any(entry.kind != RAILS[self.id][1] for entry in self.entries):
-            raise ValueError('Content must match the selected rail')
-        keys = [(entry.kind,entry.entity_id or entry.id) for entry in self.entries]
-        if len(keys) != len(set(keys)):
-            raise ValueError('Distinct rail entries required')
-        return self
-
-
-class Snapshot(Input):
-    rails: list[Rail] = Field(default_factory=list, max_length=11)
-
-    @model_validator(mode='after')
-    def bounded(self):
-        ids = [rail.id for rail in self.rails]
-        entries = [entry for rail in self.rails for entry in rail.entries]
-        if (len(ids) != len(set(ids)) or len(entries)>100
-                or len({entry.id for entry in entries}) != len(entries)
-                or sum(len(entry.track_ids) for entry in entries)>1000):
-            raise ValueError('Distinct bounded rails and placements required')
-        return self
+from .discover_layout import LayoutEntry as Entry, LayoutSnapshot as Snapshot, TEMPLATES, registry
 
 
 class Revision(Input):
@@ -148,7 +104,7 @@ class EditorialDiscovery:
         return c.execute('SELECT * FROM shadify_discover_state WHERE singleton=true').fetchone()
 
     def _track(self, c, track_id, *, lock=False):
-        row = c.execute("SELECT t.*,a.name AS artist_name FROM shadify_tracks t JOIN shadify_artists a ON a.id=t.artist_id "
+        row = c.execute("SELECT t.*,a.name AS artist_name,a.avatar_asset_id AS avatar_asset_id FROM shadify_tracks t JOIN shadify_artists a ON a.id=t.artist_id "
             "WHERE t.id=%s AND t.publish_state='published' AND a.publish_state='published'"+
             (' FOR SHARE OF t,a' if lock else ''),(track_id,)).fetchone()
         if row is None or not self.repository._publishable(c,row['artist_id'],'tracks',row,lock=lock):
@@ -168,6 +124,7 @@ class EditorialDiscovery:
             raise
         return {'id':str(track_id),'artist_id':str(row['artist_id']),'artist_name':row['artist_name'],
             'title':row['title'],'publish_state':'published','access_class':row['access_class'],
+            'avatar_asset_id':str(row['avatar_asset_id']) if row['avatar_asset_id'] else None,
             'mood_ids':[mood for mood in MOOD_IDS if mood in row['data'].get('mood_ids',[])],
             'preview_asset_id' if preview else 'delivery_asset_id':str(asset_id)}
 
@@ -193,34 +150,40 @@ class EditorialDiscovery:
             return None
         if entry.kind=='artist':
             return {'id':str(entry.id),'entity_id':str(entry.entity_id),'kind':'artist',
+                'artist_id':str(entry.entity_id),'avatar_asset_id':str(row['avatar_asset_id']) if row['avatar_asset_id'] else None,
                 'title':entry.title or row['name'],'tracks':[],'track_ids':[],'eligible':True}
         if not self.repository._publishable(c,row['artist_id'],resource,row,lock=lock):
             return None
         title = entry.title or row['data'].get('title','')
         if entry.kind=='video':
             return {'id':str(entry.id),'entity_id':str(entry.entity_id),'kind':'video','title':title,
-                'tracks':[],'track_ids':[],'eligible':True}
+                'tracks':[],'track_ids':[],'eligible':True,'artist_id':str(row['artist_id'])}
         selected = entry.track_ids or [r['track_id'] for r in c.execute(
             'SELECT track_id FROM shadify_release_tracks WHERE release_id=%s ORDER BY position',(entry.entity_id,)).fetchall()]
         tracks = [track for track_id in selected if (track:=self._track(c,track_id,lock=lock)) is not None]
+        tracks = [track for track in tracks if track['artist_id']==str(row['artist_id'])]
         return {'id':str(entry.id),'entity_id':str(entry.entity_id),'kind':'release','title':title,
             'tracks':tracks,'track_ids':[track['id'] for track in tracks],
+            'release_type':row['data'].get('kind'),
             'eligible':bool(tracks) and len(tracks)==len(selected)} if tracks else None
 
     def _resolve(self,c,snapshot,*,strict=False,public=False):
-        groups = {rail.id:rail for rail in snapshot.rails}
-        result = []
-        for rail_id,(title,_) in RAILS.items():
-            entries = []
-            for entry in groups.get(rail_id,Rail(id=rail_id)).entries:
-                resolved = self._entry(c,entry,lock=strict)
-                if strict and (resolved is None or not resolved['eligible']):
+        result=[]
+        for section in snapshot.sections:
+            if public and not section.enabled:continue
+            entries=[]
+            for entry in section.entries:
+                resolved=self._entry(c,entry,lock=strict and section.enabled)
+                if strict and section.enabled and (resolved is None or not resolved['eligible']):
                     raise MediaError(409,'Selected Discover content is no longer eligible')
                 if resolved is not None:
-                    if public:
-                        resolved['eligible']=True
+                    # Withdrawal removes unavailable tracks without rewriting history.
+                    if public:resolved['eligible']=True
                     entries.append(resolved)
-            result.append({'id':rail_id,'title':title,'entries':entries})
+            row=section.model_dump(mode='json');row['entries']=entries
+            row['available']=TEMPLATES[section.template_id][3] is None
+            row['unavailable_reason']=TEMPLATES[section.template_id][3]
+            result.append(row)
         return result
 
     def _dto(self,c,auth,state,authority_revision):
@@ -228,7 +191,9 @@ class EditorialDiscovery:
             'can_publish':auth.primary,'authority_revision':authority_revision,
             'revision':state['draft_revision'],'status':state['draft_status'],
             'published_revision':state['published_revision'],'editor_revision':state['editor_revision'],
-            'draft':state['draft'],'published':state['published'],
+            'draft':Snapshot.model_validate(state['draft']).model_dump(mode='json'),
+            'published':Snapshot.model_validate(state['published']).model_dump(mode='json'),
+            'registry_version':2,'templates':registry(),
             'preview':self._resolve(c,Snapshot.model_validate(state['draft'])),
             'published_preview':self._resolve(c,Snapshot.model_validate(state['published']))}
         if auth.primary:
@@ -247,9 +212,21 @@ class EditorialDiscovery:
             prepared=body.draft.model_copy(deep=True)
             # A release is selected as an explicit ordered membership snapshot at
             # preparation time, not as a live query that can add future songs.
+            previous={entry.id:entry for rail in Snapshot.model_validate(state['draft']).rails for entry in rail.entries}
             for rail in prepared.rails:
                 for entry in rail.entries:
-                    if (entry.kind=='release' and not entry.track_ids) or not entry.title:
+                    if entry.kind=='release':
+                        prior=previous.get(entry.id)
+                        retained=(prior is not None and prior.kind=='release' and prior.entity_id==entry.entity_id
+                                  and bool(entry.track_ids) and prior.track_ids==entry.track_ids)
+                        if not retained:
+                            canonical=[row['track_id'] for row in c.execute(
+                                'SELECT track_id FROM shadify_release_tracks WHERE release_id=%s ORDER BY position',
+                                (entry.entity_id,)).fetchall()]
+                            if entry.track_ids and entry.track_ids!=canonical:
+                                raise MediaError(409,'Release membership changed; select and review the current release')
+                            entry.track_ids=canonical
+                    if not entry.title:
                         resolved=self._entry(c,entry)
                         if resolved is None or not resolved['eligible']:
                             raise MediaError(409,'Selected Discover content is no longer eligible')
@@ -287,6 +264,7 @@ class EditorialDiscovery:
             lookup = {entry['id']:entry for rail in resolved for entry in rail['entries']}
             # Freeze card titles and release membership at explicit primary approval.
             for rail in snapshot.rails:
+                if not rail.enabled:continue
                 for entry in rail.entries:
                     entry.title = lookup[str(entry.id)]['title']
                     if entry.kind=='release':
@@ -329,12 +307,25 @@ class EditorialDiscovery:
                 if state is None:
                     raise MediaError(503,'Discover persistence unavailable')
                 return {'revision':state['published_revision'],
+                    'schema_version':2,'registry_version':2,
+                    'settings':Snapshot.model_validate(state['published']).settings.model_dump(),
+                    'sections':self._resolve(c,Snapshot.model_validate(state['published']),public=True),
                     'rails':self._resolve(c,Snapshot.model_validate(state['published']),public=True)}
 
     def candidates(self,actor,kind,*,q='',mood=None,cursor=None):
-        if kind not in ('track','release','video','artist') or mood is not None and mood not in MOOD_IDS:
+        if kind not in ('track','release','video','artist','playlist') or mood is not None and mood not in MOOD_IDS:
             raise MediaError(422,'Invalid Discover candidates request')
         with self._access(actor) as (c,auth,state,_,revision):
+            if kind=='playlist':
+                items={}
+                for key in ('draft','published'):
+                    for section in Snapshot.model_validate(state[key]).sections:
+                        for entry in section.entries:
+                            if entry.kind=='playlist' and q.casefold() in entry.title.casefold():
+                                item=self._entry(c,entry)
+                                if item and item['eligible']:items[str(entry.id)]=item
+                values=[items[key] for key in sorted(items) if cursor is None or key>str(cursor)]
+                return {'items':values[:20],'next_cursor':values[19]['id'] if len(values)>20 else None,'authority_revision':revision,'actor_account_id':auth.account_id}
             table = {'track':'tracks','release':'releases','video':'videos','artist':'artists'}[kind]
             title = 'r.name' if kind=='artist' else 'r.title' if kind=='track' else "r.data->>'title'"
             rows = c.execute('SELECT r.id FROM shadify_'+table+" r WHERE r.publish_state='published' "

@@ -140,7 +140,7 @@ class SystemdProtectedJson(unittest.TestCase):
         self.assertIsNotNone(app)
 
 
-    def test_full_five_file_61_route_factory_with_projected_json_and_native_owner_only_fixture(self):
+    def test_full_five_file_83_route_factory_with_projected_json_and_native_owner_only_fixture(self):
         import asyncio
         import hashlib
         from uuid import uuid4
@@ -152,7 +152,7 @@ class SystemdProtectedJson(unittest.TestCase):
             from app_security_shell.replay import RedisReplayStore
             from shadify_api.security import receiver_catalog
             from shadify_api.runtime import create_runtime_app
-        self.assertEqual(len(receiver_catalog()), 61)
+        self.assertEqual(len(receiver_catalog()), 83)
         self.directory.chmod(0o700)
         a=material("authentication"); b=material("shadify_api"); b["node_id"]=a["node_id"]
         connection=str(uuid4()); sender_directory=self.root/'sender'
