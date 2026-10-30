@@ -19,7 +19,7 @@ def require_identity():
 
 
 def create_app(service: MediaService | None = None, identity: Callable = require_identity,
-               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None, musicbrainz_provider=None):
+               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None, musicbrainz_provider=None, identity_projection=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -207,6 +207,9 @@ def create_app(service: MediaService | None = None, identity: Callable = require
 
     from .nomination_routes import install_nomination_routes
     install_nomination_routes(app,identity,nomination)
+
+    from .identity_sync import install_routes
+    install_routes(app, repository, identity_projection)
 
     from .artist_routes import install_artist_routes
     install_artist_routes(app, identity, repository)

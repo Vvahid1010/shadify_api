@@ -1708,6 +1708,21 @@
         ],
         "off_supported": true,
         "proxy_headers": true
+      },
+      {
+        "endpoint_id": "shadify_api.identity_sync.apply",
+        "receiver_app": "shadify_api",
+        "permitted_peer_apps": [
+          "authentication"
+        ],
+        "method": "POST",
+        "path": "/api/v1/identity-sync",
+        "headers": [
+          "content-type",
+          "x-auth-identity-projection",
+          "cache-control"
+        ],
+        "off_supported": true
       }
     ],
     "credential_file": "app_security.credentials.json",
@@ -1717,5 +1732,17 @@
     ],
     "extra_encryption_default": true,
     "endpoint_overrides": []
+  },
+  "identity_projection_contract": {
+    "version": 1,
+    "purpose": "identity-projection-v1",
+    "endpoint_id": "shadify_api.identity_sync.apply",
+    "path": "/api/v1/identity-sync",
+    "site": "shadify",
+    "scope_config_field": "identity_site_scopes",
+    "default": "disabled_when_scope_map_absent",
+    "authority": "existing_protected_connection_only",
+    "local_roles": "unchanged",
+    "backfill": false
   }
 }

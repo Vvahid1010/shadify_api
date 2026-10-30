@@ -270,3 +270,7 @@ See [API foundation transport qualification](docs/API_FOUNDATION.md#transport-01
 for the exact official artifact, preserved canonical receiver contract, offline
 proof limits, and pre-existing unsupported optional WSL adapter. This source-only
 update grants no runtime identity, ACL, key, replay, policy or lifecycle changes.
+
+## Identity projection source preparation
+
+Use docs/IDENTITY_PROJECTION.md for the optional site-bound Auth facts receiver. Projection never grants app authority; runtime enrollment/migration is separate.

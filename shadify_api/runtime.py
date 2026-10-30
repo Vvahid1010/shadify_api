@@ -6,7 +6,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, SecretStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, Field, model_validator, field_validator
 
 from .auth import observed_account
 from .config import load_protected_json, load_database_config, load_storage_config, compose_storage
@@ -30,6 +30,14 @@ class RuntimeConfig(BaseModel):
     app_security_transport: dict | None = None
     projected_transport_directory: str | None = None
     nomination_scope: Scope | None = None
+    identity_site_scopes: dict[str,str] = Field(default_factory=dict)
+
+    @field_validator("identity_site_scopes", mode="before")
+    @classmethod
+    def scopes(cls,value):
+        from .identity_sync import validate_scopes
+        return validate_scopes(value)
+
     musicbrainz_mode: Literal["cache_only", "b_live"] | None = None
     musicbrainz_user_agent: str | None = Field(default=None, min_length=1, max_length=256)
 
@@ -200,9 +208,11 @@ def create_runtime_app(directory: Path, *, binding=None, nomination_provider=Non
         # explicitly unverified cloud access, never a real R2 readiness claim.
         return ready, checks
 
+    from .identity_sync import ProjectionReceiver
+    identity_projection = ProjectionReceiver(binding, config.app_security, config.identity_site_scopes) if config.identity_site_scopes else None
     from .main import create_app
     return create_app(service, observed_account(repository), domain=DomainService(repository) if repository else None,
-                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination, musicbrainz_provider=musicbrainz_provider)
+                      repository=repository, binding=binding, readiness=readiness, receiver=receiver, nomination=nomination, musicbrainz_provider=musicbrainz_provider, identity_projection=identity_projection)
 
 
 def app_factory():

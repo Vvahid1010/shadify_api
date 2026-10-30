@@ -63,6 +63,9 @@ def receiver_catalog():
                  permitted_peer_apps=["authentication"], method=method, path=path,
                  headers=list(HEADERS), off_supported=True, proxy_headers=True)
             for name,method,path in routes]
+    catalog.append(dict(endpoint_id="shadify_api.identity_sync.apply", receiver_app="shadify_api",
+        permitted_peer_apps=["authentication"],method="POST",path="/api/v1/identity-sync",
+        headers=["content-type","x-auth-identity-projection","cache-control"],off_supported=True))
     # Public page contains several bounded collections; private list permits up
     # to 100 bounded records. Declare the existing shell's supported 8 MiB bound.
     for endpoint in catalog:
