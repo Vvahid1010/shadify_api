@@ -107,7 +107,7 @@ class ArtistOperations:
                     (artist_id,body.slug,body.name,body.bio,Jsonb(body.genres),Jsonb(body.socials))).fetchone()
                 self._admin_audit(c,auth,'create_artist',artist=artist_id)
                 from dataclasses import replace
-                return {**replace(auth,artist_id=artist_id).dto(),'page':self._page(row),'availability':AVAILABILITY}
+                return {**replace(auth,artist_id=artist_id).dto(),'page':self._page(row),'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
         except IntegrityError: raise MediaError(409,'Slug unavailable') from None
 
     def private_page(self,actor,artist):
@@ -115,7 +115,7 @@ class ArtistOperations:
             owner=c.execute('SELECT u.auth_account_id FROM artist_memberships m JOIN shadify_users u ON u.id=m.user_id '
                             'WHERE m.artist_id=%s AND m.revoked_at IS NULL',(artist,)).fetchone()
             return {**auth.dto(),'page':self._page(page),'owner_account_id':owner['auth_account_id'] if owner else None,
-                    'availability':AVAILABILITY}
+                    'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
 
     def manageable_pages(self,actor,limit,cursor=None):
         from dataclasses import replace
@@ -136,18 +136,18 @@ class ArtistOperations:
                 'pages':[{'page':{k:self._page(row)[k] for k in ('id','name','slug','publish_state','verified')},
                 **replace(auth,artist_id=row['id'],publish_state=row['publish_state'],
                           owner=row['id'] in owned,acting_admin=page_admin).dto()} for row in rows[:limit]],
-                'next_cursor':str(rows[limit-1]['id']) if len(rows)>limit else None,'availability':AVAILABILITY}
+                'next_cursor':str(rows[limit-1]['id']) if len(rows)>limit else None,'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
 
     def edit_page(self,actor,artist,patch):
         with self.authorized(actor,artist,operation='edit_profile') as (c,auth,page,_):
             fields=ArtistProfile.model_fields
             model=validate(ArtistProfile,{**{k:page[k] for k in fields},**patch})
             for key in ('avatar_asset_id','header_asset_id'):
-                self._asset(c,artist,getattr(model,key),'artwork_delivery')
+                self._profile_asset(c,artist,getattr(model,key),key.removesuffix('_asset_id'))
             row=c.execute('UPDATE shadify_artists SET name=%s,bio=%s,genres=%s,socials=%s,avatar_asset_id=%s,header_asset_id=%s '
                           'WHERE id=%s RETURNING *',(model.name,model.bio,Jsonb(model.genres),Jsonb(model.socials),
                           model.avatar_asset_id,model.header_asset_id,artist)).fetchone()
-            return {**auth.dto(),'page':self._page(row),'availability':AVAILABILITY}
+            return {**auth.dto(),'page':self._page(row),'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
 
     def edit_layout(self,actor,artist,layout):
         with self.authorized(actor,artist,operation='edit_profile') as (c,auth,_,_):
@@ -157,7 +157,7 @@ class ArtistOperations:
                 if reference: self._content_row(c,artist,resource,reference)
             data=layout.model_dump(mode='json')
             c.execute('UPDATE shadify_artists SET layout=%s WHERE id=%s',(Jsonb(data),artist))
-            return {**auth.dto(),'layout':data,'availability':AVAILABILITY}
+            return {**auth.dto(),'layout':data,'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
 
     def page_state(self,actor,artist,state,*,admin_only=False,verification=None):
         with self.authorized(actor,artist,admin_only=admin_only, operation='verify' if verification is not None else ('suspend' if admin_only else 'publish_content')) as (c,auth,page,_):
@@ -172,7 +172,7 @@ class ArtistOperations:
                     raise MediaError(409,'Page name required')
                 if state=='published':
                     for field in ('avatar_asset_id','header_asset_id'):
-                        self._asset(c,artist,page[field],'artwork_delivery')
+                        self._profile_asset(c,artist,page[field],field.removesuffix('_asset_id'))
                 c.execute('UPDATE shadify_artists SET publish_state=%s WHERE id=%s',(state,artist))
             page=c.execute('SELECT * FROM shadify_artists WHERE id=%s',(artist,)).fetchone()
             from dataclasses import replace
@@ -268,7 +268,7 @@ class ArtistOperations:
             # Published works cannot be edited into a technically invalid state.
             if row['publish_state']=='published' and not self._publishable(c,artist,resource,row):
                 raise MediaError(409,'Published content must remain technically ready')
-            return {**auth.dto(),'content':self._content_dto(c,resource,row),'availability':AVAILABILITY}
+            return {**auth.dto(),'content':self._content_dto(c,resource,row),'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
 
     def content_read(self,actor,artist,resource,content_id=None,*,limit=20,cursor=None):
         with self.authorized(actor,artist,operation='read_content') as (c,auth,_,_):
@@ -371,4 +371,23 @@ class ArtistOperations:
                           'video':bool(contents['videos']), 'moments':bool(contents['moments']),
                           'bio':bool(page['bio']), 'tour':bool(contents['events'])}
                 result['sections']=[{**s,'available':True,'empty':not sections[s['id']]} for s in layout.get('sections',[])]
-                return {'page':result,'content':contents,'next_cursors':cursors,'availability':AVAILABILITY}
+                return {'page':result,'content':contents,'next_cursors':cursors,'availability':{**AVAILABILITY,'profile_media_upload':self.profile_media_available(c)}}
+
+    def _profile_asset(self,c,artist,asset_id,purpose,*,lock=True,anchor=True):
+        if asset_id is None:return None
+        row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s'+(' FOR SHARE' if lock else ''),(asset_id,artist)).fetchone()
+        if row is None:raise MediaError(404,'Asset not found')
+        # Existing artwork references remain valid; new profile images are purpose-bound.
+        if row['asset_type']=='artwork_delivery':
+            return self._asset(c,artist,asset_id,'artwork_delivery',lock=lock)
+        if (row['asset_type']!=purpose+'_delivery' or row['track_id'] is not None
+                or row['state']!='ready' or row['access_class']!='free'
+                or row['publish_state']!='published' or row['storage_provider']!='local'
+                or not row['key'].startswith(f'delivery/{asset_id}/')):
+            raise MediaError(409,'Approved same-purpose profile image required')
+        self.require_ingest_approval(Asset(**row),cursor=c,lock=lock)
+        if anchor and (row['mime']!='image/png' or c.execute(
+                "SELECT 1 FROM shadify_ingest_variants v JOIN shadify_ingest_jobs j ON j.id=v.job_id "
+                "WHERE v.asset_id=%s AND v.role='cover' AND j.state='ready'",(asset_id,)).fetchone() is None):
+            raise MediaError(409,'Approved compatible profile image anchor required')
+        return row

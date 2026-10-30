@@ -6,6 +6,7 @@ from .scanner_sandbox import NativeSandbox
 from .musicbrainz import text
 
 PIPELINE_VERSION='mp3-cover-v1'
+PROFILE_PIPELINE_VERSION='profile-image-v2'
 class ToolFailure(Exception):
     def __init__(self,code):self.code=code
 
@@ -13,7 +14,7 @@ class MediaTools:
     def __init__(self,*,bwrap,runtime_root,prlimit,temp_dir,version,limits,lock_fd=None,runtime_sha256=None):
         self.sandbox=NativeSandbox(bwrap=bwrap,runtime_root=runtime_root);self.prlimit=str(prlimit)
         self.temp_dir=str(temp_dir);self.version=version;self.limits=limits;self.lock_fd=lock_fd;self.identity=version+':'+str(runtime_sha256)
-    def run(self,tool,options,fd,*,deadline,maximum=65536,seekable=False):
+    def run(self,tool,options,fd,*,deadline,maximum=65536,output_file=False,seekable=False):
         if tool not in ('ffmpeg','ffprobe'):raise ValueError('Fixed media tools only')
         import tempfile
         try:
@@ -23,17 +24,33 @@ class MediaTools:
                 inherited=[] if self.lock_fd is None else [self.lock_fd]
                 if seekable:
                     if fd is None or not stat.S_ISREG(os.fstat(fd).st_mode) or not 0<os.fstat(fd).st_size<=self.limits.max_input_bytes:raise ToolFailure('validation_invalid')
-                    # Only this admitted object's descriptor is mounted. The tool
-                    # cannot choose a host path; bwrap closes it before exec.
                     separator=len(argv)-len(options)-2
                     argv[separator:separator]=['--ro-bind-data',str(fd),'/scratch/input']
                     inherited.append(fd)
+                if output_file:
+                    if tool!='ffmpeg' or options[-1]!='/scratch/profile.avif':raise ValueError('Fixed AVIF output only')
+                    # Retain bounded tmpfs; expose only one precreated output inode.
+                    slot=Path(workspace)/'profile.avif'
+                    handle=os.open(slot,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    os.close(handle)
+                    separator=len(argv)-len(options)-2
+                    argv[separator:separator]=['--bind',str(slot),'/scratch/profile.avif']
                 command=[self.prlimit,'--cpu='+str(self.limits.cpu_seconds),'--as='+str(self.limits.memory_bytes),
-                    '--fsize='+str(self.limits.max_scan_bytes),'--nofile=128','--',*argv]
+                    '--fsize='+str(min(maximum,self.limits.max_scan_bytes) if output_file else self.limits.max_scan_bytes),'--nofile=128','--',*argv]
                 if fd is not None:os.lseek(fd,0,os.SEEK_SET)
                 code,out,err=run_bounded(command,deadline=deadline,output_bytes=maximum,stdin=None if seekable else fd,
-                    stdin_bytes=os.fstat(fd).st_size if fd is not None else None,pass_fds=tuple(inherited))
+                    stdin_bytes=os.fstat(fd).st_size if fd is not None else None,pass_fds=tuple(inherited),
+                    allow_early_stdin_close=tool=='ffprobe' and fd is not None and not seekable)
                 if code or err:raise ToolFailure('validation_invalid')
+                if output_file:
+                    target=Path(workspace)/'profile.avif'
+                    handle=os.open(target,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+                    try:
+                        info=os.fstat(handle);size=info.st_size
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or not 0<size<=maximum:raise ToolFailure('output_invalid')
+                        out=os.read(handle,maximum+1)
+                        if len(out)!=size:raise ToolFailure('output_invalid')
+                    finally:os.close(handle)
                 return out
         except TimeoutError:raise ToolFailure('processing_timeout') from None
         except FileNotFoundError:raise ToolFailure('processing_unavailable') from None
@@ -46,11 +63,17 @@ class MediaTools:
             if not output.startswith((tool+' version '+self.version+' ').encode()):raise ToolFailure('processing_unavailable')
     def probe(self,fd,*,deadline):
         try:
-            data=json.loads(self.run('ffprobe',['-v','error','-protocol_whitelist','pipe','-format_whitelist','wav,flac,mp3,png_pipe,jpeg_pipe,image2pipe',
-                '-count_packets','-show_entries','stream=codec_name,codec_type,sample_rate,channels,bits_per_sample,bits_per_raw_sample,width,height:stream_disposition=attached_pic:format=format_name:format_tags=title,artist,album,track,ISRC',
+            data=json.loads(self.run('ffprobe',['-v','error','-protocol_whitelist','pipe','-format_whitelist','wav,flac,mp3,png_pipe,jpeg_pipe,webp_pipe,image2pipe,mov',
+                '-count_packets','-show_entries','stream=index,codec_name,codec_type,sample_rate,channels,bits_per_sample,bits_per_raw_sample,width,height,pix_fmt:stream_disposition=attached_pic:format=format_name:format_tags=title,artist,album,track,ISRC,major_brand',
                 '-of','json','-i','pipe:0'],fd,deadline=deadline))
             if type(data) is not dict or type(data.get('streams')) is not list or not 1<=len(data['streams'])<=2:raise ValueError()
             streams=data['streams']
+            if len(streams)==2 and data.get('format',{}).get('tags',{}).get('major_brand')=='avif':
+                first,alpha=streams
+                if any(x.get('codec_type')!='video' or x.get('codec_name')!='av1' for x in streams) or alpha.get('pix_fmt') not in ('gray','gray10le','gray12le') or (first.get('width'),first.get('height'))!=(alpha.get('width'),alpha.get('height')):raise ValueError()
+                os.lseek(fd,0,os.SEEK_SET);raw=os.read(fd,1048577)
+                if b'urn:mpeg:mpegB:cicp:systems:auxiliary:alpha' not in raw:raise ValueError()
+                return data,{**first,'separate_alpha':True}
             if len(streams)==2:
                 audio=[s for s in streams if s.get('codec_type')=='audio' and s.get('codec_name')=='mp3']
                 pictures=[s for s in streams if s.get('codec_type')=='video' and s.get('codec_name') in ('mjpeg','png') and s.get('disposition',{}).get('attached_pic')==1]
@@ -72,7 +95,7 @@ class MediaTools:
             width=int(stream['width']);height=int(stream['height'])
             if not 1<=width<=4096 or not 1<=height<=4096:raise ValueError()
             data=self.run('ffmpeg',['-nostdin','-v','error','-xerror','-err_detect','explode','-threads','1','-protocol_whitelist','pipe',
-                '-i','pipe:0','-map','0:v:0','-frames:v','2','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],fd,deadline=deadline,maximum=100663296)
+                '-i','pipe:0','-map','0:'+str(stream.get('index',0)),'-frames:v','2','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],fd,deadline=deadline,maximum=100663296)
             if len(data)!=width*height*3:raise ValueError()
             return dict(width=width,height=height,frames=1,decoded_bytes=len(data))
         except (ValueError,KeyError,TypeError,OverflowError):raise ToolFailure('validation_invalid') from None
@@ -81,13 +104,14 @@ class MediaTools:
         container_check(fd,mime,self.limits.max_input_bytes)
         if mime=='video/mp4':return self.validate_video(fd,deadline=deadline)
         report,stream=self.probe(fd,deadline=deadline)
-        formats={'audio/wav':'wav','audio/flac':'flac','audio/mpeg':'mp3','image/png':'png_pipe','image/jpeg':'jpeg_pipe'}
+        formats={'audio/wav':'wav','audio/flac':'flac','audio/mpeg':'mp3','image/png':'png_pipe','image/jpeg':'jpeg_pipe','image/webp':'webp_pipe','image/avif':'mov,mp4,m4a,3gp,3g2,mj2'}
         expected=formats[mime]
         if report.get('format',{}).get('format_name') not in (expected,'image2pipe' if mime.startswith('image/') else expected):raise ToolFailure('validation_invalid')
         if mime.startswith('audio/'):
             if stream.get('codec_type')!='audio' or not (stream.get('codec_name') in ('pcm_u8','pcm_s16le','pcm_s24le','pcm_s32le') if mime=='audio/wav' else stream.get('codec_name')==('mp3' if mime=='audio/mpeg' else 'flac')):raise ToolFailure('validation_invalid')
-        elif stream.get('codec_type')!='video' or stream.get('codec_name')!=('png' if mime=='image/png' else 'mjpeg'):raise ToolFailure('validation_invalid')
+        elif stream.get('codec_type')!='video' or stream.get('codec_name')!=('png' if mime=='image/png' else 'av1' if mime=='image/avif' else 'webp' if mime=='image/webp' else 'mjpeg'):raise ToolFailure('validation_invalid')
         decoded=self.decoded(fd,stream,deadline=deadline)
+        if stream.get('separate_alpha'):self.decoded(fd,report['streams'][1],deadline=deadline)
         if mime=='audio/mpeg':
             for picture in report['streams']:
                 if picture.get('codec_type')=='video':self.decoded(fd,picture,deadline=deadline)
@@ -100,14 +124,22 @@ class MediaTools:
         except ValueError:raise ToolFailure('metadata_invalid') from None
         metadata.update({key:value for key,value in decoded.items() if key=='duration_ms'})
         quality=dict(codec=stream['codec_name'],**decoded)
+        if mime.startswith('image/'):
+            pixel_format=str(stream.get('pix_fmt',''))
+            quality['separate_alpha']=bool(stream.get('separate_alpha'))
+            quality['has_alpha']=quality['separate_alpha'] or pixel_format=='pal8' or pixel_format.startswith(('rgba','bgra','argb','abgr','yuva','gbrap','ya'))
         if mime.startswith('audio/'):
             quality['lossless']=mime!='audio/mpeg'
             if mime=='audio/mpeg':
                 os.lseek(fd,0,os.SEEK_SET);quality.update(mp3_source(os.read(fd,self.limits.max_input_bytes+1)))
                 if quality['bitrate_kbps']<32:raise ToolFailure('validation_invalid')
             else:quality['bits_per_sample']=int(stream.get('bits_per_raw_sample') or stream.get('bits_per_sample') or 0)
-        return dict(passed=True,tool_version=self.version,actual_mime=mime,source_quality=quality),dict(complete=True,metadata=metadata)
-    def process(self,fd,mime,validation,*,deadline,roles=None):
+        client_optimized=False
+        if mime.startswith('image/'):
+            from .client_images import optimized
+            os.lseek(fd,0,os.SEEK_SET);client_optimized=optimized(os.read(fd,1048577),mime)
+        return dict(client_optimized=client_optimized,passed=True,tool_version=self.version,actual_mime=mime,source_quality=quality),dict(complete=True,metadata=metadata)
+    def process(self,fd,mime,validation,*,deadline,roles=None,profile_purpose=None):
         self.preflight(deadline=deadline)
         outputs={}
         if mime=='video/mp4':
@@ -129,19 +161,62 @@ class MediaTools:
                 if stream.get('codec_name')!='mp3' or decoded['channels']!=2 or decoded['sample_rate']!=44100 or abs(decoded['duration_ms']-validation['source_quality']['duration_ms'])>100:
                     raise ToolFailure('output_invalid')
                 outputs[role]=('audio/mpeg',data)
+        elif profile_purpose:
+            return self.profile_outputs(fd,mime,validation,profile_purpose,deadline=deadline,roles=roles)
         elif roles is None or 'cover' in roles:
             data=self.run('ffmpeg',['-nostdin','-v','error','-xerror','-err_detect','explode','-threads','1','-protocol_whitelist','pipe','-i','pipe:0',
-                '-map','0:v:0','-map_metadata','-1','-frames:v','1','-threads','1','-c:v','png','-pix_fmt','rgb24','-fflags','+bitexact','-flags:v','+bitexact','-f','image2pipe','pipe:1'],fd,deadline=deadline,maximum=self.limits.max_input_bytes)
+                *(['-filter_complex','[0:v:0][0:v:1]alphamerge[image]','-map','[image]'] if validation['source_quality'].get('separate_alpha') else ['-map','0:v:0']),'-map_metadata','-1','-frames:v','1','-threads','1','-c:v','png','-pix_fmt','rgba','-fflags','+bitexact','-flags:v','+bitexact','-f','image2pipe','pipe:1'],fd,deadline=deadline,maximum=self.limits.max_input_bytes)
             with bytes_fd(data) as output_fd:self.validate(output_fd,'image/png',deadline=deadline)
             outputs['cover']=('image/png',data)
+        if mime.startswith('image/') and validation.get('client_optimized',mime=='image/avif') and (roles is None or 'cover_avif' in roles):
+            os.lseek(fd,0,os.SEEK_SET);data=os.read(fd,1048577)
+            from .client_avif import validate
+            from .client_images import optimized
+            if not optimized(data,mime):raise ToolFailure('output_invalid')
+            outputs['cover_avif']=(mime,data)
         return outputs
 
+    def profile_outputs(self,fd,mime,validation,purpose,*,deadline,roles=None):
+        if purpose not in ('avatar','header') or mime not in ('image/png','image/jpeg','image/webp','image/avif'):raise ToolFailure('output_invalid')
+        quality=validation['source_quality'];source_width=int(quality['width']);source_height=int(quality['height'])
+        outputs={};sizes=(512,192) if purpose=='avatar' else (1920,640)
+        os.lseek(fd,0,os.SEEK_SET);client_bytes=os.read(fd,1048577)
+        from .client_images import optimized
+        if mime=='image/avif' and max(source_width,source_height)>sizes[0]:raise ToolFailure('output_invalid')
+        preserve=optimized(client_bytes,mime) and max(source_width,source_height)<=sizes[0]
+        for role,width,avif in (('cover',sizes[0],False),('cover_small',sizes[1],False),('cover_avif',sizes[0],True),('cover_avif_small',sizes[1],True)):
+            if roles is not None and role not in roles:continue
+            if avif and preserve:
+                # Both AVIF variants reference validated client bytes; no re-encode.
+                if max(source_width,source_height)>sizes[0]:raise ToolFailure('output_invalid')
+                os.lseek(fd,0,os.SEEK_SET);data=os.read(fd,1048577)
+                from .client_avif import validate
+                if not optimized(data,mime):raise ToolFailure('output_invalid')
+                outputs[role]=(mime,data);continue
+            ratio=min(1,width/source_width,width/source_height)
+            # Bound both axes and preserve aspect ratio; never upscale source pixels.
+            width=max(1,round(source_width*ratio));height=max(1,round(source_height*ratio))
+            options=['-nostdin','-v','error','-xerror','-err_detect','explode','-threads','1','-protocol_whitelist','pipe,file','-i','pipe:0','-map','0:v:0','-map_metadata','-1','-frames:v','1','-vf',f'scale={width}:{height}','-threads','1']
+            if quality.get('separate_alpha'):
+                i=options.index('-map');options[i:i+2]=['-filter_complex',f'[0:v:0][0:v:1]alphamerge,scale={width}:{height}[image]','-map','[image]']
+                i=options.index('-vf');del options[i:i+2]
+            if avif and quality.get('has_alpha'):avif=False
+            if avif:options+=['-y','-c:v','libaom-av1','-cpu-used','6','-crf','32','-still-picture','1','-pix_fmt','yuv444p','-f','avif','/scratch/profile.avif']
+            else:options+=['-c:v','png','-pix_fmt','rgba','-f','image2pipe','pipe:1']
+            data=self.run('ffmpeg',options,fd,deadline=deadline,maximum=10485760,output_file=avif)
+            output_mime='image/avif' if avif else 'image/png'
+            with bytes_fd(data) as output_fd:
+                result,_=self.validate(output_fd,output_mime,deadline=deadline)
+            actual=result['source_quality']
+            if actual['width']!=width or actual['height']!=height or width>source_width or height>source_height:raise ToolFailure('output_invalid')
+            outputs[role]=(output_mime,data)
+        return outputs
 
     def validate_video(self,fd,*,deadline):
         try:
             report=json.loads(self.run('ffprobe',['-v','error','-protocol_whitelist','file,pipe','-format_whitelist','mov',
                 '-enable_drefs','0','-use_absolute_path','0','-count_packets',
-                '-show_entries','stream=codec_name,codec_type,profile,pix_fmt,width,height,avg_frame_rate,sample_rate,channels,duration,start_time:stream_disposition=attached_pic:format=format_name,duration:format_tags=title,artist,album,track,ISRC',
+                '-show_entries','stream=index,codec_name,codec_type,profile,pix_fmt,width,height,avg_frame_rate,sample_rate,channels,duration,start_time:stream_disposition=attached_pic:format=format_name,duration:format_tags=title,artist,album,track,ISRC,major_brand',
                 '-of','json','-i','/scratch/input'],fd,deadline=deadline,seekable=True))
             streams=report['streams']
             if type(streams) is not list or len(streams)!=2 or report['format']['format_name']!='mov,mp4,m4a,3gp,3g2,mj2':raise ValueError()
@@ -171,7 +246,6 @@ class MediaTools:
             metadata['duration_ms']=quality['duration_ms']
             return dict(passed=True,tool_version=self.version,actual_mime='video/mp4',source_quality=quality),dict(complete=True,metadata=metadata)
         except (ValueError,KeyError,TypeError,OverflowError,StopIteration,ZeroDivisionError,UnicodeError):raise ToolFailure('validation_invalid') from None
-
     def process_video(self,fd,validation,*,deadline):
         data=self.run('ffmpeg',['-nostdin','-v','error','-xerror','-err_detect','explode','-threads','1',
             '-protocol_whitelist','file,pipe','-format_whitelist','mov','-enable_drefs','0','-use_absolute_path','0','-i','/scratch/input',
@@ -211,6 +285,11 @@ def container_check(fd,mime,maximum):
             mp3_source(data)
         elif mime=='image/jpeg':
             if data[:3]!=b'\xff\xd8\xff' or data[-2:]!=b'\xff\xd9':raise ValueError()
+        elif mime=='image/webp':
+            if len(data)<12 or data[:4]!=b'RIFF' or data[8:12]!=b'WEBP' or int.from_bytes(data[4:8],'little')+8!=len(data):raise ValueError()
+        elif mime=='image/avif':
+            from .client_avif import validate
+            validate(data, maximum=10*1024*1024)
         elif mime=='image/png':
             if data[:8]!=b'\x89PNG\r\n\x1a\n':raise ValueError()
             offset=8;ended=False

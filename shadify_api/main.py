@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 import inspect
-from typing import Callable
+from typing import Callable, Literal
 from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
@@ -8,6 +8,7 @@ from .media import MediaError, MediaService, UploadIntent
 from .domain import TrackDraft
 from .storage import StorageUnavailable
 from .auth import Identity
+from .profile_media import ProfileUploadIntent
 
 
 def require_identity():
@@ -127,6 +128,11 @@ def create_app(service: MediaService | None = None, identity: Callable = require
                 "upload": {"method": "PUT", "url": authorization.url,
                 "headers": authorization.headers, "expires_in": authorization.expires_in}}
 
+    @app.post('/api/media/fallback-uploads',status_code=201)
+    def create_image_fallback(intent: UploadIntent, owner: Identity = Depends(identity), media: MediaService = Depends(media_service)):
+        if intent.asset_type!='artwork_original' or intent.mime not in ('image/jpeg','image/png','image/webp','image/avif') or intent.size>10*1024*1024:raise HTTPException(422,'Image fallback limit exceeded')
+        return create_upload(intent,owner,media)
+
     @app.post("/api/media/uploads/{asset_id}/complete")
     def complete_upload(asset_id: UUID, owner: Identity = Depends(identity),
                         media: MediaService = Depends(media_service)):
@@ -136,6 +142,14 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return {**context, "asset_id": str(asset.id), "state": asset.state,
                 "access_class": asset.access_class, "publish_state": asset.publish_state,
                 "ingest": repository.media_metadata(owner,asset_id)["ingest"] if repository is not None else None}
+
+    @app.post('/api/artists/{artist_id}/profile-media/fallback-uploads',status_code=201)
+    @app.post('/api/artists/{artist_id}/profile-media/uploads',status_code=201)
+    def create_profile_upload(artist_id:UUID,intent:ProfileUploadIntent,owner:Identity=Depends(identity),media:MediaService=Depends(media_service)):
+        asset,authorization=media.create_profile(owner,artist_id,intent)
+        context=repository.access_context(owner,artist_id)
+        return {**context,'asset_id':str(asset.id),'state':asset.state,
+                'upload':{'method':'PUT','url':authorization.url,'headers':authorization.headers,'expires_in':authorization.expires_in}}
 
     def common_storage():
         from .storage_service import StorageService
@@ -148,6 +162,14 @@ def create_app(service: MediaService | None = None, identity: Callable = require
     def private_media_access(asset_id: UUID, owner: Identity = Depends(identity)):
         access = common_storage().private_access(owner, asset_id)
         return {'url': access.url, 'expires_at': access.expires_at}
+
+    @app.get('/api/artists/{artist_id}/profile-media/{purpose}/access')
+    def public_profile_access(artist_id:UUID,purpose:Literal['avatar','header'],format:Literal['png','avif','optimized']='png',size:Literal['full','small']='full'):
+        anchor=repository.public_profile_asset(artist_id,purpose)
+        asset=repository.public_profile_asset(artist_id,purpose,format=format,size=size)
+        access=common_storage().profile_access(artist_id,purpose,expected_asset=asset.id)
+        return {'url':access.url,'expires_at':access.expires_at,'artist_id':str(artist_id),
+                'asset_id':str(asset.id),'anchor_asset_id':str(anchor.id),'purpose':purpose,'mime':asset.mime,'size':asset.size}
 
     @app.post('/api/tracks/{track_id}/playback')
     def playback_access(track_id: UUID, preview: bool = False, owner: Identity = Depends(identity)):

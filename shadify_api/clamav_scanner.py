@@ -6,12 +6,19 @@ from .scanner_sandbox import public_trust_snapshot
 
 class EvidenceInvalid(Exception):pass
 
-def run_bounded(argv,*,deadline,output_bytes,stdin=None,pass_fds=(),stdin_bytes=None):
+def run_bounded(argv,*,deadline,output_bytes,stdin=None,pass_fds=(),stdin_bytes=None,allow_early_stdin_close=False):
     """No shell; a fresh process group is killed/reaped on every failure."""
+    input_identity=None
+    if allow_early_stdin_close:
+        info=os.fstat(stdin) if stdin is not None else None
+        if info is None or not stat.S_ISREG(info.st_mode) or type(stdin_bytes) is not int or stdin_bytes!=info.st_size:
+            raise EvidenceInvalid('Probe input limit')
+        identity=lambda value:(value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        input_identity=identity(info)
     process=subprocess.Popen(argv,stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
         stdout=subprocess.PIPE,stderr=subprocess.PIPE,pass_fds=pass_fds,close_fds=True,start_new_session=True,
         env={'PATH':'/usr/bin:/bin','LC_ALL':'C','LANG':'C'})
-    streams={};total=0;pending=b'';input_read=0
+    streams={};total=0;pending=b'';input_read=0;input_closed_early=False
     try:
         with selectors.DefaultSelector() as selector:
             for stream in (process.stdout,process.stderr):
@@ -28,7 +35,13 @@ def run_bounded(argv,*,deadline,output_bytes,stdin=None,pass_fds=(),stdin_bytes=
                             if stdin_bytes is None or input_read>stdin_bytes:raise EvidenceInvalid('Scanner input limit')
                         if not pending:selector.unregister(process.stdin);process.stdin.close();continue
                         try:count=os.write(process.stdin.fileno(),pending)
-                        except BrokenPipeError:raise EvidenceInvalid('Scanner closed input early') from None
+                        except BrokenPipeError:
+                            if not allow_early_stdin_close:raise EvidenceInvalid('Scanner closed input early') from None
+                            # Informational ffprobe may finish before EOF. Keep
+                            # draining bounded output and require successful exit;
+                            # scan/full decode keep the strict default above.
+                            selector.unregister(process.stdin);process.stdin.close()
+                            pending=b'';input_closed_early=True;continue
                         pending=pending[count:];continue
                     block=os.read(key.fileobj.fileno(),4096)
                     if not block:selector.unregister(key.fileobj);continue
@@ -39,6 +52,8 @@ def run_bounded(argv,*,deadline,output_bytes,stdin=None,pass_fds=(),stdin_bytes=
             if remaining<=0:raise TimeoutError('Scanner deadline')
             try:code=process.wait(timeout=remaining)
             except subprocess.TimeoutExpired:raise TimeoutError('Scanner deadline') from None
+        if input_identity is not None and identity(os.fstat(stdin))!=input_identity:raise EvidenceInvalid('Probe input changed')
+        if input_closed_early and (code or streams[process.stderr]):raise EvidenceInvalid('Probe closed input without successful result')
         return code,bytes(streams[process.stdout]),bytes(streams[process.stderr])
     except BaseException:
         try:os.killpg(process.pid,signal.SIGKILL)

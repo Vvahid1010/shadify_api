@@ -9,7 +9,8 @@ from .ingest_worker import IngestWorker
 from .ingest_scanner import fd_digest,InputChanged
 from .storage import StorageUnavailable
 from .media import Asset,MediaError
-from .media_tools import ToolFailure,PIPELINE_VERSION
+from .media_tools import ToolFailure,PIPELINE_VERSION,PROFILE_PIPELINE_VERSION
+from .profile_media import PROFILE_ORIGINALS,delivery_kind,MAX_PROFILE_IMAGE_BYTES
 from .musicbrainz import ProviderUnavailable
 
 class PipelineWorker(IngestWorker):
@@ -49,7 +50,9 @@ class PipelineWorker(IngestWorker):
         # Scope existence reads need no artist UPDATE privilege. Promotion takes
         # implicit artist/track FK key-share locks via derived INSERT BEFORE job locks.
         if c.execute("SELECT id FROM shadify_artists WHERE id=%s",(asset.artist_id,)).fetchone() is None:raise MediaError(409,'Artist removed')
-        if c.execute("SELECT id FROM shadify_tracks WHERE id=%s AND artist_id=%s",(asset.track_id,asset.artist_id)).fetchone() is None:raise MediaError(409,'Track removed')
+        if asset.asset_type in PROFILE_ORIGINALS:
+            if asset.track_id is not None:raise ToolFailure('pipeline_evidence_invalid')
+        elif c.execute("SELECT id FROM shadify_tracks WHERE id=%s AND artist_id=%s",(asset.track_id,asset.artist_id)).fetchone() is None:raise MediaError(409,'Track removed')
         current=c.execute("SELECT * FROM shadify_ingest_jobs WHERE id=%s FOR UPDATE",(job['id'],)).fetchone()
         active=c.execute("SELECT * FROM shadify_ingest_attempts WHERE id=%s AND finished_at IS NULL AND lease_expires_at>clock_timestamp() FOR UPDATE",(attempt['id'],)).fetchone()
         if current['state']!=job['state'] or current['revision']!=job['revision'] or active is None:raise MediaError(409,'Pipeline attempt changed or expired')
@@ -111,6 +114,15 @@ class PipelineWorker(IngestWorker):
     def _matching(self,connection,claim,asset,stages,deadline):
         job,_=claim
         if 'extraction' not in stages:raise ToolFailure('pipeline_evidence_invalid')
+        if asset.asset_type in PROFILE_ORIGINALS:
+            # This is image-scope validation evidence, never music metadata matching.
+            payload=dict(complete=True,provider='artist_profile',purpose=asset.asset_type.removesuffix('_original'))
+            with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
+                scan=self._fenced(c,claim,asset)
+                stage=self._insert_stage(c,job,scan,'matching',payload)
+                c.execute("INSERT INTO shadify_ingest_match_decisions(id,job_id,input_sha256,matching_stage_id,kind,method,corrected_metadata,reason) VALUES(%s,%s,%s,%s,'profile','automatic',%s,%s)",
+                          (uuid4(),job['id'],job['input_sha256'],stage['id'],Jsonb({}),'Artist profile image validated; no music metadata matching'))
+                return self._finish(c,claim,'processing')
         if asset.asset_type in ('audio_original','video_original'):
             metadata=dict(stages['extraction']['payload']['metadata'])
             with connection.cursor(row_factory=dict_row) as c:
@@ -139,8 +151,25 @@ class PipelineWorker(IngestWorker):
         with connection.cursor(row_factory=dict_row) as c:
             decision=c.execute("SELECT * FROM shadify_ingest_match_decisions WHERE job_id=%s",(job['id'],)).fetchone()
         if decision is None:raise ToolFailure('pipeline_evidence_invalid')
+        with connection.cursor(row_factory=dict_row) as c:
+            profile_v2=asset.asset_type in PROFILE_ORIGINALS and c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_ingest_variants'::regclass AND conname='shadify_profile_variants_v2') AS enabled").fetchone()['enabled']
+        client_artwork=asset.asset_type=='artwork_original' and stages['validation']['payload'].get('client_optimized',asset.mime=='image/avif')
+        if client_artwork:
+            with connection.cursor(row_factory=dict_row) as c:
+                if not c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_media_assets'::regclass AND conname='shadify_client_avif_bound') AS enabled").fetchone()['enabled']:raise ToolFailure('processing_unavailable')
+        pipeline_version='client-artwork-avif-v1' if client_artwork else PROFILE_PIPELINE_VERSION if profile_v2 else PIPELINE_VERSION
         prepared=stages.get('prepared_outputs');manifest=prepared['payload'] if prepared else None
-        if manifest and (manifest['pipeline_version']!=PIPELINE_VERSION or manifest['tool_identity']!=self.tools.identity):raise ToolFailure('pipeline_evidence_invalid')
+        if manifest:
+            # A durable pre-upgrade manifest keeps its accepted recipe and IDs.
+            # 022 admits ready v1 profile families as well as new v2 families.
+            accepted={pipeline_version}
+            if profile_v2:accepted.add(PIPELINE_VERSION)
+            if manifest['pipeline_version'] not in accepted or manifest['tool_identity']!=self.tools.identity:
+                raise ToolFailure('pipeline_evidence_invalid')
+            pipeline_version=manifest['pipeline_version']
+            profile_v2=profile_v2 and pipeline_version==PROFILE_PIPELINE_VERSION
+            required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover','cover_avif'} if client_artwork else {'master','cover'}
+            if set(manifest['outputs'])!=required:raise ToolFailure('pipeline_evidence_invalid')
         missing=set();existing={}
         if manifest:
             for role,output in manifest['outputs'].items():
@@ -158,7 +187,7 @@ class PipelineWorker(IngestWorker):
                 existing[role]=output
         with self._input(asset,job,deadline) as fd:
             derived_missing=None if manifest is None else missing-{'master'}
-            generated=self.tools.process(fd,asset.mime,stages['validation']['payload'],deadline=deadline,roles=derived_missing) if derived_missing is None or derived_missing else {}
+            generated=self.tools.process(fd,asset.mime,stages['validation']['payload'],deadline=deadline,roles=derived_missing,**({'profile_purpose':asset.asset_type.removesuffix('_original')} if profile_v2 else {})) if derived_missing is None or derived_missing else {}
             if manifest is None or 'master' in missing:
                 os.lseek(fd,0,os.SEEK_SET);parts=[];read=0
                 while block:=os.read(fd,min(1048576,asset.size+1-read)):
@@ -170,12 +199,14 @@ class PipelineWorker(IngestWorker):
             if manifest is None:
                 outputs={}
                 for role,(mime,data) in generated.items():
-                    output_id=uuid5(job['id'],PIPELINE_VERSION+':'+role)
-                    key=(f'artists/{asset.artist_id}/tracks/{asset.track_id}/{output_id}/master' if role=='master' else f'delivery/{output_id}/{role}')
+                    if asset.asset_type in PROFILE_ORIGINALS and len(data)>MAX_PROFILE_IMAGE_BYTES:raise ToolFailure('output_invalid')
+                    output_id=uuid5(job['id'],pipeline_version+':'+role)
+                    key=(f'artists/{asset.artist_id}/profile/{output_id}/master' if role=='master' and asset.asset_type in PROFILE_ORIGINALS
+                         else f'artists/{asset.artist_id}/tracks/{asset.track_id}/{output_id}/master' if role=='master' else f'delivery/{output_id}/{role}')
                     outputs[role]=dict(asset_id=str(output_id),key=key,mime=mime,size=len(data),sha256=hashlib.sha256(data).hexdigest())
-                required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover'}
+                required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover','cover_avif'} if client_artwork else {'master','cover'}
                 if set(outputs)!=required:raise ToolFailure('output_invalid')
-                manifest=dict(pipeline_version=PIPELINE_VERSION,tool_identity=self.tools.identity,outputs=outputs)
+                manifest=dict(pipeline_version=pipeline_version,tool_identity=self.tools.identity,outputs=outputs)
                 with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
                     scan=self._fenced(c,claim,asset);self._insert_stage(c,job,scan,'prepared_outputs',manifest)
             for role,(mime,data) in generated.items():
@@ -194,16 +225,12 @@ class PipelineWorker(IngestWorker):
                     finally:os.close(check)
         identities={}
         for role,output in manifest['outputs'].items():
-            fd=adapter.open(output['key'])
-            try:
-                if fd_digest(fd,deadline=deadline,size=output['size'])!=output['sha256'] or adapter.inspect(output['key']).content_type!=output['mime']:raise ToolFailure('output_invalid')
-                info=os.fstat(fd);identities[role]=dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mtime_ns=info.st_mtime_ns,ctime_ns=info.st_ctime_ns)
-            finally:os.close(fd)
+            identities[role]=self._output_identity(adapter,output,deadline)
         if time.monotonic()>=deadline:raise TimeoutError()
         with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
             targets={}
             for role,output in manifest['outputs'].items():
-                master=role=='master';kind=asset.asset_type if master else 'audio_delivery' if role in ('high','low') else 'video_delivery' if role=='video' else 'artwork_delivery'
+                master=role=='master';kind=(asset.asset_type if master else delivery_kind(asset.asset_type) if asset.asset_type in PROFILE_ORIGINALS else 'audio_delivery' if role in ('high','low') else 'video_delivery' if role=='video' else 'artwork_delivery')
                 target=Asset(UUID(output['asset_id']),asset.owner_id,asset.artist_id,asset.track_id,output['key'],kind,output['mime'],output['size'],datetime.now(timezone.utc)+timedelta(days=3650),'local','ready','private' if master else 'free','draft' if master else 'published')
                 c.execute('INSERT INTO shadify_media_assets(id,owner_id,artist_id,track_id,key,asset_type,mime,size,expires_at,storage_provider,state,access_class,publish_state) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',tuple(getattr(target,name) for name in Asset.__dataclass_fields__))
                 targets[role]=target
@@ -211,10 +238,25 @@ class PipelineWorker(IngestWorker):
             if decision['kind']=='cover':
                 ready=c.execute("SELECT j.id FROM shadify_ingest_jobs j JOIN shadify_ingest_match_decisions d ON d.job_id=j.id WHERE d.id=%s AND j.state='ready' FOR SHARE OF j",(decision['cover_audio_decision_id'],)).fetchone()
                 if ready is None:raise ToolFailure('pipeline_evidence_invalid')
-            self._insert_stage(c,job,scan,'processing',dict(complete=True,pipeline_version=PIPELINE_VERSION,tool_identity=self.tools.identity,identities=identities))
+            self._insert_stage(c,job,scan,'processing',dict(complete=True,pipeline_version=pipeline_version,tool_identity=self.tools.identity,identities=identities))
             for role,output in manifest['outputs'].items():
                 target=targets[role]
-                c.execute("INSERT INTO shadify_ingest_variants(job_id,role,asset_id,output_sha256,source_quality,pipeline_version) VALUES(%s,%s,%s,%s,%s,%s)",(job['id'],role,target.id,output['sha256'],Jsonb(stages['validation']['payload']['source_quality']),PIPELINE_VERSION))
+                c.execute("INSERT INTO shadify_ingest_variants(job_id,role,asset_id,output_sha256,source_quality,pipeline_version) VALUES(%s,%s,%s,%s,%s,%s)",(job['id'],role,target.id,output['sha256'],Jsonb(stages['validation']['payload']['source_quality']),pipeline_version))
                 c.execute("INSERT INTO shadify_ingest_approvals(asset_id,job_id,scan_id,input_sha256,output_sha256,storage_key,storage_provider,mime,size,object_identity,validation,extraction,match_decision,processing) VALUES(%s,%s,%s,%s,%s,%s,'local',%s,%s,%s,%s,%s,%s,%s)",
-                    (target.id,job['id'],scan,job['input_sha256'],output['sha256'],target.key,target.mime,target.size,Jsonb(identities[role]),Jsonb(stages['validation']['payload']),Jsonb(stages['extraction']['payload']),Jsonb(dict(decision=decision['method'],decision_id=str(decision['id']))),Jsonb(dict(complete=True,pipeline_version=PIPELINE_VERSION))))
+                    (target.id,job['id'],scan,job['input_sha256'],output['sha256'],target.key,target.mime,target.size,Jsonb(identities[role]),Jsonb(stages['validation']['payload']),Jsonb(stages['extraction']['payload']),Jsonb(dict(decision=decision['method'],decision_id=str(decision['id']))),Jsonb(dict(complete=True,pipeline_version=pipeline_version))))
+            for role,output in manifest['outputs'].items():
+                if self._output_identity(adapter,output,deadline)!=identities[role]:raise ToolFailure('output_invalid')
             return self._finish(c,claim,'ready')
+
+    def _output_identity(self,adapter,output,deadline):
+        fd=adapter.open(output['key'])
+        try:
+            before=os.fstat(fd)
+            if before.st_size!=output['size'] or fd_digest(fd,deadline=deadline,size=output['size'])!=output['sha256']:raise ToolFailure('output_invalid')
+            if os.getxattr(fd,'user.shadify.mime').decode('ascii')!=output['mime']:raise ToolFailure('output_invalid')
+            after=os.fstat(fd)
+            if (before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_ino,after.st_size,after.st_mtime_ns,after.st_ctime_ns):raise ToolFailure('output_invalid')
+            return dict(device=after.st_dev,inode=after.st_ino,size=after.st_size,mtime_ns=after.st_mtime_ns,ctime_ns=after.st_ctime_ns)
+        except TimeoutError:raise
+        except (OSError,UnicodeError,StorageUnavailable):raise ToolFailure('output_invalid') from None
+        finally:os.close(fd)

@@ -20,7 +20,7 @@ class UploadIntent(BaseModel):
     artist_id: UUID
     track_id: UUID
     asset_type: Literal["audio_original", "artwork_original", "video_original"]
-    mime: Literal["audio/wav", "audio/flac", "audio/mpeg", "video/mp4", "image/jpeg", "image/png"]
+    mime: Literal["audio/wav", "audio/flac", "audio/mpeg", "video/mp4", "image/jpeg", "image/png", "image/webp", "image/avif"]
     size: int = Field(gt=0)
 
 
@@ -29,7 +29,7 @@ class Asset:
     id: UUID
     owner_id: str
     artist_id: UUID
-    track_id: UUID
+    track_id: UUID | None
     key: str
     asset_type: str
     mime: str
@@ -55,6 +55,8 @@ def valid_signature(mime, data):
         "audio/mpeg": data[:3] == b"ID3" or (len(data)>=2 and data[0]==255 and data[1]&0xe6==0xe2),
         "video/mp4": len(data)>=12 and data[4:8]==b"ftyp" and data[8:12] in (b"isom",b"iso2",b"iso3",b"iso4",b"iso5",b"iso6",b"iso7",b"iso8",b"iso9",b"mp41",b"mp42",b"avc1"),
         "image/jpeg": data[:3] == b"\xff\xd8\xff",
+        "image/webp": len(data)>=12 and data[:4]==b"RIFF" and data[8:12]==b"WEBP",
+        "image/avif": len(data)>=12 and data[4:8]==b"ftyp" and data[8:12]==b"avif",
         "image/png": data[:8] == b"\x89PNG\r\n\x1a\n",
     }.get(mime, False)
 
@@ -69,10 +71,11 @@ class MediaService:
         if not self.repository.owns_track(owner, intent.artist_id, intent.track_id):
             raise MediaError(404, "Artist/track not found")
         allowed = {"audio_original": {"audio/wav", "audio/flac", "audio/mpeg"},
-                   "artwork_original": {"image/jpeg", "image/png"},
+                   "artwork_original": {"image/jpeg", "image/png", "image/webp", "image/avif"},
                    "video_original": {"video/mp4"}}
         if intent.mime not in allowed[intent.asset_type] or intent.size > self.max_size:
             raise MediaError(422, "Unsupported type or configured size limit exceeded")
+        if intent.mime=='image/avif' and intent.size>1048576:raise MediaError(422,'Client image output too large')
         asset_id = uuid4()
         key = f"quarantine/artists/{intent.artist_id}/tracks/{intent.track_id}/{asset_id}/master"
         asset = Asset(asset_id, owner.account_id, intent.artist_id, intent.track_id, key,
@@ -89,12 +92,39 @@ class MediaService:
         require_fresh_actor(owner)
         return asset, authorization
 
+    def create_profile(self, owner: Identity, artist: UUID, intent):
+        from .profile_media import ProfileUploadIntent, MAX_PROFILE_IMAGE_BYTES
+        if type(intent) is not ProfileUploadIntent:
+            raise MediaError(422, 'Profile image intent required')
+        require_fresh_actor(owner)
+        self.repository.require_profile_upload(owner, artist)
+        if intent.mime=='image/avif' and intent.size>1048576:raise MediaError(422,'Client image output too large')
+        if intent.size > min(self.max_size, MAX_PROFILE_IMAGE_BYTES):
+            raise MediaError(422, 'Profile image size limit exceeded')
+        from .storage_service import StorageService
+        if not isinstance(self.storage, StorageService) or self.storage.provider != 'local':
+            raise MediaError(503, 'Profile image integration unavailable')
+        asset_id = uuid4()
+        asset = Asset(asset_id, owner.account_id, artist, None,
+                      f'quarantine/artists/{artist}/profile/{asset_id}/master',
+                      intent.purpose + '_original', intent.mime, intent.size,
+                      datetime.now(timezone.utc) + timedelta(seconds=self.ttl),
+                      self.storage.provider)
+        authorization = self.storage.authorize_asset_upload(owner, asset)
+        require_fresh_actor(owner)
+        self.repository.insert(owner, asset)
+        require_fresh_actor(owner)
+        return asset, authorization
+
     def complete(self, owner: Identity, asset_id: UUID):
         require_fresh_actor(owner)
         asset = self.repository.get_for_actor(owner, asset_id)
         if asset is None:
             raise MediaError(404, "Asset not found")
-        if not self.repository.owns_track(owner, asset.artist_id, asset.track_id):
+        from .profile_media import profile_asset
+        if profile_asset(asset):
+            self.repository.require_profile_upload(owner, asset.artist_id)
+        elif not self.repository.owns_track(owner, asset.artist_id, asset.track_id):
             raise MediaError(404, "Artist/track not found")
         if asset.state == "uploaded":
             require_fresh_actor(owner)

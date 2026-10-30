@@ -10,7 +10,11 @@ def receiver_catalog():
               ("tracks.read", "GET", "/api/artists/{artist_id}/tracks"),
               ("tracks.create", "POST", "/api/artists/{artist_id}/tracks"),
               ("media.upload.create", "POST", "/api/media/uploads"),
+              ("media.upload.image_fallback", "POST", "/api/media/fallback-uploads"),
               ("media.upload.complete", "POST", "/api/media/uploads/{asset_id}/complete"),
+              ("artists.profile_media.upload", "POST", "/api/artists/{artist_id}/profile-media/uploads"),
+              ("artists.profile_media.fallback_upload", "POST", "/api/artists/{artist_id}/profile-media/fallback-uploads"),
+              ("artists.profile_media.access", "GET", "/api/artists/{artist_id}/profile-media/{purpose}/access"),
               ("media.read", "GET", "/api/media/{asset_id}"),
               ("media.access", "POST", "/api/media/{asset_id}/access"),
               ("media.playback", "POST", "/api/tracks/{track_id}/playback")]

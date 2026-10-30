@@ -35,8 +35,8 @@ class IngestRepository:
     def ingest_outputs(self,c,asset_id):
         # Older009/010 releases stay compatible; this additive projection is optional.
         if c.execute("SELECT to_regclass('shadify_ingest_variants') AS name").fetchone()['name'] is None:return []
-        rows=c.execute("SELECT v.role,a.id,a.mime,a.size FROM shadify_ingest_jobs j JOIN shadify_ingest_variants v ON v.job_id=j.id JOIN shadify_media_assets a ON a.id=v.asset_id JOIN shadify_ingest_approvals approved ON approved.asset_id=a.id AND approved.job_id=j.id WHERE (j.asset_id=%s OR a.id=%s) AND j.state='ready' ORDER BY v.role",(asset_id,asset_id)).fetchall()
-        return [dict(role=r['role'],asset_id=str(r['id']),mime=r['mime'],size=r['size']) for r in rows]
+        rows=c.execute("SELECT v.role,a.id,a.mime,a.size,a.asset_type,v.source_quality FROM shadify_ingest_jobs j JOIN shadify_ingest_variants v ON v.job_id=j.id JOIN shadify_media_assets a ON a.id=v.asset_id JOIN shadify_ingest_approvals approved ON approved.asset_id=a.id AND approved.job_id=j.id WHERE (j.asset_id=%s OR a.id=%s OR j.id IN (SELECT sibling.job_id FROM shadify_ingest_variants sibling JOIN shadify_media_assets profile ON profile.id=sibling.asset_id WHERE profile.id=%s AND profile.asset_type IN ('avatar_delivery','header_delivery'))) AND j.state='ready' ORDER BY v.role",(asset_id,asset_id,asset_id)).fetchall()
+        return [{**dict(role=r['role'],asset_id=str(r['id']),mime=r['mime'],size=r['size']),**({'has_alpha':r['source_quality'].get('has_alpha') is True} if r['asset_type'] in ('avatar_delivery','header_delivery') else {})} for r in rows]
 
     def require_ingest_approval(self,asset,*,cursor=None,lock=False):
         if lock and cursor is None:raise ValueError("Approval locking requires an outer transaction cursor")
@@ -54,7 +54,7 @@ class IngestRepository:
                     'JOIN shadify_ingest_scans s ON s.id=a.scan_id AND s.job_id=j.id '
                     "AND s.input_sha256=j.input_sha256 AND s.verdict='clean' "
                     "WHERE a.asset_id=%s AND j.state='ready' AND a.input_sha256=j.input_sha256 "
-                    'AND source.artist_id=%s AND source.track_id=%s '
+                    'AND source.artist_id=%s AND source.track_id IS NOT DISTINCT FROM %s '
                     'AND a.storage_key=%s AND a.storage_provider=%s AND a.mime=%s AND a.size=%s' +
                     pipeline_clause+(' FOR SHARE OF j' if lock else ''),
                     (asset.id,asset.artist_id,asset.track_id,asset.key,asset.storage_provider,asset.mime,asset.size)).fetchone()
@@ -72,3 +72,16 @@ class IngestRepository:
                 any(type(v) is not int or v<0 for v in identity.values()) or identity['size']!=asset.size):
             raise MediaError(409,'Approved object evidence unavailable')
         return identity
+
+    def profile_checks(self,c,asset_id):
+        row=c.execute("SELECT j.id,j.state,j.input_sha256 FROM shadify_ingest_jobs j LEFT JOIN shadify_ingest_variants v ON v.job_id=j.id WHERE j.asset_id=%s OR v.asset_id=%s LIMIT 1",(asset_id,asset_id)).fetchone()
+        result=dict(scan='pending',validation='pending',optimization='pending',durable_committed=False)
+        if row is None:return result
+        clean=c.execute("SELECT 1 FROM shadify_ingest_scans WHERE job_id=%s AND input_sha256=%s AND verdict='clean' AND full_coverage=true LIMIT 1",(row['id'],row['input_sha256'])).fetchone()
+        if clean:result['scan']='passed'
+        for stage,key in (('validation','validation'),('processing','optimization')):
+            evidence=c.execute("SELECT 1 FROM shadify_ingest_stages t JOIN shadify_ingest_scans s ON s.id=t.scan_id AND s.job_id=t.job_id AND s.input_sha256=t.input_sha256 WHERE t.job_id=%s AND t.input_sha256=%s AND t.stage=%s AND s.verdict='clean' AND s.full_coverage=true AND t.payload @> %s::jsonb LIMIT 1",(row['id'],row['input_sha256'],stage,'{"passed":true}' if stage=='validation' else '{"complete":true}')).fetchone()
+            if evidence:result[key]='passed'
+        approved=c.execute("SELECT 1 FROM shadify_ingest_variants v JOIN shadify_ingest_approvals a ON a.asset_id=v.asset_id AND a.job_id=v.job_id AND a.output_sha256=v.output_sha256 WHERE v.job_id=%s AND v.role='cover' LIMIT 1",(row['id'],)).fetchone()
+        result['durable_committed']=row['state']=='ready' and bool(approved) and all(result[k]=='passed' for k in ('scan','validation','optimization'))
+        return result

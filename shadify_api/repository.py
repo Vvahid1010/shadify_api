@@ -10,6 +10,7 @@ from .ingest_review import IngestReviewRepository
 from .studio_uploads import StudioUploadsRepository
 from .media import Asset, MediaError
 from .auth import require_fresh_actor
+from .profile_media import profile_asset, profile_operation, PROFILE_ORIGINALS
 
 
 class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRepository, IngestReviewRepository, StudioUploadsRepository):
@@ -25,10 +26,13 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
             raise
 
     def insert(self,actor,asset):
-        with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation=profile_operation(asset)) as (c,_,_,_):
             if asset.owner_id != actor.account_id:
                 raise MediaError(422,'Uploader audit identity mismatch')
-            if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',(asset.track_id,asset.artist_id)).fetchone() is None:
+            if profile_asset(asset):
+                if asset.asset_type not in PROFILE_ORIGINALS or asset.track_id is not None or not self.profile_media_available(c):
+                    raise MediaError(422,'Artist profile image scope mismatch')
+            elif c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',(asset.track_id,asset.artist_id)).fetchone() is None:
                 raise MediaError(404,'Track not found')
             c.execute('INSERT INTO shadify_media_assets '
                 '(id,owner_id,artist_id,track_id,key,asset_type,mime,size,expires_at,storage_provider,state,access_class,publish_state) '
@@ -46,7 +50,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
         require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: return None
-        with self.authorized(actor,asset.artist_id,operation='manage_content',audit=False) as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation=profile_operation(asset),audit=False) as (c,_,_,_):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             return Asset(**row) if row else None
 
@@ -56,21 +60,24 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
             raise ValueError('Only original upload completion transitions are supported')
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
-        with self.authorized(actor,asset.artist_id,operation='manage_content') as (c,_,_,_):
+        with self.authorized(actor,asset.artist_id,operation=profile_operation(asset)) as (c,_,_,_):
             changed=c.execute('UPDATE shadify_media_assets SET state=%s WHERE id=%s AND artist_id=%s AND state=%s '
-                "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original','video_original')",
+                "AND expires_at>clock_timestamp() AND asset_type IN ('audio_original','artwork_original','video_original','avatar_original','header_original')",
                 (target,asset_id,asset.artist_id,expected)).rowcount==1
             if changed and target=='uploaded':self.enqueue_ingest(c,asset_id,byte_sha256)
             return changed
 
     @contextmanager
     def upload_guard(self, actor, asset):
-        with self.authorized(actor, asset.artist_id, operation='manage_content') as (c, _, _, _):
+        with self.authorized(actor, asset.artist_id, operation=profile_operation(asset)) as (c, _, _, _):
             row = c.execute('SELECT * FROM shadify_media_assets WHERE id=%s FOR UPDATE', (asset.id,)).fetchone()
             if (row is None or Asset(**row) != asset or row['state'] != 'upload_pending'
                     or row['expires_at'] <= datetime.now(timezone.utc)):
                 raise MediaError(409, 'Upload state changed or expired')
-            if c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',
+            if profile_asset(asset):
+                if asset.asset_type not in PROFILE_ORIGINALS or asset.track_id is not None or not self.profile_media_available(c):
+                    raise MediaError(422,'Artist profile image scope mismatch')
+            elif c.execute('SELECT 1 FROM shadify_tracks WHERE id=%s AND artist_id=%s',
                          (asset.track_id, asset.artist_id)).fetchone() is None:
                 raise MediaError(404, 'Track not found')
             yield
@@ -99,11 +106,11 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
         require_fresh_actor(actor)
         asset=self.get(asset_id)
         if asset is None: raise MediaError(404,'Asset not found')
-        with self.authorized(actor,asset.artist_id,operation='read_content') as (c,auth,_,_):
+        with self.authorized(actor,asset.artist_id,operation='edit_profile' if profile_asset(asset) else 'read_content') as (c,auth,_,_):
             row=c.execute('SELECT * FROM shadify_media_assets WHERE id=%s AND artist_id=%s',(asset_id,asset.artist_id)).fetchone()
             if row is None: raise MediaError(404,'Asset not found')
             return {**auth.dto(),**{k:(str(row[k]) if k in ('artist_id','track_id') else row[k])
-                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},'asset_id':str(asset_id),'outputs':self.ingest_outputs(c,asset_id),'ingest':self.ingest_status(c,asset_id) if row['state'] in ('uploaded','ready') else None}
+                for k in ('artist_id','track_id','asset_type','mime','size','state','access_class','publish_state')},**({'profile_checks':self.profile_checks(c,asset_id)} if profile_asset(asset) else {}),'asset_id':str(asset_id),'outputs':self.ingest_outputs(c,asset_id),'ingest':self.ingest_status(c,asset_id) if row['state'] in ('uploaded','ready') else None}
 
     def project_user(self,account_id):
         # Admission wrapper owns provenance; this read cannot create or verify an identity.
@@ -141,3 +148,39 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
                       'artist_memberships am,artist_ownership_audit au,shadify_releases r, '
                       'shadify_videos v,shadify_moments mo,shadify_events e LIMIT 0')
         return True
+
+    def require_profile_upload(self, actor, artist):
+        with self.authorized(actor, artist, operation='edit_profile', audit=False) as (c,_,_,_):
+            if not self.profile_media_available(c):
+                raise MediaError(503,'Profile image schema integration unavailable')
+    def profile_media_available(self,c):
+        row=c.execute("SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='shadify_media_assets'::regclass AND conname='shadify_profile_scope') AS enabled").fetchone()
+        return bool(row and row['enabled'])
+    def public_profile_asset(self,artist,purpose,*,expected_asset=None,format='png',size='full'):
+        if purpose not in ('avatar','header') or format not in ('png','avif','optimized') or size not in ('full','small'):raise MediaError(404,'Profile image not found')
+        with self.connect() as connection,connection.cursor(row_factory=dict_row) as c:
+            page=c.execute('SELECT avatar_asset_id,header_asset_id FROM shadify_artists WHERE id=%s AND publish_state=\'published\'',(artist,)).fetchone()
+            asset_id=page[purpose+'_asset_id'] if page else None
+            if asset_id is None:raise MediaError(404,'Profile image not found')
+            row=self._profile_asset(c,artist,asset_id,purpose,lock=False)
+            if row['asset_type']!=purpose+'_delivery':raise MediaError(404,'Profile image not found')
+            selected=asset_id
+            if format=='avif':
+                quality=c.execute("SELECT source_quality FROM shadify_ingest_variants WHERE asset_id=%s AND role='cover'",(asset_id,)).fetchone()
+                # The current sealed AVIF encoder has no alpha stream. Deliver
+                # lossless compatible PNG when decoded source evidence has alpha.
+                if quality and quality['source_quality'].get('has_alpha') is True:format='png'
+            if expected_asset is not None and expected_asset!=asset_id or format!='png' or size!='full':
+                role='cover'+('_avif' if format in ('avif','optimized') else '')+('_small' if size=='small' else '')
+                variant=c.execute("SELECT v.asset_id FROM shadify_ingest_variants anchor JOIN shadify_ingest_variants v ON v.job_id=anchor.job_id JOIN shadify_ingest_jobs j ON j.id=v.job_id WHERE anchor.asset_id=%s AND anchor.role='cover' AND j.state='ready' AND "+('v.asset_id=%s' if expected_asset is not None else 'v.role=%s'),(asset_id,expected_asset if expected_asset is not None else role)).fetchone()
+                if variant is None:
+                    if expected_asset is not None:raise MediaError(404,'Profile image not found')
+                else:selected=variant['asset_id']
+            selected_row=self._profile_asset(c,artist,selected,purpose,lock=False,anchor=False)
+            if format=='avif' and selected_row['mime']!='image/avif':raise MediaError(404,'Requested image format unavailable')
+            return Asset(**selected_row)
+    def require_public_profile_asset(self,asset):
+        if asset.asset_type not in ('avatar_delivery','header_delivery') or asset.track_id is not None:
+            raise MediaError(404,'Profile image not found')
+        current=self.public_profile_asset(asset.artist_id,asset.asset_type.removesuffix('_delivery'),expected_asset=asset.id)
+        if current!=asset:raise MediaError(409,'Profile image changed')

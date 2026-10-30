@@ -58,7 +58,7 @@ class StorageService:
             if encoded(decoded) != body: raise ValueError()
             claims = json.loads(decoded, object_pairs_hook=unique_pairs)
             if (claims['v'] != 1 or type(claims['exp']) is not int or claims['exp'] <= int(time.time())
-                    or claims['asset'] != str(asset_id) or claims['purpose'] not in ('put', 'private', 'playback')
+                    or claims['asset'] != str(asset_id) or claims['purpose'] not in ('put', 'private', 'playback', 'profile')
                     or ((method == 'PUT') != (claims['purpose'] == 'put'))): raise ValueError()
             actor = Identity(**claims['actor']) if claims['actor'] else None
             if actor is not None: require_fresh_actor(actor)
@@ -67,6 +67,7 @@ class StorageService:
             if (asset is None or any(claims[k] != getattr(asset, field) for k, field in
                     (('key', 'key'), ('provider', 'storage_provider'), ('mime', 'mime'), ('size', 'size')))
                     or claims['track'] != str(asset.track_id)): raise ValueError()
+            if claims['purpose']=='profile' and (actor is not None or claims['preview'] is not False or asset.asset_type not in ('avatar_delivery','header_delivery') or asset.track_id is not None):raise ValueError()
             self.adapter(asset)
             return claims, actor, asset
         except Exception:
@@ -115,7 +116,9 @@ class StorageService:
         from .delivery import require_playable
         from .media import MediaError
         self.repository.require_ingest_approval(asset)
-        if claims['purpose'] == 'playback':
+        if claims['purpose']=='profile':
+            self.repository.require_public_profile_asset(asset)
+        elif claims['purpose'] == 'playback':
             target = self.repository.get_playback_target(asset.track_id, preview=claims['preview'])
             current = require_playable(target, asset.track_id, preview=claims['preview'])
             if current.id != asset.id: raise MediaError(404, "Media not found")
@@ -123,3 +126,10 @@ class StorageService:
             current = self.repository.get_for_actor(actor, asset.id)
             if current is None or current.state not in ('uploaded', 'ready'):
                 raise MediaError(404, "Media not found")
+
+    def profile_access(self,artist,purpose,*,expected_asset=None):
+        asset=self.repository.public_profile_asset(artist,purpose,expected_asset=expected_asset)
+        self.repository.require_public_profile_asset(asset)
+        self.adapter(asset)
+        url,expiry=self.issue(asset,'profile')
+        return PlaybackAccess(url,datetime.fromtimestamp(expiry,timezone.utc))
