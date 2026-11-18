@@ -33,7 +33,18 @@ The non-failing Starlette httpx TestClient deprecation warning is known.
 Catalog shadify-api; app/package shadify_api. Existing runtime format: Python 3.14,
 Linux x86_64; source/ plus offline wheels/, hash requirements.lock, canonical
 build-info.json. The release includes SQL migrations but never auto-applies them.
-Build only from the exact clean committed source and a validated complete wheelhouse:
+Shadify owns the Rust and Python shell source under `vendor/app-security-shell/`.
+The native packager builds it from the selected Shadify commit and records the
+resulting wheel hash in the app declarations, release inventory and lock.
+The first app-owned source was imported from Wallet commit
+`bb183fd71ba0a9db64b839cbede369c69f925db3`. Subsequent builds use this repository.
+The packager ignores a prebuilt shell in the supplied wheelhouse.
+
+Use the app's Python 3.14 build environment, Rust toolchain pinned in
+`vendor/app-security-shell/rust-toolchain.toml`, and maturin from
+`vendor/app-security-shell/requirements-wheel.lock` on PATH. The ordinary
+dependency wheelhouse and prepared local transport wheel are still required.
+Build from the exact clean committed source:
 
 ```bash
 .venv/bin/python tools/native_release.py --source <full-main-commit> --wheels <prepared-wheelhouse> --output <new-archive-path>
