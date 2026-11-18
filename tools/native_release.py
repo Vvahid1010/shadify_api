@@ -10,6 +10,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from build_security_shell import build_shell
 from migration_metadata import generate
 from native_release_contract import ROOT_FILES, RUNTIME, canonical, sha, verify
 
@@ -37,7 +38,20 @@ def build(root,wheels,output,source):
             target.write_bytes(src.read_bytes())
         (dest/"wheels").mkdir()
         seen={};lock=[]
-        for wheel in sorted(wheels.glob("*.whl")):
+        with tempfile.TemporaryDirectory(prefix="shadify-shell-build-") as build_dir:
+            built = build_shell(root, source, Path(build_dir), dependency)
+            shell = dest / "wheels" / built.name
+            shutil.copyfile(built, shell)
+        dependency["source_validation_wheel"] = {"filename": shell.name, "sha256": sha(shell.read_bytes())}
+        (dest / "source/app_security_dependency.json").write_bytes(canonical(dependency))
+        management = dest / "source/management_schema.json"
+        schema = json.loads(management.read_bytes())
+        if schema["app_security_contract"]["dependency"] != {k: v for k, v in dependency.items() if k != "source_validation_wheel"}:
+            raise ValueError("shadify_shell_declaration_mismatch")
+        schema["app_security_contract"]["dependency"] = dependency
+        management.write_bytes(canonical(schema))
+        supplied = [p for p in wheels.glob("*.whl") if not p.name.lower().startswith("app_security_shell-")]
+        for wheel in [shell, *sorted(supplied)]:
             if wheel.is_symlink() or not wheel.is_file():raise ValueError("invalid_wheel")
             with zipfile.ZipFile(wheel) as archive:
                 entries=[n for n in archive.namelist() if n.endswith(".dist-info/METADATA")]
@@ -67,7 +81,8 @@ def build(root,wheels,output,source):
                 if version!=transport_dependency["version"] or sha(wheel.read_bytes())!=transport_dependency["wheel_sha256"]:
                     raise ValueError("canonical_transport_wheel_mismatch")
             seen[normalized]=version
-            shutil.copyfile(wheel,dest/"wheels"/wheel.name)
+            if wheel != shell:
+                shutil.copyfile(wheel,dest/"wheels"/wheel.name)
             lock.append(f"{name}=={version} --hash=sha256:{sha(wheel.read_bytes())}")
         if not {"fastapi","uvicorn","boto3","psycopg","psycopg-binary","httpx","redis","app-security-shell"}<=seen.keys():
             raise ValueError("incomplete_runtime_wheels")

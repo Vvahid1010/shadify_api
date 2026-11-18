@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Run only explicit build/test commands using the approved repository-local tools.
+set -euo pipefail
+shell_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+repo_root="$(cd -- "$shell_root/.." && pwd -P)"
+export CARGO_HOME="$repo_root/.build-tools/cargo"
+export RUSTUP_HOME="$repo_root/.build-tools/rustup"
+export CARGO_TARGET_DIR="$repo_root/.build-tools/target"
+export UV_CACHE_DIR="$repo_root/.build-tools/cache/uv"
+export PIP_CACHE_DIR="$repo_root/.build-tools/cache/pip"
+export PATH="$repo_root/.venv/bin:$CARGO_HOME/bin:$PATH"
+unset CREDENTIALS_DIRECTORY
+exec "$@"

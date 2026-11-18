@@ -1,0 +1,9 @@
+maturin==1.15.0
+pytest==9.0.3
+httpx==0.28.1
+starlette==0.48.0
+redis==6.4.0
+pqcrypto==0.4.0
+cryptography==46.0.2
+cmake==3.31.6
+ninja==1.11.1.4

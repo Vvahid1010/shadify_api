@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin==1.15.0"]
+build-backend = "maturin"
+
+[project]
+name = "app-security-shell"
+version = "0.4.6"
+requires-python = ">=3.12,<3.15"
+# The consuming application supplies and pins the injected Redis client.
+dependencies = ["httpx==0.28.1", "anyio>=4.11,<5"]
+
+[tool.maturin]
+manifest-path = "python-native/Cargo.toml"
+python-source = "python"
+module-name = "app_security_shell._native"
