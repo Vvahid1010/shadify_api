@@ -112,7 +112,7 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
         with self.authorized(actor,artist) as (_,auth,_,_): return auth.dto()
 
     def public_profile_asset(self,artist,purpose,*,expected_asset=None,format='png',size='full'):
-        if purpose not in ('avatar','header') or format not in ('png','avif') or size not in ('full','small'):raise MediaError(404,'Profile image not found')
+        if purpose not in ('avatar','header') or format not in ('png','avif','optimized') or size not in ('full','small'):raise MediaError(404,'Profile image not found')
         with self.connect() as connection,connection.cursor(row_factory=dict_row) as c:
             page=c.execute('SELECT avatar_asset_id,header_asset_id FROM shadify_artists WHERE id=%s AND publish_state=\'published\'',(artist,)).fetchone()
             asset_id=page[purpose+'_asset_id'] if page else None
@@ -126,12 +126,13 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
                 # lossless compatible PNG when decoded source evidence has alpha.
                 if quality and quality['source_quality'].get('has_alpha') is True:format='png'
             if expected_asset is not None and expected_asset!=asset_id or format!='png' or size!='full':
-                role='cover'+('_avif' if format=='avif' else '')+('_small' if size=='small' else '')
+                role='cover'+('_avif' if format in ('avif','optimized') else '')+('_small' if size=='small' else '')
                 variant=c.execute("SELECT v.asset_id FROM shadify_ingest_variants anchor JOIN shadify_ingest_variants v ON v.job_id=anchor.job_id JOIN shadify_ingest_jobs j ON j.id=v.job_id WHERE anchor.asset_id=%s AND anchor.role='cover' AND j.state='ready' AND "+('v.asset_id=%s' if expected_asset is not None else 'v.role=%s'),(asset_id,expected_asset if expected_asset is not None else role)).fetchone()
                 if variant is None:
                     if expected_asset is not None:raise MediaError(404,'Profile image not found')
                 else:selected=variant['asset_id']
             selected_row=self._profile_asset(c,artist,selected,purpose,lock=False,anchor=False)
+            if format=='avif' and selected_row['mime']!='image/avif':raise MediaError(404,'Requested image format unavailable')
             return Asset(**selected_row)
 
     def require_public_profile_asset(self,asset):
@@ -174,8 +175,8 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
 
     def profile_checks(self,c,asset):
         job=c.execute("SELECT j.* FROM shadify_ingest_jobs j WHERE j.asset_id=%s OR EXISTS(SELECT 1 FROM shadify_ingest_variants v WHERE v.job_id=j.id AND v.asset_id=%s)",(asset.id,asset.id)).fetchone()
-        if job is None:return {'scan':'pending','optimization':'pending'}
-        scan=c.execute("SELECT verdict,full_coverage FROM shadify_ingest_scans WHERE job_id=%s AND input_sha256=%s ORDER BY scanned_at DESC,id DESC LIMIT 1",(job['id'],job['input_sha256'])).fetchone()
+        if job is None:return dict(scan='pending',validation='pending',optimization='pending',durable_committed=False)
+        scan=c.execute("SELECT id,verdict,full_coverage FROM shadify_ingest_scans WHERE job_id=%s AND input_sha256=%s ORDER BY scanned_at DESC,id DESC LIMIT 1",(job['id'],job['input_sha256'])).fetchone()
         scanned='passed' if scan and scan['verdict']=='clean' and scan['full_coverage'] else 'rejected' if scan and scan['verdict']=='infected' else 'running' if job['state']=='scanning' else 'pending'
         optimized='rejected' if job['state']=='rejected' else 'running' if job['state'] in ('validating','matching','processing') else 'pending'
         if job['last_error']=='bytes_changed':scanned='unavailable'
@@ -186,7 +187,11 @@ class PostgresMediaRepository(ArtistAccessRepository, ArtistOperations, IngestRe
                 roles={variant['role'] for variant in variants}
                 optimized='passed' if {'master','cover'}<=roles else 'unavailable'
             except MediaError:optimized='unavailable'
-        return {'scan':scanned,'optimization':optimized}
+        validated='rejected' if job['state']=='rejected' else 'unavailable' if job['last_error']=='bytes_changed' else 'running' if job['state']=='validating' else 'pending'
+        if scan and scanned=='passed':
+            evidence=c.execute("SELECT 1 FROM shadify_ingest_stages WHERE job_id=%s AND input_sha256=%s AND scan_id=%s AND stage='validation' AND payload @> '{\"passed\":true}'::jsonb LIMIT 1",(job['id'],job['input_sha256'],scan['id'])).fetchone()
+            if evidence:validated='passed'
+        return dict(scan=scanned,validation=validated,optimization=optimized,durable_committed=job['state']=='ready' and scanned=='passed' and validated=='passed' and optimized=='passed')
 
     def project_user(self,account_id):
         # Admission wrapper owns provenance; this read cannot create or verify an identity.

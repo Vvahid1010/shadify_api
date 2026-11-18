@@ -72,3 +72,16 @@ class IngestRepository:
                 any(type(v) is not int or v<0 for v in identity.values()) or identity['size']!=asset.size):
             raise MediaError(409,'Approved object evidence unavailable')
         return identity
+
+    def profile_checks(self,c,asset_id):
+        row=c.execute("SELECT j.id,j.state,j.input_sha256 FROM shadify_ingest_jobs j LEFT JOIN shadify_ingest_variants v ON v.job_id=j.id WHERE j.asset_id=%s OR v.asset_id=%s LIMIT 1",(asset_id,asset_id)).fetchone()
+        result=dict(scan='pending',validation='pending',optimization='pending',durable_committed=False)
+        if row is None:return result
+        clean=c.execute("SELECT 1 FROM shadify_ingest_scans WHERE job_id=%s AND input_sha256=%s AND verdict='clean' AND full_coverage=true LIMIT 1",(row['id'],row['input_sha256'])).fetchone()
+        if clean:result['scan']='passed'
+        for stage,key in (('validation','validation'),('processing','optimization')):
+            evidence=c.execute("SELECT 1 FROM shadify_ingest_stages t JOIN shadify_ingest_scans s ON s.id=t.scan_id AND s.job_id=t.job_id AND s.input_sha256=t.input_sha256 WHERE t.job_id=%s AND t.input_sha256=%s AND t.stage=%s AND s.verdict='clean' AND s.full_coverage=true AND t.payload @> %s::jsonb LIMIT 1",(row['id'],row['input_sha256'],stage,'{"passed":true}' if stage=='validation' else '{"complete":true}')).fetchone()
+            if evidence:result[key]='passed'
+        approved=c.execute("SELECT 1 FROM shadify_ingest_variants v JOIN shadify_ingest_approvals a ON a.asset_id=v.asset_id AND a.job_id=v.job_id AND a.output_sha256=v.output_sha256 WHERE v.job_id=%s AND v.role='cover' LIMIT 1",(row['id'],)).fetchone()
+        result['durable_committed']=row['state']=='ready' and bool(approved) and all(result[k]=='passed' for k in ('scan','validation','optimization'))
+        return result

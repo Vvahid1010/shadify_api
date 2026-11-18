@@ -10,7 +10,7 @@ MAX_PROFILE_IMAGE_BYTES = 10 * 1024 * 1024
 class ProfileUploadIntent(BaseModel):
     model_config = ConfigDict(extra='forbid')
     purpose: Literal['avatar', 'header']
-    mime: Literal['image/jpeg', 'image/png']
+    mime: Literal['image/jpeg', 'image/png', 'image/webp', 'image/avif']
     size: int = Field(gt=0, le=MAX_PROFILE_IMAGE_BYTES)
 
 def profile_asset(asset):

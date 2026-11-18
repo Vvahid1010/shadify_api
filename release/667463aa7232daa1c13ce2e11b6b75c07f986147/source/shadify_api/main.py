@@ -19,7 +19,7 @@ def require_identity():
 
 
 def create_app(service: MediaService | None = None, identity: Callable = require_identity,
-               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None, musicbrainz_provider=None):
+               *, domain=None, repository=None, binding=None, readiness=None, receiver=None, nomination=None, musicbrainz_provider=None, identity_projection=None):
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -129,6 +129,11 @@ def create_app(service: MediaService | None = None, identity: Callable = require
                 "upload": {"method": "PUT", "url": authorization.url,
                 "headers": authorization.headers, "expires_in": authorization.expires_in}}
 
+    @app.post('/api/media/fallback-uploads',status_code=201)
+    def create_image_fallback(intent: UploadIntent, owner: Identity = Depends(identity), media: MediaService = Depends(media_service)):
+        if intent.asset_type!='artwork_original' or intent.mime not in ('image/jpeg','image/png','image/webp','image/avif') or intent.size>10*1024*1024:raise HTTPException(422,'Image fallback limit exceeded')
+        return create_upload(intent,owner,media)
+
     @app.post("/api/media/uploads/{asset_id}/complete")
     def complete_upload(asset_id: UUID, owner: Identity = Depends(identity),
                         media: MediaService = Depends(media_service)):
@@ -139,6 +144,7 @@ def create_app(service: MediaService | None = None, identity: Callable = require
                 "access_class": asset.access_class, "publish_state": asset.publish_state,
                 "ingest": repository.media_metadata(owner,asset_id)["ingest"] if repository is not None else None}
 
+    @app.post('/api/artists/{artist_id}/profile-media/fallback-uploads',status_code=201)
     @app.post('/api/artists/{artist_id}/profile-media/uploads',status_code=201)
     def create_profile_upload(artist_id:UUID,intent:ProfileUploadIntent,owner:Identity=Depends(identity),media:MediaService=Depends(media_service)):
         asset,authorization=media.create_profile(owner,artist_id,intent)
@@ -159,7 +165,7 @@ def create_app(service: MediaService | None = None, identity: Callable = require
         return {'url': access.url, 'expires_at': access.expires_at}
 
     @app.get('/api/artists/{artist_id}/profile-media/{purpose}/access')
-    def public_profile_access(artist_id:UUID,purpose:Literal['avatar','header'],format:Literal['png','avif']='png',size:Literal['full','small']='full'):
+    def public_profile_access(artist_id:UUID,purpose:Literal['avatar','header'],format:Literal['png','avif','optimized']='png',size:Literal['full','small']='full'):
         anchor=repository.public_profile_asset(artist_id,purpose)
         asset=repository.public_profile_asset(artist_id,purpose,format=format,size=size)
         access=common_storage().profile_access(artist_id,purpose,expected_asset=asset.id)
@@ -201,6 +207,9 @@ def create_app(service: MediaService | None = None, identity: Callable = require
 
     from .nomination_routes import install_nomination_routes
     install_nomination_routes(app,identity,nomination)
+
+    from .identity_sync import install_routes
+    install_routes(app, repository, identity_projection)
 
     from .artist_routes import install_artist_routes
     install_artist_routes(app, identity, repository)

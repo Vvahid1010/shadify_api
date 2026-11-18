@@ -190,7 +190,11 @@ class PipelineWorker(IngestWorker):
         if decision is None:raise ToolFailure('pipeline_evidence_invalid')
         with connection.cursor(row_factory=dict_row) as c:
             profile_v2=asset.asset_type in PROFILE_ORIGINALS and c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_ingest_variants'::regclass AND conname='shadify_profile_variants_v2') AS enabled").fetchone()['enabled']
-        pipeline_version=PROFILE_PIPELINE_VERSION if profile_v2 else PIPELINE_VERSION
+        client_artwork=asset.asset_type=='artwork_original' and stages['validation']['payload'].get('client_optimized',asset.mime=='image/avif')
+        if client_artwork:
+            with connection.cursor(row_factory=dict_row) as c:
+                if not c.execute("SELECT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='shadify_media_assets'::regclass AND conname='shadify_client_avif_bound') AS enabled").fetchone()['enabled']:raise ToolFailure('pipeline_evidence_invalid')
+        pipeline_version='client-artwork-avif-v1' if client_artwork else PROFILE_PIPELINE_VERSION if profile_v2 else PIPELINE_VERSION
         prepared=stages.get('prepared_outputs');manifest=prepared['payload'] if prepared else None
         if manifest:
             # A durable pre-upgrade manifest keeps its accepted recipe and IDs.
@@ -201,7 +205,7 @@ class PipelineWorker(IngestWorker):
                 raise ToolFailure('pipeline_evidence_invalid')
             pipeline_version=manifest['pipeline_version']
             profile_v2=profile_v2 and pipeline_version==PROFILE_PIPELINE_VERSION
-            required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover'}
+            required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover','cover_avif'} if client_artwork else {'master','cover'}
             if set(manifest['outputs'])!=required:raise ToolFailure('pipeline_evidence_invalid')
         missing=set();existing={}
         if manifest:
@@ -237,7 +241,7 @@ class PipelineWorker(IngestWorker):
                     key=(f'artists/{asset.artist_id}/profile/{output_id}/master' if role=='master' and asset.asset_type in PROFILE_ORIGINALS
                          else f'artists/{asset.artist_id}/tracks/{asset.track_id}/{output_id}/master' if role=='master' else f'delivery/{output_id}/{role}')
                     outputs[role]=dict(asset_id=str(output_id),key=key,mime=mime,size=len(data),sha256=hashlib.sha256(data).hexdigest())
-                required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover'}
+                required={'master','video'} if asset.asset_type=='video_original' else {'master','high','low'} if asset.asset_type=='audio_original' else {'master','cover','cover_small','cover_avif','cover_avif_small'} if profile_v2 else {'master','cover','cover_avif'} if client_artwork else {'master','cover'}
                 if set(outputs)!=required:raise ToolFailure('output_invalid')
                 manifest=dict(pipeline_version=pipeline_version,tool_identity=self.tools.identity,outputs=outputs)
                 with connection.transaction(),connection.cursor(row_factory=dict_row) as c:
