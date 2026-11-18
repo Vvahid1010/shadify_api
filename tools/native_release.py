@@ -10,6 +10,7 @@ import sys
 import tarfile
 import tempfile
 import zipfile
+from migration_metadata import generate
 from native_release_contract import ROOT_FILES, RUNTIME, canonical, sha, verify
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -77,9 +78,10 @@ def build(root,wheels,output,source):
             if seen.get(re.sub(r"[-_.]+","-",name).lower())!=version:
                 raise ValueError("runtime_wheel_version_mismatch")
         (dest/"requirements.lock").write_text("\n".join(lock)+"\n")
+        migration_steps=generate(root)
         manifest={"schema":1,"app_id":"shadify_api","source_commit":source,"runtime":RUNTIME,
                   "requirements_path":"source/requirements.txt","lock_path":"requirements.lock",
-                  "migration_target":"022_profile_image_variants","management_schema_version":1,
+                  "migration_target":migration_steps[-1]["target"],"migration_steps":migration_steps,"management_schema_version":1,
                   "files":{p.relative_to(dest).as_posix():{"size":p.stat().st_size,"sha256":sha(p.read_bytes())}
                            for p in sorted(dest.rglob("*")) if p.is_file()}}
         (dest/"build-info.json").write_bytes(canonical(manifest))

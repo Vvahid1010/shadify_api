@@ -212,3 +212,18 @@ Turnstile bytes match expected unchanged custody with stable process identities.
 No actual Authentication outage was observed. No user login/email/task was
 executed for this observation. Separate WSL Shadify capacity was already approved
 and tested; its current PostgreSQL peer-auth blocker is owned separately.
+
+
+### Native package migration metadata
+
+`tools/native_release.py` derives `migration_steps` from this application's forward
+SQL files on a disposable PostgreSQL 18 cluster (Unix socket only), as the restricted
+`Shadify_api_owner` role. Install PostgreSQL 18 build tools before packaging; no live
+connection or credentials are used. The final target is the final forward migration,
+not a Node Agent release constant. Rollback files are packaged but never selected.
+
+Migration 027 retains historical runtime grants, adds the current app tables with
+narrow privileges, and records an owner-only revision. The Node Agent installer
+checks every poststate in one transaction. Existing histories that omitted 015/016
+are not a prefix of this full app history and must not be relabeled or blindly
+replayed; their actual schema needs a separately reviewed adoption migration.

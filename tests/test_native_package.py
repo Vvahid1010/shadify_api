@@ -27,6 +27,31 @@ def package(directory,source):
 
 
 class NativePackageTests(unittest.TestCase):
+    def test_app_owned_history_covers_current_source_and_rejects_missing_step(self):
+        from native_release_contract import allowed
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); source='b'*40
+            repo=TOOLS.parent
+            candidates=[repo/name for name in ROOT_FILES]+list((repo/'shadify_api').rglob('*'))+list((repo/'migrations').rglob('*'))
+            for path in candidates:
+                if not path.is_file() or path.is_symlink(): continue
+                name='source/'+path.relative_to(repo).as_posix()
+                if not allowed(name): continue
+                target=root/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(path.read_bytes())
+            (root/'requirements.lock').write_text('fixture\n')
+            names=sorted(p.stem for p in (repo/'migrations').glob('*.sql'))
+            steps=[{'target':name,'after_sha256':sha(name.encode())} for name in names]
+            manifest={'schema':1,'app_id':'shadify_api','source_commit':source,'runtime':RUNTIME,
+                'requirements_path':'source/requirements.txt','lock_path':'requirements.lock',
+                'migration_target':names[-1],'migration_steps':steps,'management_schema_version':1,
+                'files':{p.relative_to(root).as_posix():{'size':p.stat().st_size,'sha256':sha(p.read_bytes())}
+                         for p in root.rglob('*') if p.is_file()}}
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            self.assertEqual(verify(root,source)['migration_target'],'027_app_owned_runtime_access')
+            manifest['migration_steps']=steps[1:]
+            (root/'build-info.json').write_bytes(canonical(manifest))
+            with self.assertRaisesRegex(ValueError,'migration_history_mismatch'): verify(root,source)
+
     def test_public_module_cannot_be_mislabeled_as_legacy_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);source='a'*40;manifest=package(root,source)
